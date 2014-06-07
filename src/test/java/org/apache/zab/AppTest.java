@@ -1,6 +1,6 @@
 package org.apache.zab;
 
-import org.testng.annotations.Test;
+import org.junit.Test;
 
 /**
  * An empty unit test.
@@ -12,4 +12,3 @@ public class AppTest {
   }
 
 }
-
