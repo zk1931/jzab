@@ -156,5 +156,12 @@
     <module name="TodoComment"/>
     <module name="UpperEll"/>
   </module>
+
+  <!-- Disallow trailing whitespaces. -->
+  <module name="RegexpSingleline">
+    <property name="format" value="\s+$"/>
+    <property name="maximum" value="0"/>
+    <property name="message" value="Trailing whitespaces"/>
+  </module>
 </module>
 
