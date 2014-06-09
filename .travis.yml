@@ -7,7 +7,7 @@ jdk:
 
 env:
   global:
-    secure: G7oslMLR89rhHId6PvFwuQM7lmZBJ0VGbpJ2eeI67fNxBFh6ZnhhYcMcxKPlfNFUkeelmQLLptn/GxLkXXT/vuABdlpvQtNcTCo76LKAsMJrao/rufA1qOKVC6Vc9DKaXVfJBRX95aUKLCC7HkHYkt8ryPCkSZZ0/B/SXA+nvm0=
+    secure: ZEVr2OGZAPv+Vtna82xekRldh96KedM+0fa4YKbPw7tqQH7J9bjZ+dc/dOEG0Ycao71brmIjcgZV95HHHjhBvJtnR0GJZ5UDtJv3AJ9Id9fUd6IcBuPbsUfkAj939ec72lzM4KfNxGn0RRAsaCo2aD9pHT93SEUN8lZgFIoZkKA=
 
 before_script:
   - mvn javadoc:javadoc
