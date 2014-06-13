@@ -32,6 +32,13 @@ import java.io.IOException;
 public class Zxid implements Comparable<Zxid> {
   private final int epoch;
   private final int xid;
+  private static final int ZXID_LENGTH = 8;
+  static final Zxid INVALID_ZXID = new Zxid();
+
+  private Zxid() {
+    this.epoch = -1;
+    this.xid = 0;
+  }
 
   public Zxid(int epoch, int xid) {
     if (epoch < 0 || xid < 0) {
@@ -40,6 +47,10 @@ public class Zxid implements Comparable<Zxid> {
     }
     this.epoch = epoch;
     this.xid = xid;
+  }
+
+  public static int getZxidLength() {
+    return ZXID_LENGTH;
   }
 
   public int getEpoch() {
