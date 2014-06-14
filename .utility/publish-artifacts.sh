@@ -1,14 +1,19 @@
 #!/bin/bash
-#
-# http://benlimmer.com/2013/12/26/automatically-publish-javadoc-to-gh-pages-with-travis-ci/
-#
 
 if [ "$TRAVIS_REPO_SLUG" == "ZK-1931/javazab" ] &&
    [ "$TRAVIS_JDK_VERSION" == "oraclejdk7" ] &&
    [ "$TRAVIS_PULL_REQUEST" == "false" ] &&
    [ "$TRAVIS_BRANCH" == "master" ]; then
 
-  echo -e "Publishing javadoc...\n"
+  # Publish maven artifacts.
+  # https://github.com/github/maven-plugins
+  echo "Publishing Maven artifacts"
+  mvn site
+  echo "Published Maven artifacts"
+
+  # Push javadoc.
+  # http://benlimmer.com/2013/12/26/automatically-publish-javadoc-to-gh-pages-with-travis-ci/
+  echo "Publishing javadoc..."
 
   cp -R target/site/apidocs $HOME/javadoc-latest
   cd $HOME
@@ -23,5 +28,5 @@ if [ "$TRAVIS_REPO_SLUG" == "ZK-1931/javazab" ] &&
   git commit -m "Push javadoc from travis build $TRAVIS_BUILD_NUMBER to gh-pages."
   git push -fq origin gh-pages > /dev/null
 
-  echo -e "Published javadoc to gh-pages.\n"
+  echo "Published javadoc to gh-pages."
 fi

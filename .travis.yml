@@ -14,4 +14,4 @@ before_script:
 
 # Publish javadoc to http://zk-1931.github.io/javazab/javadoc
 after_success:
-  - .utility/push-javadoc-to-gh-pages.sh
+  - .utility/publish-artifacts.sh

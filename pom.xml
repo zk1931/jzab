@@ -50,6 +50,37 @@
           </execution>
         </executions>
       </plugin>
+
+      <!-- Publish Maven artifacts to https://github.com/ZK-1931/mvnrepo -->
+      <plugin>
+        <groupId>com.github.github</groupId>
+        <artifactId>site-maven-plugin</artifactId>
+        <version>0.8</version>
+        <configuration>
+          <message>Maven artifacts for ${project.groupId}:${project.artifactId}:${project.version} ~${maven.build.timestamp}</message>
+          <noJekyll>true</noJekyll>
+          <outputDirectory>${built.repo.dir}</outputDirectory>
+          <merge>false</merge>
+          <dryRun>true</dryRun>
+          <repositoryOwner>ZK-1931</repositoryOwner>
+          <repositoryName>mvnrepo</repositoryName>
+          <branch>refs/heads/gh-pages</branch>
+          <path>maven/snapshots</path>
+          <oauth2Token>${env.GH_TOKEN}</oauth2Token>
+          <includes>
+            <include>**/*</include>
+          </includes>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>site</goal>
+            </goals>
+            <phase>site</phase>
+          </execution>
+        </executions>
+      </plugin>
+
     </plugins>
   </build>
   <dependencies>
