@@ -9,6 +9,7 @@
   <url>http://maven.apache.org</url>
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.build.repo.directory>${project.build.directory}/repo</project.build.repo.directory>
   </properties>
   <build>
     <plugins>
@@ -53,13 +54,20 @@
 
       <!-- Publish Maven artifacts to https://github.com/ZK-1931/mvnrepo -->
       <plugin>
+        <artifactId>maven-deploy-plugin</artifactId>
+        <version>2.7</version>
+        <configuration>
+          <altDeploymentRepository>internal.repo::default::file://${project.build.repo.directory}</altDeploymentRepository>
+        </configuration>
+      </plugin>
+      <plugin>
         <groupId>com.github.github</groupId>
         <artifactId>site-maven-plugin</artifactId>
         <version>0.8</version>
         <configuration>
           <message>Maven artifacts for ${project.groupId}:${project.artifactId}:${project.version} ~${maven.build.timestamp}</message>
           <noJekyll>true</noJekyll>
-          <outputDirectory>${built.repo.dir}</outputDirectory>
+          <outputDirectory>${project.build.repo.directory}</outputDirectory>
           <merge>false</merge>
           <dryRun>false</dryRun>
           <repositoryOwner>ZK-1931</repositoryOwner>
@@ -76,7 +84,7 @@
             <goals>
               <goal>site</goal>
             </goals>
-            <phase>site</phase>
+            <phase>deploy</phase>
           </execution>
         </executions>
       </plugin>
