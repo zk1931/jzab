@@ -24,17 +24,6 @@ import java.io.IOException;
  * Abstract class for Zab implementation.
  */
 public abstract class Zab {
-  protected StateMachine stateMachine;
-
-  /**
-   * Constructs the Zab object.
-   *
-   * @param st the state machine interface
-   */
-  public Zab(StateMachine st) {
-    this.stateMachine = st;
-  }
-
   /**
    * Sends a message to Zab. Any one can call call this
    * interface. Under the hood, followers forward requests
