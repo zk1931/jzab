@@ -41,7 +41,7 @@ public abstract class Zab {
    * to the leader and the leader will be responsible for
    * broadcasting.
    *
-   * @param message
+   * @param message message to send through Zab
    * @throws IOException in case of IO failures
    */
   public abstract void send(byte[] message) throws IOException;
