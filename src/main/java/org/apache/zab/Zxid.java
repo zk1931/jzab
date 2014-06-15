@@ -75,7 +75,7 @@ public class Zxid implements Comparable<Zxid> {
 
    * The resulting byte array can be deserialized with fromByteArray.
    * @return an array of bytes.
-   * @throws IOException
+   * @throws IOException in case of an IO failure
    */
   public byte[] toByteArray() throws IOException {
     ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -104,6 +104,9 @@ public class Zxid implements Comparable<Zxid> {
 
   @Override
   public boolean equals(Object o) {
+    if (o == null || !(o instanceof Zxid)) {
+      return false;
+    }
     Zxid z = (Zxid)o;
     return compareTo(z) == 0;
   }

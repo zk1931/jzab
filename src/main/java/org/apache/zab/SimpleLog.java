@@ -246,6 +246,8 @@ public class SimpleLog implements Log {
      * Goes to the next transaction record.
      *
      * @return the next transaction record
+     * @throws java.io.EOFException if it reaches the end of file before reading
+     *                              the entire transaction.
      * @throws IOException in case of IO failure
      * @throws NoSuchElementException
      * if there's no more elements to get
@@ -265,7 +267,7 @@ public class SimpleLog implements Log {
       int bodyLength = in.readInt();
       byte[] bodyBuffer = new byte[bodyLength];
       // Reads the data of the transaction body.
-      in.read(bodyBuffer, 0, bodyLength);
+      in.readFully(bodyBuffer, 0, bodyLength);
       this.lastTransactionLength = Zxid.getZxidLength() + 4 + bodyLength;
       // Updates the position of file.
       this.position += this.lastTransactionLength;
