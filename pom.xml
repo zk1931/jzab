@@ -73,7 +73,7 @@
           <repositoryOwner>ZK-1931</repositoryOwner>
           <repositoryName>mvnrepo</repositoryName>
           <branch>refs/heads/gh-pages</branch>
-          <path>maven/snapshots</path>
+          <path>snapshots</path>
           <oauth2Token>${env.GH_TOKEN}</oauth2Token>
           <includes>
             <include>**/*</include>
