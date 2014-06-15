@@ -27,6 +27,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.util.NoSuchElementException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This class implements the Log interface.
@@ -45,6 +47,7 @@ import java.util.NoSuchElementException;
  * transaction-body := byte array
  */
 public class SimpleLog implements Log {
+  private static final Logger LOG = LoggerFactory.getLogger(SimpleLog.class);
   private final File logFile;
   private final DataOutputStream logStream;
   private final FileOutputStream fout;
@@ -87,7 +90,9 @@ public class SimpleLog implements Log {
   @Override
   public void append(Transaction txn) throws IOException {
     if(txn.getZxid().compareTo(this.lastZxidSeen) <= 0) {
-      throw new RuntimeException("The id of the transaction is less"
+      LOG.error("Cannot append {}. lastZxidSeen = {}",
+                txn.getZxid(), this.lastZxidSeen);
+      throw new RuntimeException("The id of the transaction is less "
           + "than the id of last seen transaction");
     }
     try {

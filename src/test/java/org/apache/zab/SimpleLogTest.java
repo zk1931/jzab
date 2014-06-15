@@ -104,4 +104,28 @@ public class SimpleLogTest {
     Log.LogIterator iter = log.getIterator(new Zxid(0, 0));
     Assert.assertEquals(iter.next().getZxid(), new Zxid(0, 0));
   }
+
+  /**
+   * Appending a transaction with a zxid smaller than the previous zxid should
+   * result in a RuntimeException.
+   */
+  @Test(expected=RuntimeException.class)
+  public void testAppendSmallerZxid() throws IOException {
+    File temp = File.createTempFile(LOGFILE, "tmp");
+    SimpleLog log = new SimpleLog(temp);
+    log.append(new Transaction(new Zxid(0, 1), "log record 1".getBytes()));
+    log.append(new Transaction(new Zxid(0, 0), "log record 0".getBytes()));
+  }
+
+  /**
+   * Appending a transaction with a zxid equal to the previous zxid should
+   * result in a RuntimeException.
+   */
+  @Test(expected=RuntimeException.class)
+  public void testAppendSameZxid() throws IOException {
+    File temp = File.createTempFile(LOGFILE, "tmp");
+    SimpleLog log = new SimpleLog(temp);
+    log.append(new Transaction(new Zxid(0, 0), "log record 0".getBytes()));
+    log.append(new Transaction(new Zxid(0, 0), "log record 0".getBytes()));
+  }
 }
