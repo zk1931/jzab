@@ -65,7 +65,7 @@
         <artifactId>site-maven-plugin</artifactId>
         <version>0.8</version>
         <configuration>
-          <message>Maven artifacts for ${project.groupId}:${project.artifactId}:${project.version} ~${maven.build.timestamp}</message>
+          <message>Maven artifacts for ${project.groupId}:${project.artifactId}:${project.version}</message>
           <noJekyll>true</noJekyll>
           <outputDirectory>${project.build.repo.directory}</outputDirectory>
           <merge>false</merge>
