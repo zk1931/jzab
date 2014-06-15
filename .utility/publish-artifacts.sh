@@ -8,7 +8,7 @@ if [ "$TRAVIS_REPO_SLUG" == "ZK-1931/javazab" ] &&
   # Publish maven artifacts.
   # https://github.com/github/maven-plugins
   echo "Publishing Maven artifacts"
-  mvn site
+  mvn deploy
   echo "Published Maven artifacts"
 
   # Push javadoc.
