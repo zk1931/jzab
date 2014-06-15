@@ -5,12 +5,6 @@ if [ "$TRAVIS_REPO_SLUG" == "ZK-1931/javazab" ] &&
    [ "$TRAVIS_PULL_REQUEST" == "false" ] &&
    [ "$TRAVIS_BRANCH" == "master" ]; then
 
-  # Publish maven artifacts.
-  # https://github.com/github/maven-plugins
-  echo "Publishing Maven artifacts"
-  mvn deploy
-  echo "Published Maven artifacts"
-
   # Push javadoc.
   # http://benlimmer.com/2013/12/26/automatically-publish-javadoc-to-gh-pages-with-travis-ci/
   echo "Publishing javadoc..."
