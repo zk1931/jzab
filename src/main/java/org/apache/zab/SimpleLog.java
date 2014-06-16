@@ -26,6 +26,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
 import java.util.NoSuchElementException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -96,10 +97,14 @@ public class SimpleLog implements Log {
           + "than the id of last seen transaction");
     }
     try {
+      ByteBuffer buf = txn.getBody();
       this.logStream.writeInt(txn.getZxid().getEpoch());
       this.logStream.writeInt(txn.getZxid().getXid());
-      this.logStream.writeInt(txn.getBody().length);
-      this.logStream.write(txn.getBody());
+      this.logStream.writeInt(buf.remaining());
+      // Write the data of ByteBuffer to stream.
+      while (buf.hasRemaining()) {
+        this.logStream.writeByte(buf.get());
+      }
       this.logStream.flush();
       // Update last seen Zxid.
       this.lastZxidSeen = txn.getZxid();
@@ -271,7 +276,7 @@ public class SimpleLog implements Log {
       this.lastTransactionLength = Zxid.getZxidLength() + 4 + bodyLength;
       // Updates the position of file.
       this.position += this.lastTransactionLength;
-      return new Transaction(zxid, bodyBuffer);
+      return new Transaction(zxid, ByteBuffer.wrap(bodyBuffer));
     }
 
     // Moves the transaction log backward to last transaction.

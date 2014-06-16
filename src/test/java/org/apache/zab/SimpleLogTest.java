@@ -20,7 +20,7 @@ package org.apache.zab;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Arrays;
+import java.nio.ByteBuffer;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -33,10 +33,14 @@ public class SimpleLogTest extends TestBase {
   private SimpleLog initLog() throws IOException {
     File temp = File.createTempFile(LOGFILE, "tmp");
     SimpleLog log = new SimpleLog(temp);
-    log.append(new Transaction(new Zxid(0, 0), "log record 1".getBytes()));
-    log.append(new Transaction(new Zxid(0, 1), "log record 2".getBytes()));
-    log.append(new Transaction(new Zxid(0, 2), "log record 12".getBytes()));
-    log.append(new Transaction(new Zxid(0, 3), "log record 13".getBytes()));
+    log.append(new Transaction(new Zxid(0, 0),
+                               ByteBuffer.wrap("log record 1".getBytes())));
+    log.append(new Transaction(new Zxid(0, 1),
+                               ByteBuffer.wrap("log record 2".getBytes())));
+    log.append(new Transaction(new Zxid(0, 2),
+                               ByteBuffer.wrap("log record 12".getBytes())));
+    log.append(new Transaction(new Zxid(0, 3),
+                               ByteBuffer.wrap("log record 13".getBytes())));
     return log;
   }
 
@@ -46,15 +50,19 @@ public class SimpleLogTest extends TestBase {
     Log.LogIterator iter = log.getIterator(new Zxid(0, 1));
     Transaction txn = iter.next();
     Assert.assertEquals(txn.getZxid(), new Zxid(0, 1));
-    Assert.assertTrue(Arrays.equals(txn.getBody(), "log record 2".getBytes()));
+    Assert.assertTrue(txn.getBody()
+                      .equals(ByteBuffer.wrap("log record 2".getBytes())));
 
     txn = iter.next();
     Assert.assertEquals(txn.getZxid(), new Zxid(0, 2));
-    Assert.assertTrue(Arrays.equals(txn.getBody(), "log record 12".getBytes()));
+    Assert.assertTrue(txn.getBody()
+                      .equals(ByteBuffer.wrap("log record 12".getBytes())));
 
     txn = iter.next();
     Assert.assertEquals(txn.getZxid(), new Zxid(0, 3));
-    Assert.assertTrue(Arrays.equals(txn.getBody(), "log record 13".getBytes()));
+    Assert.assertTrue(txn.getBody()
+                      .equals(ByteBuffer.wrap("log record 13".getBytes())));
+
     // It should be the end of the log file.
     Assert.assertFalse(iter.hasNext());
   }
@@ -76,11 +84,13 @@ public class SimpleLogTest extends TestBase {
   public void testReopenFile() throws IOException {
     File temp = File.createTempFile(LOGFILE, "tmp");
     SimpleLog log = new SimpleLog(temp);
-    log.append(new Transaction(new Zxid(0, 0), "log record 1".getBytes()));
+    log.append(new Transaction(new Zxid(0, 0),
+                               ByteBuffer.wrap("log record 1".getBytes())));
     log.close();
     log = new SimpleLog(temp);
 
-    log.append(new Transaction(new Zxid(0, 1), "log record 2".getBytes()));
+    log.append(new Transaction(new Zxid(0, 1),
+                               ByteBuffer.wrap("log record 2".getBytes())));
     Log.LogIterator iter = log.getIterator(new Zxid(0, 0));
     Assert.assertEquals(iter.next().getZxid(), new Zxid(0, 0));
     Assert.assertEquals(iter.next().getZxid(), new Zxid(0, 1));
@@ -90,7 +100,8 @@ public class SimpleLogTest extends TestBase {
   public void testTruncateAndAppend() throws IOException {
     SimpleLog log = initLog();
     log.truncate(new Zxid(0, 0));
-    log.append(new Transaction(new Zxid(1, 2), "log record 1 2".getBytes()));
+    log.append(new Transaction(new Zxid(1, 2),
+                               ByteBuffer.wrap("log record 1 2".getBytes())));
     Log.LogIterator iter = log.getIterator(new Zxid(0, 0));
     Assert.assertEquals(iter.next().getZxid(), new Zxid(0, 0));
     Assert.assertEquals(iter.next().getZxid(), new Zxid(1, 2));
@@ -100,7 +111,8 @@ public class SimpleLogTest extends TestBase {
   public void testAppendWithoutSync() throws IOException {
     File temp = File.createTempFile(LOGFILE, "tmp");
     SimpleLog log = new SimpleLog(temp);
-    log.append(new Transaction(new Zxid(0, 0), "log record 1".getBytes()));
+    log.append(new Transaction(new Zxid(0, 0),
+                               ByteBuffer.wrap("log record 1".getBytes())));
     Log.LogIterator iter = log.getIterator(new Zxid(0, 0));
     Assert.assertEquals(iter.next().getZxid(), new Zxid(0, 0));
   }
@@ -113,8 +125,10 @@ public class SimpleLogTest extends TestBase {
   public void testAppendSmallerZxid() throws IOException {
     File temp = File.createTempFile(LOGFILE, "tmp");
     SimpleLog log = new SimpleLog(temp);
-    log.append(new Transaction(new Zxid(0, 1), "log record 1".getBytes()));
-    log.append(new Transaction(new Zxid(0, 0), "log record 0".getBytes()));
+    log.append(new Transaction(new Zxid(0, 1),
+                               ByteBuffer.wrap("log record 1".getBytes())));
+    log.append(new Transaction(new Zxid(0, 0),
+                               ByteBuffer.wrap("log record 0".getBytes())));
   }
 
   /**
@@ -125,7 +139,36 @@ public class SimpleLogTest extends TestBase {
   public void testAppendSameZxid() throws IOException {
     File temp = File.createTempFile(LOGFILE, "tmp");
     SimpleLog log = new SimpleLog(temp);
-    log.append(new Transaction(new Zxid(0, 0), "log record 0".getBytes()));
-    log.append(new Transaction(new Zxid(0, 0), "log record 0".getBytes()));
+    log.append(new Transaction(new Zxid(0, 0),
+                               ByteBuffer.wrap("log record 0".getBytes())));
+    log.append(new Transaction(new Zxid(0, 0),
+                               ByteBuffer.wrap("log record 0".getBytes())));
+  }
+
+  /**
+   * Test writing byte buffer with nonzero position.
+   */
+  @Test
+  public void testWriteNonZeroBuffer() throws IOException {
+    File temp = File.createTempFile(LOGFILE, "tmp");
+    SimpleLog log = new SimpleLog(temp);
+    ByteBuffer buf = ByteBuffer.allocate("Hello World".getBytes().length);
+    buf.put("Hello World".getBytes());
+    buf.flip();
+    // Make it position non-zero.
+    int h = buf.get();
+    int e = buf.get();
+    Assert.assertEquals(h, 'H');
+    Assert.assertEquals(e, 'e');
+    Assert.assertEquals(buf.position(), 2);
+    Transaction t = new Transaction(new Zxid(0, 0), buf);
+    log.append(t);
+
+    Log.LogIterator iter = log.getIterator(new Zxid(0, 0));
+    Transaction txn = iter.next();
+    Assert.assertEquals(txn.getZxid(), new Zxid(0, 0));
+    // Check the first two characters are not in log.
+    Assert.assertTrue(txn.getBody().
+                      equals(ByteBuffer.wrap("llo World".getBytes())));
   }
 }

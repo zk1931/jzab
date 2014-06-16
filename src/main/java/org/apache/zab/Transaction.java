@@ -18,14 +18,16 @@
 
 package org.apache.zab;
 
+import java.nio.ByteBuffer;
+
 /**
  * Transaction.
  */
 public class Transaction {
   private final Zxid zxid;
-  private final byte[] body;
+  private final ByteBuffer body;
 
-  public Transaction(Zxid zxid, byte[] body) {
+  public Transaction(Zxid zxid, ByteBuffer body) {
     this.zxid = zxid;
     this.body = body;
   }
@@ -44,7 +46,7 @@ public class Transaction {
    *
    * @return an array of bytes representing the body of the transaction
    */
-  public byte[] getBody() {
+  public ByteBuffer getBody() {
     return this.body;
   }
 }
