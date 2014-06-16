@@ -25,7 +25,7 @@ import org.junit.Test;
 /**
  *  Test Zxid.
  */
-public class ZxidTest {
+public class ZxidTest extends TestBase {
   @Test
   public void cmpTest() {
     Zxid z1 = new Zxid(1, 0);

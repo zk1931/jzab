@@ -27,7 +27,7 @@ import org.junit.Test;
 /**
  * Test the simple implementation of transaction log.
  */
-public class SimpleLogTest {
+public class SimpleLogTest extends TestBase {
   private static final String LOGFILE= "LogTest";
 
   private SimpleLog initLog() throws IOException {
