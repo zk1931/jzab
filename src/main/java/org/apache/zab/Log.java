@@ -47,7 +47,7 @@ public interface Log extends AutoCloseable {
    * Gets the latest transaction id from log.
    *
    * @return the transaction id of the latest transaction.
-   * Return Zxid.INVALID_ZXID if the log is empty.
+   * Return Zxid.ZXID_NOT_EXIST if the log is empty.
    * @throws IOException in case of IO failures
    */
   Zxid getLatestZxid() throws IOException;

@@ -20,6 +20,7 @@ package org.apache.zab;
 
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 
 /**
  * The state machine interface. It contains a list
@@ -38,7 +39,7 @@ public interface StateMachine {
    * the original message. This is what gets proposed
    * to followers.
    */
-  byte[] preprocess(Zxid zxid, byte[] message);
+  ByteBuffer preprocess(Zxid zxid, ByteBuffer message);
 
   /**
    * Called after the state update has been committed.
@@ -49,7 +50,7 @@ public interface StateMachine {
    * @param zxid zxid of the message
    * @param stateUpdate the incremental state update
    */
-  void deliver(Zxid zxid, byte[] stateUpdate);
+  void deliver(Zxid zxid, ByteBuffer stateUpdate);
 
   /**
    * Serializes state of the application to OutputStream.
