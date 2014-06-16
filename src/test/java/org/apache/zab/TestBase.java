@@ -19,6 +19,7 @@
 package org.apache.zab;
 
 import org.junit.Rule;
+import org.junit.rules.TestName;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 import org.slf4j.Logger;
@@ -29,6 +30,8 @@ import org.slf4j.LoggerFactory;
  */
 public class TestBase {
   private static final Logger LOG = LoggerFactory.getLogger(TestBase.class);
+
+  @Rule public TestName testName = new TestName();
 
   /**
    * Logs the beginning and the end of the each test method.
