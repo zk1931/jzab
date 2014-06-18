@@ -28,11 +28,23 @@ import org.junit.Test;
  * Test the simple implementation of transaction log.
  */
 public class SimpleLogTest extends TestBase {
-  private static final String LOGFILE= "LogTest";
+  // Create the file, and if the file exists, delete it first.
+  private File createFile() {
+    File dir = new File("target/log");
+    if (!dir.exists()) {
+      dir.mkdir();
+    }
+    String filename = this.testName.getMethodName();
+    File file = new File(dir, filename);
+    if (file.exists()) {
+      file.delete();
+    }
+    return file;
+  }
 
   private SimpleLog initLog() throws IOException {
-    File temp = File.createTempFile(LOGFILE, "tmp");
-    SimpleLog log = new SimpleLog(temp);
+    File file = createFile();
+    SimpleLog log = new SimpleLog(file);
     log.append(new Transaction(new Zxid(0, 0),
                                ByteBuffer.wrap("log record 1".getBytes())));
     log.append(new Transaction(new Zxid(0, 1),
@@ -82,13 +94,12 @@ public class SimpleLogTest extends TestBase {
 
   @Test
   public void testReopenFile() throws IOException {
-    File temp = File.createTempFile(LOGFILE, "tmp");
-    SimpleLog log = new SimpleLog(temp);
+    File file = createFile();
+    SimpleLog log = new SimpleLog(file);
     log.append(new Transaction(new Zxid(0, 0),
                                ByteBuffer.wrap("log record 1".getBytes())));
     log.close();
-    log = new SimpleLog(temp);
-
+    log = new SimpleLog(file);
     log.append(new Transaction(new Zxid(0, 1),
                                ByteBuffer.wrap("log record 2".getBytes())));
     Log.LogIterator iter = log.getIterator(new Zxid(0, 0));
@@ -109,8 +120,8 @@ public class SimpleLogTest extends TestBase {
 
   @Test
   public void testAppendWithoutSync() throws IOException {
-    File temp = File.createTempFile(LOGFILE, "tmp");
-    SimpleLog log = new SimpleLog(temp);
+    File file = createFile();
+    SimpleLog log = new SimpleLog(file);
     log.append(new Transaction(new Zxid(0, 0),
                                ByteBuffer.wrap("log record 1".getBytes())));
     Log.LogIterator iter = log.getIterator(new Zxid(0, 0));
@@ -123,8 +134,8 @@ public class SimpleLogTest extends TestBase {
    */
   @Test(expected=RuntimeException.class)
   public void testAppendSmallerZxid() throws IOException {
-    File temp = File.createTempFile(LOGFILE, "tmp");
-    SimpleLog log = new SimpleLog(temp);
+    File file = createFile();
+    SimpleLog log = new SimpleLog(file);
     log.append(new Transaction(new Zxid(0, 1),
                                ByteBuffer.wrap("log record 1".getBytes())));
     log.append(new Transaction(new Zxid(0, 0),
@@ -137,8 +148,8 @@ public class SimpleLogTest extends TestBase {
    */
   @Test(expected=RuntimeException.class)
   public void testAppendSameZxid() throws IOException {
-    File temp = File.createTempFile(LOGFILE, "tmp");
-    SimpleLog log = new SimpleLog(temp);
+    File file = createFile();
+    SimpleLog log = new SimpleLog(file);
     log.append(new Transaction(new Zxid(0, 0),
                                ByteBuffer.wrap("log record 0".getBytes())));
     log.append(new Transaction(new Zxid(0, 0),
@@ -150,8 +161,8 @@ public class SimpleLogTest extends TestBase {
    */
   @Test
   public void testWriteNonZeroBuffer() throws IOException {
-    File temp = File.createTempFile(LOGFILE, "tmp");
-    SimpleLog log = new SimpleLog(temp);
+    File file = createFile();
+    SimpleLog log = new SimpleLog(file);
     ByteBuffer buf = ByteBuffer.allocate("Hello World".getBytes().length);
     buf.put("Hello World".getBytes());
     buf.flip();
