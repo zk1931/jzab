@@ -19,11 +19,19 @@
 package org.apache.zab;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 
 /**
  * Abstract class for Zab implementation.
  */
 public abstract class Zab {
+  protected StateMachine stateMachine;
+
+  // Construct Zab with a StateMachine interface.
+  public Zab(StateMachine stateMachine) {
+    this.stateMachine = stateMachine;
+  }
+
   /**
    * Sends a message to Zab. Any one can call call this
    * interface. Under the hood, followers forward requests
@@ -33,7 +41,7 @@ public abstract class Zab {
    * @param message message to send through Zab
    * @throws IOException in case of IO failures
    */
-  public abstract void send(byte[] message) throws IOException;
+  public abstract void send(ByteBuffer message) throws IOException;
 
   /**
    * Trims a prefix of the log. Used to reduce the size

@@ -33,11 +33,11 @@ public class Zxid implements Comparable<Zxid> {
   private final int epoch;
   private final int xid;
   private static final int ZXID_LENGTH = 8;
-  static final Zxid INVALID_ZXID = new Zxid();
+  static final Zxid ZXID_NOT_EXIST = new Zxid();
 
   private Zxid() {
-    this.epoch = -1;
-    this.xid = 0;
+    this.epoch = 0;
+    this.xid = -1;
   }
 
   public Zxid(int epoch, int xid) {

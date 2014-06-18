@@ -147,7 +147,7 @@ public class SimpleLog implements Log {
    * Gets the latest appended transaction id from the log.
    *
    * @return the transaction id of the latest transaction.
-   * or Zxid.INVALID_ZXID if the log is empty.
+   * or Zxid.ZXID_NOT_EXIST if the log is empty.
    * @throws IOException in case of IO failure
    */
   @Override
@@ -159,7 +159,7 @@ public class SimpleLog implements Log {
         txn = iter.next();
       }
       if(txn == null) {
-        return Zxid.INVALID_ZXID;
+        return Zxid.ZXID_NOT_EXIST;
       }
       return txn.getZxid();
     } finally {
