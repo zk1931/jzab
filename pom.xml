@@ -117,6 +117,30 @@
           <xmlOutput>false</xmlOutput>
         </configuration>
       </plugin>
+
+      <!-- Delete target/data before running unit tests -->
+      <plugin>
+        <artifactId>maven-clean-plugin</artifactId>
+        <version>2.5</version>
+        <executions>
+          <execution>
+            <id>auto-clean</id>
+            <phase>process-test-resources</phase>
+            <goals>
+              <goal>clean</goal>
+            </goals>
+            <configuration>
+             <excludeDefaultDirectories>true</excludeDefaultDirectories>
+             <filesets>
+                <fileset>
+                  <directory>target/data</directory>
+                </fileset>
+              </filesets>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
     </plugins>
   </build>
   <dependencies>

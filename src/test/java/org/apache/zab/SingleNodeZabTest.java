@@ -74,18 +74,8 @@ public class SingleNodeZabTest extends TestBase {
    */
   @Before
   public void setUp() throws IOException {
-    File rootDir = new File("target/log");
-    this.logDir = new File(rootDir, this.testName.getMethodName());
+    this.logDir = this.getDirectory();
     File logFile = new File(this.logDir, "transaction.log");
-    // If root dir doesn't exist, create it.
-    if (!rootDir.exists()) {
-      rootDir.mkdir();
-    }
-    // Delete previous log file, if any.
-    if (logFile.exists()) {
-      logFile.delete();
-    }
-    this.logDir.mkdir();
     this.sm = new TestStateMachine();
     this.zab = new SingleNodeZab(this.sm, this.logDir.getCanonicalPath());
   }

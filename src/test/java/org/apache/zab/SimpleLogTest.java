@@ -28,22 +28,8 @@ import org.junit.Test;
  * Test the simple implementation of transaction log.
  */
 public class SimpleLogTest extends TestBase {
-  // Create the file, and if the file exists, delete it first.
-  private File createFile() {
-    File dir = new File("target/log");
-    if (!dir.exists()) {
-      dir.mkdir();
-    }
-    String filename = this.testName.getMethodName();
-    File file = new File(dir, filename);
-    if (file.exists()) {
-      file.delete();
-    }
-    return file;
-  }
-
   private SimpleLog initLog() throws IOException {
-    File file = createFile();
+    File file = new File(getDirectory(), "transaction.log");
     SimpleLog log = new SimpleLog(file);
     log.append(new Transaction(new Zxid(0, 0),
                                ByteBuffer.wrap("log record 1".getBytes())));
@@ -94,7 +80,7 @@ public class SimpleLogTest extends TestBase {
 
   @Test
   public void testReopenFile() throws IOException {
-    File file = createFile();
+    File file = new File(getDirectory(), "transaction.log");
     SimpleLog log = new SimpleLog(file);
     log.append(new Transaction(new Zxid(0, 0),
                                ByteBuffer.wrap("log record 1".getBytes())));
@@ -120,7 +106,7 @@ public class SimpleLogTest extends TestBase {
 
   @Test
   public void testAppendWithoutSync() throws IOException {
-    File file = createFile();
+    File file = new File(getDirectory(), "transaction.log");
     SimpleLog log = new SimpleLog(file);
     log.append(new Transaction(new Zxid(0, 0),
                                ByteBuffer.wrap("log record 1".getBytes())));
@@ -134,7 +120,7 @@ public class SimpleLogTest extends TestBase {
    */
   @Test(expected=RuntimeException.class)
   public void testAppendSmallerZxid() throws IOException {
-    File file = createFile();
+    File file = new File(getDirectory(), "transaction.log");
     SimpleLog log = new SimpleLog(file);
     log.append(new Transaction(new Zxid(0, 1),
                                ByteBuffer.wrap("log record 1".getBytes())));
@@ -148,7 +134,7 @@ public class SimpleLogTest extends TestBase {
    */
   @Test(expected=RuntimeException.class)
   public void testAppendSameZxid() throws IOException {
-    File file = createFile();
+    File file = new File(getDirectory(), "transaction.log");
     SimpleLog log = new SimpleLog(file);
     log.append(new Transaction(new Zxid(0, 0),
                                ByteBuffer.wrap("log record 0".getBytes())));
@@ -161,7 +147,7 @@ public class SimpleLogTest extends TestBase {
    */
   @Test
   public void testWriteNonZeroBuffer() throws IOException {
-    File file = createFile();
+    File file = new File(getDirectory(), "transaction.log");
     SimpleLog log = new SimpleLog(file);
     ByteBuffer buf = ByteBuffer.allocate("Hello World".getBytes().length);
     buf.put("Hello World".getBytes());
