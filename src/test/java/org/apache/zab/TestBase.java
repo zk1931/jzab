@@ -18,6 +18,7 @@
 
 package org.apache.zab;
 
+import java.io.File;
 import org.junit.Rule;
 import org.junit.rules.TestName;
 import org.junit.rules.TestWatcher;
@@ -53,4 +54,21 @@ public class TestBase {
       LOG.info("SUCCEEDED: {}", description);
     }
   };
+
+  /**
+   * Creates a data directory for the calling test method.
+   *
+   * The format of the directory name is "target/data/$classname/$methodname".
+   *
+   * @return the name of the directory
+   */
+  protected File getDirectory() {
+    String dirName = "target" + File.separator + "data" + File.separator +
+                     this.getClass().getCanonicalName() + File.separator +
+                     testName.getMethodName();
+    File dir = new File(dirName);
+    LOG.debug("Creating a data directory: {}", dirName);
+    dir.mkdirs();
+    return dir;
+  }
 }
