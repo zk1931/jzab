@@ -20,16 +20,24 @@ package org.apache.zab;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Properties;
 
 /**
  * Abstract class for Zab implementation.
  */
 public abstract class Zab {
   protected StateMachine stateMachine;
+  protected ZabConfig config;
 
-  // Construct Zab with a StateMachine interface.
-  public Zab(StateMachine stateMachine) {
+  /**
+   * Constructs an Zab object.
+   *
+   * @param stateMachine the state machine implementation
+   * @param prop the properties object stores the configuration
+   */
+  public Zab(StateMachine stateMachine, Properties prop) {
     this.stateMachine = stateMachine;
+    this.config = new ZabConfig(prop);
   }
 
   /**

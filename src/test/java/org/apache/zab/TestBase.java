@@ -19,6 +19,7 @@
 package org.apache.zab;
 
 import java.io.File;
+import org.apache.zab.transport.DummyTransport;
 import org.junit.Rule;
 import org.junit.rules.TestName;
 import org.junit.rules.TestWatcher;
@@ -41,6 +42,7 @@ public class TestBase {
   public TestWatcher watchman= new TestWatcher() {
     @Override
     protected void starting(Description description) {
+      DummyTransport.clearMessageQueue();
       LOG.info("STARTING: {}", description);
     }
 

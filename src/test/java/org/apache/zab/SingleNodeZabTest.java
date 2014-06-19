@@ -24,6 +24,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Properties;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -60,7 +61,7 @@ class TestStateMachine implements StateMachine {
 }
 
 /**
- * Test on single node Zab implementation.
+ * Tests on single node Zab implementation.
  */
 public class SingleNodeZabTest extends TestBase {
   private SingleNodeZab zab;
@@ -68,7 +69,7 @@ public class SingleNodeZabTest extends TestBase {
   private File logDir;
 
   /**
-   * Test setup.
+   * Tests setup.
    *
    * @throws IOException
    */
@@ -77,11 +78,14 @@ public class SingleNodeZabTest extends TestBase {
     this.logDir = this.getDirectory();
     File logFile = new File(this.logDir, "transaction.log");
     this.sm = new TestStateMachine();
-    this.zab = new SingleNodeZab(this.sm, this.logDir.getCanonicalPath());
+    Properties prop = new Properties();
+    prop.setProperty("logdir", this.logDir.getCanonicalPath());
+    this.zab = new SingleNodeZab(this.sm,
+                                 prop);
   }
 
   /**
-   * Test if the messages are delivered.
+   * Tests if the messages are delivered.
    *
    * @throws IOException
    */
@@ -108,7 +112,7 @@ public class SingleNodeZabTest extends TestBase {
   }
 
   /**
-   * Test if the transactions are replayed.
+   * Tests if the transactions are replayed.
    *
    * @throws IOException
    */
@@ -131,7 +135,7 @@ public class SingleNodeZabTest extends TestBase {
   }
 
   /**
-   * Test if the transaction is replayed after recovery.
+   * Tests if the transaction is replayed after recovery.
    *
    * @throws IOException
    */
@@ -142,8 +146,11 @@ public class SingleNodeZabTest extends TestBase {
 
     // Simulate crash. Restart.
     this.sm = new TestStateMachine();
+    Properties prop = new Properties();
+    prop.setProperty("logdir", this.logDir.getCanonicalPath());
     // Recover from log file.
-    this.zab = new SingleNodeZab(this.sm, this.logDir.getCanonicalPath());
+    this.zab = new SingleNodeZab(this.sm,
+                                 prop);
     // After recovery, there should have 2 delivered messages in list.
     Assert.assertEquals(this.sm.deliveredTxns.size(), 2);
     // Assert that the redelivered messages are correct.
