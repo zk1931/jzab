@@ -1,2 +1,3 @@
 org.apache.zab
+org.apache.zab.proto
 org.apache.zab.transport
