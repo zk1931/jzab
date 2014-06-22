@@ -1,0 +1,48 @@
+package zab;
+
+option java_package = "org.apache.zab.proto";
+option java_outer_classname = "ZabMessage";
+
+message Message {
+  enum MessageType {
+    HEARTBEAT = 0;
+    // Corresponds to CEPOCH message in Zab paper.
+    PROPOSED_EPOCH = 1;
+    NEW_EPOCH = 2;
+    ACK_EPOCH = 3;
+    NEW_LEADER = 4;
+    ACK_LEADER = 5;
+    COMMIT_LEADER = 6;
+    PROPOSE = 7;
+    ACK = 8;
+    COMMIT = 9;
+  }
+
+  required MessageType type = 1;
+
+  // One of the following will be filled in depending on the message type. If
+  // the message type is heartbeat message, then none of the following will be
+  // filled in.
+  optional ProposedEpoch proposed_epoch = 2;
+  optional NewEpoch new_epoch = 3;
+  optional AckEpoch ack_epoch = 4;
+}
+
+// This message corresponds to CEPOCH message in Zab paper.
+message ProposedEpoch {
+  required int32 proposed_epoch = 1;
+}
+
+message NewEpoch {
+  required int32 new_epoch = 1;
+}
+
+message AckEpoch {
+  required int32 acknowledged_epoch = 1;
+  required Zxid lastZxid = 2;
+}
+
+message Zxid {
+  required int32 epoch = 1;
+  required int32 xid = 2;
+}
