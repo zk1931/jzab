@@ -55,11 +55,11 @@ public final class FileUtils {
     // Create a temp file in the same directory as the file parameter.
     File temp = File.createTempFile(file.getName(), null,
                                     file.getAbsoluteFile().getParentFile());
-    FileOutputStream fos = new FileOutputStream(temp);
-    DataOutputStream dos = new DataOutputStream(fos);
-    dos.writeInt(value);
-    fos.getChannel().force(true);
-    dos.close();
+    try (FileOutputStream fos = new FileOutputStream(temp);
+         DataOutputStream dos = new DataOutputStream(fos)) {
+      dos.writeInt(value);
+      fos.getChannel().force(true);
+    }
     Files.move(temp.toPath(), file.toPath(), ATOMIC_MOVE);
     LOG.debug("Atomically moved {} to {}", temp, file);
   }
@@ -72,10 +72,10 @@ public final class FileUtils {
    * @throws IOException if an I/O error occurs.
    */
   public static int readIntFromFile(File file) throws IOException {
-    FileInputStream fis = new FileInputStream(file);
-    DataInputStream dis = new DataInputStream(fis);
-    int value = dis.readInt();
-    dis.close();
-    return value;
+    try (FileInputStream fis = new FileInputStream(file);
+        DataInputStream dis = new DataInputStream(fis)) {
+      int value = dis.readInt();
+      return value;
+    }
   }
 }
