@@ -26,6 +26,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.HashMap;
+import java.util.Iterator;
+import org.apache.zab.DaemonThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,7 +60,8 @@ public class DummyTransport extends Transport {
     this.receiver = receiver;
     initIncomingQueue();
     // Starts receiving thread.
-    Executors.newSingleThreadExecutor().execute(new ReceivingThread());
+    Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY).execute(
+        new ReceivingThread());
   }
 
   /**
@@ -84,6 +87,19 @@ public class DummyTransport extends Transport {
   @Override
   public void send(String destination, ByteBuffer message) {
     send(destination, new Message(this.serverId, message));
+  }
+
+  /**
+   * Broadcasts message to all the peers.
+   *
+   * @param peers the set of destination peers.
+   * @param message the message to be broadcasted.
+   */
+  @Override
+  public void broadcast(Iterator<String> peers, ByteBuffer message) {
+    while (peers.hasNext()) {
+      send(peers.next(), message);
+    }
   }
 
   /**
@@ -119,6 +135,10 @@ public class DummyTransport extends Transport {
     destQueue.add(msg);
   }
 
+  public static void clearMessageQueue() {
+    queueMap.clear();
+  }
+
   /**
    * Thread that is responsible for receiving messages.
    */
@@ -137,7 +157,10 @@ public class DummyTransport extends Transport {
           // Check if we have a receiving thread for this sender.
           if (!recvTasks.containsKey(source)) {
             // If no, create one for the sender.
-            recvTasks.put(source, Executors.newSingleThreadExecutor());
+            recvTasks.put(source,
+                          Executors
+                          .newSingleThreadExecutor(DaemonThreadFactory
+                                                   .FACTORY));
           }
           // Put the delivered message to its notification thread queue.
           recvTasks.get(source).execute(new NotifyTask(msg));
@@ -172,7 +195,8 @@ public class DummyTransport extends Transport {
           receiver.onDisconnected(this.msg.getServer());
         } else {
           // Notify the receiver.
-          receiver.onReceived(this.msg.getServer(), this.msg.getBody());
+          receiver.onReceived(this.msg.getServer(),
+                              this.msg.getBody().duplicate());
         }
       }
     }

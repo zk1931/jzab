@@ -21,6 +21,7 @@ package org.apache.zab;
 import java.io.IOException;
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.util.Properties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,19 +36,20 @@ public class SingleNodeZab extends Zab {
   private final Log txnLog;
   // Last proposed transaction
   private Zxid lastProposedZxid;
-
   static final Logger LOG = LoggerFactory.getLogger(SingleNodeZab.class);
 
   /**
-   * Construct the single node zab.
+   * Constructs the single node zab.
    *
-   * @param st the implementation of StateMachine interface.
-   * @param dir the directory of logs
+   * @param st the implementation of StateMachine interface
+   * @param prop the Properties object stores the configuration
    * @throws IOException in case of IO failure
    */
-  public SingleNodeZab(StateMachine st, String dir) throws IOException {
-    super(st);
-    this.txnLog = new SimpleLog(new File(dir, "transaction.log"));
+  public SingleNodeZab(StateMachine st, Properties prop)
+      throws IOException {
+    super(st, prop);
+    this.txnLog = new SimpleLog(new File(this.config.getLogDir(),
+                                         "transaction.log"));
     try {
       this.lastProposedZxid = txnLog.getLatestZxid();
       // If the lastProposedZxid is not Zxid.ZXID_NOT_EXIST, it means the

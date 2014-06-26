@@ -16,6 +16,7 @@ message Message {
     PROPOSE = 7;
     ACK = 8;
     COMMIT = 9;
+    INVALID_MESSAGE = 10;
   }
 
   required MessageType type = 1;
@@ -26,6 +27,11 @@ message Message {
   optional ProposedEpoch proposed_epoch = 2;
   optional NewEpoch new_epoch = 3;
   optional AckEpoch ack_epoch = 4;
+  optional InvalidMessage invalid = 10;
+}
+
+message InvalidMessage {
+  required bytes received_bytes = 1;
 }
 
 // This message corresponds to CEPOCH message in Zab paper.
@@ -46,3 +52,4 @@ message Zxid {
   required int32 epoch = 1;
   required int32 xid = 2;
 }
+

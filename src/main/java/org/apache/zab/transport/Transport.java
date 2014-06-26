@@ -19,6 +19,7 @@
 package org.apache.zab.transport;
 
 import java.nio.ByteBuffer;
+import java.util.Iterator;
 
 /**
  * Abstract transport class. Used for communication between different
@@ -43,6 +44,14 @@ public abstract class Transport {
    * @param message the message to be sent
    */
   public abstract void send(String destination, ByteBuffer message);
+
+  /**
+   * Broadcasts message to all the peers.
+   *
+   * @param peers the set of destination peers.
+   * @param message the message to be broadcasted.
+   */
+  public abstract void broadcast(Iterator<String> peers, ByteBuffer message);
 
   /**
    * Interface of receiver class. Transport will notify the receiver of
