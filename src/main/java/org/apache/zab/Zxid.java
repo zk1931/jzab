@@ -33,18 +33,9 @@ public class Zxid implements Comparable<Zxid> {
   private final int epoch;
   private final int xid;
   private static final int ZXID_LENGTH = 8;
-  static final Zxid ZXID_NOT_EXIST = new Zxid();
-
-  private Zxid() {
-    this.epoch = 0;
-    this.xid = -1;
-  }
+  static final Zxid ZXID_NOT_EXIST = new Zxid(0, -1);
 
   public Zxid(int epoch, int xid) {
-    if (epoch < 0 || xid < 0) {
-      throw new IllegalArgumentException("The epoch and xid can not"
-          + " be negative!");
-    }
     this.epoch = epoch;
     this.xid = xid;
   }
