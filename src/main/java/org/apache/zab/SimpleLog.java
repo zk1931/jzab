@@ -35,17 +35,20 @@ import org.slf4j.LoggerFactory;
  * This class implements the Log interface.
  * The format of a Transaction log is as follows:
  *
- * log-file := [ transactions ]
+ * <p>
+ * <pre>
+ * log-file     := [ transactions ]
  *
  * transactions := transaction | transaction transactions
  *
- * transaction := zxid body-length transaction-body
+ * transaction  := zxid body-length body
  *
- * zxid := epoch(int) xid(int)
+ * zxid         := epoch(int) xid(int)
  *
- * body-length := length of transaction-body(int)
+ * body-length  := length of body(int)
  *
- * transaction-body := byte array
+ * body         := byte array
+ * </pre>
  */
 public class SimpleLog implements Log {
   private static final Logger LOG = LoggerFactory.getLogger(SimpleLog.class);
