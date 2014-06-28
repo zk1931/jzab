@@ -49,6 +49,8 @@ public final class FileUtils {
    * temporary file and then atomically moving it to the destination,
    * overwriting the destination file if it already exists.
    *
+   * @param value an integer value to write.
+   * @param file file to write the value to.
    * @throws IOException if an I/O error occurs.
    */
   public static void writeIntToFile(int value, File file) throws IOException {
@@ -68,6 +70,7 @@ public final class FileUtils {
    * Reads an integer from a file that was created by the
    * {@link #writeIntToFile(int, File) writeIntToFile} method.
    *
+   * @param file file to read the integer value from.
    * @return the integer value in the file
    * @throws IOException if an I/O error occurs.
    */
