@@ -18,7 +18,7 @@
 
 package org.apache.zab;
 
-import java.util.Properties;
+import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
 import org.junit.Assert;
 import org.junit.Test;
@@ -90,36 +90,38 @@ public class QuorumZabTest extends TestBase  {
    * Test if the new epoch is established.
    *
    * @throws InterruptedException
+   * @throws IOException in case of IO failure.
    */
   @Test(timeout=1000)
-  public void testEstablishNewEpoch() throws InterruptedException {
+  public void testEstablishNewEpoch() throws InterruptedException, IOException {
     // 4 phase changes : electing -> discovering -> sync -> broadcasting
     QuorumTestCallback cb = new QuorumTestCallback(4);
 
-    Properties p1 = new Properties();
-    p1.setProperty("serverId", "server1");
-    p1.setProperty("servers", "server1;server2;server3");
-    QuorumZab zab1 = new QuorumZab(null, p1, cb, new QuorumZab.TestState());
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState("server1",
+                                                "server1;server2;server3",
+                                                getDirectory());
 
-    Properties p2 = new Properties();
-    p2.setProperty("serverId", "server2");
-    p2.setProperty("servers", "server1;server2;server3");
-    QuorumZab zab2 = new QuorumZab(null,
-                                   p2,
-                                   null,
-                                   new QuorumZab.TestState()
-                                                .setProposedEpoch(2)
-                                                .setAckEpoch(1));
+    QuorumZab zab1 = new QuorumZab(null, cb, state1);
 
-    Properties p3 = new Properties();
-    p3.setProperty("serverId", "server3");
-    p3.setProperty("servers", "server1;server2;server3");
-    QuorumZab zab3 = new QuorumZab(null,
-                                   p3,
-                                   null,
-                                   new QuorumZab.TestState()
-                                   .setProposedEpoch(2)
-                                   .setAckEpoch(1));
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState("server2",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setProposedEpoch(2)
+                                     .setAckEpoch(1);
+
+
+    QuorumZab zab2 = new QuorumZab(null, null, state2);
+
+    QuorumZab.TestState state3 = new QuorumZab
+                                     .TestState("server3",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setProposedEpoch(2)
+                                     .setAckEpoch(1);
+
+    QuorumZab zab3 = new QuorumZab(null, null, state3);
 
     cb.count.await();
     // The established epoch should be 3.

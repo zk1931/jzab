@@ -16,7 +16,9 @@ message Message {
     PROPOSE = 7;
     ACK = 8;
     COMMIT = 9;
-    INVALID_MESSAGE = 10;
+    PULL_TXN_REQ = 10;
+    PROPOSAL = 11; 
+    INVALID_MESSAGE = 30;
   }
 
   required MessageType type = 1;
@@ -27,7 +29,9 @@ message Message {
   optional ProposedEpoch proposed_epoch = 2;
   optional NewEpoch new_epoch = 3;
   optional AckEpoch ack_epoch = 4;
-  optional InvalidMessage invalid = 10;
+  optional PullTxnReq pull_txn_req = 5;
+  optional Proposal proposal = 6;
+  optional InvalidMessage invalid = 30;
 }
 
 message InvalidMessage {
@@ -46,6 +50,23 @@ message NewEpoch {
 message AckEpoch {
   required int32 acknowledged_epoch = 1;
   required Zxid lastZxid = 2;
+}
+
+// Leader sends this message to ask follower to sync its history to leader
+// from last_zxid.
+message PullTxnReq {
+  // Sync follower's history to leader from last_xid.
+  required Zxid last_zxid = 1;
+}
+
+// Proposal contains transaction id and transaction data.
+message Proposal {
+  
+  // Transaction id.
+  required Zxid zxid = 1;
+  
+  // Transaction body.
+  required bytes body = 2;
 }
 
 message Zxid {

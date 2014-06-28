@@ -18,13 +18,16 @@
 
 package org.apache.zab;
 
+import com.google.protobuf.ByteString;
+import java.nio.ByteBuffer;
 import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.AckEpoch;
 import org.apache.zab.proto.ZabMessage.InvalidMessage;
 import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.NewEpoch;
+import org.apache.zab.proto.ZabMessage.Proposal;
 import org.apache.zab.proto.ZabMessage.ProposedEpoch;
-import com.google.protobuf.ByteString;
+import org.apache.zab.proto.ZabMessage.PullTxnReq;
 
 import static org.apache.zab.proto.ZabMessage.Message.MessageType;
 
@@ -103,6 +106,49 @@ public final class MessageBuilder {
 
     return Message.newBuilder().setType(MessageType.INVALID_MESSAGE)
                                .setInvalid(msg)
+                               .build();
+  }
+
+  /**
+   * Creates a PULL_TXN_REQ message to ask follower sync its history to leader.
+   *
+   * @param lastZxid the last transaction id of leader, the sync starts one
+   * after this transaction (not including this one).
+   * @return a protobuf message.
+   */
+  public static Message buildPullTxnReq(Zxid lastZxid) {
+    ZabMessage.Zxid zxid = ZabMessage.Zxid.newBuilder()
+                                     .setEpoch(lastZxid.getEpoch())
+                                     .setXid(lastZxid.getXid())
+                                     .build();
+
+    PullTxnReq req = PullTxnReq.newBuilder().setLastZxid(zxid)
+                                            .build();
+
+    return Message.newBuilder().setType(MessageType.PULL_TXN_REQ)
+                               .setPullTxnReq(req)
+                               .build();
+  }
+
+  /**
+   * Creates a PROPOSAL message.
+   *
+   * @param transactionId the transaction id of this proposal.
+   * @param body the content of this transaction.
+   * @return a protobuf message.
+   */
+  public static Message buildProposal(Zxid transactionId, ByteBuffer body) {
+    ZabMessage.Zxid zxid = ZabMessage.Zxid.newBuilder()
+                                     .setEpoch(transactionId.getEpoch())
+                                     .setXid(transactionId.getXid())
+                                     .build();
+
+    Proposal prop = Proposal.newBuilder().setZxid(zxid)
+                                         .setBody(ByteString.copyFrom(body))
+                                         .build();
+
+    return Message.newBuilder().setType(MessageType.PROPOSAL)
+                               .setProposal(prop)
                                .build();
   }
 }
