@@ -94,12 +94,6 @@ public class Participant implements Runnable,
   private final File fProposedEpoch;
 
   /**
-   * Stores the followers of this leader (not including itself).
-   */
-  protected final Map<String, FollowerStat> quorumSet =
-    new HashMap<String, FollowerStat>();
-
-  /**
    * State Machine callbacks.
    */
   protected StateMachine stateMachine = null;
@@ -141,9 +135,14 @@ public class Participant implements Runnable,
     this.fAckEpoch = new File(config.getLogDir(), "AckEpoch");
     this.fProposedEpoch = new File(config.getLogDir(), "ProposedEpoch");
 
-    // Transaction log file.
-    File logFile = new File(this.config.getLogDir(), "transaction.log");
-    this.log = new SimpleLog(logFile);
+    if (initialState.getLog() == null) {
+      // Transaction log file.
+      File logFile = new File(this.config.getLogDir(), "transaction.log");
+      this.log = new SimpleLog(logFile);
+    } else {
+      this.log = initialState.getLog();
+    }
+
     LOG.debug("Txn log file for {} is {} ", this.config.getServerId(),
                                             this.config.getLogDir());
 
@@ -419,6 +418,8 @@ public class Participant implements Runnable,
    */
   void lead() {
 
+    Map<String, FollowerStat> quorumSet = new HashMap<String, FollowerStat>();
+
     try {
 
       /* -- Discovering phase -- */
@@ -428,20 +429,20 @@ public class Participant implements Runnable,
       }
 
       // Gets the proposed message from a quorum.
-      getPropsedEpochFromQuorum();
+      getPropsedEpochFromQuorum(quorumSet);
 
       // Proposes new epoch to followers.
-      proposeNewEpoch();
+      proposeNewEpoch(quorumSet);
 
       // Waits the new epoch is established.
-      waitEpochAckFromQuorum();
+      waitEpochAckFromQuorum(quorumSet);
 
       LOG.debug("Leader {} established new epoch {}!",
                 config.getServerId(),
                 getProposedEpochFromFile());
 
       // Finds one who has the "best" history.
-      String serverId = selectSyncHistoryOwner();
+      String serverId = selectSyncHistoryOwner(quorumSet);
 
       LOG.debug("Leader {} chooses {} to pull its history.",
                 this.config.getServerId(),
@@ -451,8 +452,7 @@ public class Participant implements Runnable,
       /* -- Synchronization phase -- */
 
       if (stateChangeCallback != null) {
-        stateChangeCallback.leaderSynchronizating(getProposedEpochFromFile(),
-                                                  serverId);
+        stateChangeCallback.leaderSynchronizating(getProposedEpochFromFile());
       }
 
       // Pulls history from the server.
@@ -477,10 +477,11 @@ public class Participant implements Runnable,
   /**
    * Waits until receives the CEPOCH message from the quorum.
    *
+   * @param quorumSet the quorum set.
    * @throws InterruptedException if anything wrong happens.
    * @throws TimeoutException in case of timeout.
    */
-  void getPropsedEpochFromQuorum()
+  void getPropsedEpochFromQuorum(Map<String, FollowerStat> quorumSet)
       throws InterruptedException, TimeoutException {
     // Gets last proposed epoch from other servers (not including leader).
     while (quorumSet.size() < getQuorumSize() - 1) {
@@ -501,9 +502,11 @@ public class Participant implements Runnable,
   /**
    * Finds an epoch number which is higher than any proposed epoch in quorum
    * set and propose the epoch to them.
+   *
+   * @param quorumSet the quorum set.
    * @throws IOException in case of IO failure.
    */
-  void proposeNewEpoch() throws IOException {
+  void proposeNewEpoch(Map<String, FollowerStat> quorumSet) throws IOException {
     List<Integer> epochs = new ArrayList<Integer>();
 
     // Puts leader's last received proposed epoch in list.
@@ -530,10 +533,11 @@ public class Participant implements Runnable,
   /**
    * Waits until the new epoch is established.
    *
+   * @param quorumSet the quorum set.
    * @throws InterruptedException if anything wrong happens.
    * @throws TimeoutException in case of timeout.
    */
-  void waitEpochAckFromQuorum()
+  void waitEpochAckFromQuorum(Map<String, FollowerStat> quorumSet)
       throws InterruptedException, TimeoutException {
 
     int ackCount = 0;
@@ -569,10 +573,12 @@ public class Participant implements Runnable,
    * Finds a server who has the largest acknowledged epoch and longest
    * history.
    *
+   * @param quorumSet the quorum set.
    * @return the id of the server
    * @throws IOException
    */
-  String selectSyncHistoryOwner() throws IOException {
+  String selectSyncHistoryOwner(Map<String, FollowerStat> quorumSet)
+      throws IOException {
     // Starts finding the server who owns the longest transaction history,
     // starts from leader itself.
     int ackEpoch = getAckEpochFromFile();
@@ -599,6 +605,12 @@ public class Participant implements Runnable,
     LOG.debug("{} has largest acknowledged epoch {} and longest history {}",
               serverId, ackEpoch, zxid);
 
+    if (this.stateChangeCallback != null) {
+      this.stateChangeCallback.initialHistoryOwner(serverId,
+                                                   ackEpoch,
+                                                   zxid);
+    }
+
     return serverId;
   }
 
@@ -607,10 +619,10 @@ public class Participant implements Runnable,
    *
    * @param serverId the id of the server whose history is selected.
    */
-  void synchronizeFromFollower(String serverId) {
+  void synchronizeFromFollower(String serverId) throws IOException {
     LOG.debug("Begins sync from follower {}.", serverId);
 
-    //Message pullReq = MessageBuilder.buildPullTxnReq(serverId, )
+    //Message pullTxn = MessageBuilder.buildPullTxnReq(log.getLatestZxid());
   }
 
   /**
