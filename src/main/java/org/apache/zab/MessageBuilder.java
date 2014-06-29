@@ -19,15 +19,19 @@
 package org.apache.zab;
 
 import com.google.protobuf.ByteString;
-import java.nio.ByteBuffer;
 import org.apache.zab.proto.ZabMessage;
+import org.apache.zab.proto.ZabMessage.Ack;
 import org.apache.zab.proto.ZabMessage.AckEpoch;
+import org.apache.zab.proto.ZabMessage.Diff;
 import org.apache.zab.proto.ZabMessage.InvalidMessage;
 import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.NewEpoch;
+import org.apache.zab.proto.ZabMessage.NewLeader;
 import org.apache.zab.proto.ZabMessage.Proposal;
 import org.apache.zab.proto.ZabMessage.ProposedEpoch;
 import org.apache.zab.proto.ZabMessage.PullTxnReq;
+import org.apache.zab.proto.ZabMessage.Snapshot;
+import org.apache.zab.proto.ZabMessage.Truncate;
 
 import static org.apache.zab.proto.ZabMessage.Message.MessageType;
 
@@ -38,6 +42,43 @@ public final class MessageBuilder {
 
   private MessageBuilder() {
     // Can't be instantiated.
+  }
+
+
+  /**
+   * Converts Zxid object to protobuf Zxid object.
+   *
+   * @param zxid the Zxid object.
+   * @return the ZabMessage.Zxid
+   */
+  public static ZabMessage.Zxid toProtoZxid(Zxid zxid) {
+    ZabMessage.Zxid z = ZabMessage.Zxid.newBuilder()
+                                  .setEpoch(zxid.getEpoch())
+                                  .setXid(zxid.getXid())
+                                  .build();
+    return z;
+  }
+
+  /**
+   * Converts protobuf Zxid object to Zxid object.
+   *
+   * @param zxid the protobuf Zxid object.
+   * @return the Zxid object.
+   */
+  public static Zxid fromProtoZxid(ZabMessage.Zxid zxid) {
+    return new Zxid(zxid.getEpoch(), zxid.getXid());
+  }
+
+
+  /**
+   * Converts protobuf Proposal object to Transaction object.
+   *
+   * @param prop the protobuf Proposal object.
+   * @return the Transaction object.
+   */
+  public static Transaction fromProposal(Proposal prop) {
+    Zxid zxid = fromProtoZxid(prop.getZxid());
+    return new Transaction(zxid, prop.getBody().asReadOnlyByteBuffer());
   }
 
   /**
@@ -77,10 +118,7 @@ public final class MessageBuilder {
    * @return the protobuf message.
    */
   public static Message buildAckEpoch(int epoch, Zxid lastZxid) {
-    ZabMessage.Zxid zxid = ZabMessage.Zxid.newBuilder()
-                                     .setEpoch(lastZxid.getEpoch())
-                                     .setXid(lastZxid.getXid())
-                                     .build();
+    ZabMessage.Zxid zxid = toProtoZxid(lastZxid);
 
     AckEpoch ackEpoch = AckEpoch.newBuilder()
                         .setAcknowledgedEpoch(epoch)
@@ -117,10 +155,7 @@ public final class MessageBuilder {
    * @return a protobuf message.
    */
   public static Message buildPullTxnReq(Zxid lastZxid) {
-    ZabMessage.Zxid zxid = ZabMessage.Zxid.newBuilder()
-                                     .setEpoch(lastZxid.getEpoch())
-                                     .setXid(lastZxid.getXid())
-                                     .build();
+    ZabMessage.Zxid zxid = toProtoZxid(lastZxid);
 
     PullTxnReq req = PullTxnReq.newBuilder().setLastZxid(zxid)
                                             .build();
@@ -133,22 +168,94 @@ public final class MessageBuilder {
   /**
    * Creates a PROPOSAL message.
    *
-   * @param transactionId the transaction id of this proposal.
-   * @param body the content of this transaction.
+   * @param txn the transaction of this proposal.
    * @return a protobuf message.
    */
-  public static Message buildProposal(Zxid transactionId, ByteBuffer body) {
-    ZabMessage.Zxid zxid = ZabMessage.Zxid.newBuilder()
-                                     .setEpoch(transactionId.getEpoch())
-                                     .setXid(transactionId.getXid())
-                                     .build();
+  public static Message buildProposal(Transaction txn) {
+    ZabMessage.Zxid zxid = toProtoZxid(txn.getZxid());
 
-    Proposal prop = Proposal.newBuilder().setZxid(zxid)
-                                         .setBody(ByteString.copyFrom(body))
-                                         .build();
+    Proposal prop = Proposal.newBuilder()
+                            .setZxid(zxid)
+                            .setBody(ByteString.copyFrom(txn.getBody()))
+                            .build();
 
     return Message.newBuilder().setType(MessageType.PROPOSAL)
                                .setProposal(prop)
+                               .build();
+  }
+
+  /**
+   * Creates a DIFF message.
+   *
+   * @param lastZxid the last zxid of the server who initiates the sync.
+   * @return a protobuf message.
+   */
+  public static Message buildDiff(Zxid lastZxid) {
+    ZabMessage.Zxid lz = toProtoZxid(lastZxid);
+
+    Diff diff = Diff.newBuilder().setLastZxid(lz).build();
+
+    return Message.newBuilder().setType(MessageType.DIFF)
+                               .setDiff(diff)
+                               .build();
+  }
+
+  /**
+   * Creates a TRUNCATE  message.
+   *
+   * @param lastPrefixZxid truncate receiver's log from lastPrefixZxid.
+   * (not including it)
+   * @return a protobuf message.
+   */
+  public static Message buildTruncate(Zxid lastPrefixZxid) {
+    ZabMessage.Zxid lpz = toProtoZxid(lastPrefixZxid);
+
+    Truncate trunc = Truncate.newBuilder().setLastPrefixZxid(lpz)
+                                          .build();
+
+    return Message.newBuilder().setType(MessageType.TRUNCATE)
+                               .setTruncate(trunc)
+                               .build();
+
+  }
+
+  /**
+   * Creates a NEW_LEADER message.
+   *
+   * @param epoch the established epoch.
+   * @return a protobuf message.
+   */
+  public static Message buildNewLeader(int epoch) {
+    NewLeader nl = NewLeader.newBuilder().setEpoch(epoch).build();
+    return Message.newBuilder().setType(MessageType.NEW_LEADER)
+                               .setNewLeader(nl)
+                               .build();
+  }
+
+  /**
+   * Creates a ACK message.
+   *
+   * @param zxid the zxid of the transaction ACK.
+   * @return a protobuf message.
+   */
+  public static Message buildAck(Zxid zxid) {
+    ZabMessage.Zxid zzxid = toProtoZxid(zxid);
+    Ack ack = Ack.newBuilder().setZxid(zzxid).build();
+    return Message.newBuilder().setType(MessageType.ACK).setAck(ack).build();
+  }
+
+  /**
+   * Creates a SNAPSHOT message.
+   *
+   * @param lastZxid the last zxid of the sender.
+   * @return a protobuf message.
+   */
+  public static Message buildSnapshot(Zxid lastZxid) {
+    ZabMessage.Zxid zxid = toProtoZxid(lastZxid);
+    Snapshot snapshot = Snapshot.newBuilder().setLastZxid(zxid).build();
+
+    return Message.newBuilder().setType(MessageType.SNAPSHOT)
+                               .setSnapshot(snapshot)
                                .build();
   }
 }

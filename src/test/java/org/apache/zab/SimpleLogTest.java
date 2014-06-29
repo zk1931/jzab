@@ -76,6 +76,13 @@ public class SimpleLogTest extends TestBase {
     SimpleLog log = initLog();
     log.truncate(new Zxid(0, 1));
     Assert.assertEquals(log.getLatestZxid(), new Zxid(0, 1));
+
+    log.append(new Transaction(new Zxid(1, 0),
+                               ByteBuffer.wrap("log10".getBytes())));
+
+    // Now looks like : <0,0>, <0, 1>, <1, 0>
+    log.truncate(new Zxid(0, 2));
+    Assert.assertEquals(log.getLatestZxid(), new Zxid(0, 1));
   }
 
   @Test
@@ -167,5 +174,21 @@ public class SimpleLogTest extends TestBase {
     // Check the first two characters are not in log.
     Assert.assertTrue(txn.getBody().
                       equals(ByteBuffer.wrap("llo World".getBytes())));
+  }
+
+  /**
+   * Tests whether the getIterator method works as our expectation.
+   *
+   * @throws IOException in case of IO failure.
+   */
+  @Test
+  public void testIterator() throws IOException {
+    File file = new File(getDirectory(), "transaction.log");
+    SimpleLog log = new SimpleLog(file);
+    log.append(new Transaction(new Zxid(0, 1),
+                               ByteBuffer.wrap("log record 1".getBytes())));
+
+    Log.LogIterator iter = log.getIterator(new Zxid(0, 0));
+    Assert.assertEquals(iter.next().getZxid(), new Zxid(0, 1));
   }
 }

@@ -129,7 +129,12 @@ public class SimpleLog implements Log {
     SimpleLogIterator iter = new SimpleLogIterator(this.logFile);
     while(iter.hasNext()) {
       Transaction txn = iter.next();
-      if(txn.getZxid().compareTo(zxid) >= 0) {
+      if (txn.getZxid().compareTo(zxid) == 0) {
+        break;
+      }
+
+      if (txn.getZxid().compareTo(zxid) > 0) {
+        iter.backward();
         break;
       }
     }
@@ -183,11 +188,8 @@ public class SimpleLog implements Log {
     SimpleLogIterator iter = new SimpleLogIterator(this.logFile);
     while(iter.hasNext()) {
       Transaction txn = iter.next();
-      // Break if we find one record which has equal or higher transaction id.
-      if(txn.getZxid().compareTo(zxid) > 0) {
-        break;
-      } else if(txn.getZxid().compareTo(zxid) == 0) {
-        // Reset the iterator points to beginning of the transaction.
+
+      if(txn.getZxid().compareTo(zxid) >= 0) {
         iter.backward();
         break;
       }

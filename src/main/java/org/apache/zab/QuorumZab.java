@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.concurrent.Executors;
+import java.util.List;
 import java.util.Properties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,23 +35,36 @@ import org.slf4j.LoggerFactory;
  */
 public class QuorumZab extends Zab {
 
-  protected Participant participant;
+  protected final Participant participant;
 
   private static final Logger LOG = LoggerFactory.getLogger(QuorumZab.class);
 
-  public QuorumZab(StateMachine stateMachine, Properties prop)
+  public QuorumZab(StateMachine stateMachine,
+                   Properties prop,
+                   Zxid lastCommittedZxid)
       throws IOException {
     super(stateMachine, prop);
-    this.participant = new Participant(this.config, stateMachine);
+
+    this.participant = new Participant(this.config,
+                                       stateMachine,
+                                       lastCommittedZxid);
+
     Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY)
              .execute(this.participant);
   }
 
   QuorumZab(StateMachine stateMachine,
             StateChangeCallback cb,
-            TestState initialState) throws IOException {
+            TestState initialState,
+            Zxid lastCommittedZxid) throws IOException {
+
     super(stateMachine, initialState.prop);
-    this.participant = new Participant(stateMachine, cb, initialState);
+
+    this.participant = new Participant(stateMachine,
+                                       cb,
+                                       initialState,
+                                       lastCommittedZxid);
+
     Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY)
              .execute(this.participant);
   }
@@ -134,15 +148,17 @@ public class QuorumZab extends Zab {
      * Will be called when entering broadcasting phase of leader.
      *
      * @param epoch the acknowledged epoch (f.a).
+     * @param history the initial history (f.h) of broadcasting phase.
      */
-    void leaderBroadcasting(int epoch);
+    void leaderBroadcasting(int epoch, List<Transaction> history);
 
     /**
      * Will be called when entering broadcasting phase of follower.
      *
      * @param epoch the current epoch (f.a).
+     * @param history the initial history (f.h) of broadcasting phase.
      */
-    void followerBroadcasting(int epoch);
+    void followerBroadcasting(int epoch, List<Transaction> history);
   }
 
   /**

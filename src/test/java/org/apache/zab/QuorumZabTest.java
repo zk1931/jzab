@@ -19,7 +19,11 @@
 package org.apache.zab;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.concurrent.CountDownLatch;
+import java.util.ArrayList;
+import java.util.List;
+
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -34,6 +38,7 @@ class QuorumTestCallback implements QuorumZab.StateChangeCallback {
   Zxid syncZxid;
   int syncAckEpoch;
   CountDownLatch count;
+  List<Transaction> initialHistory = new ArrayList<Transaction>();
 
 
   QuorumTestCallback(int phaseCount) {
@@ -77,14 +82,16 @@ class QuorumTestCallback implements QuorumZab.StateChangeCallback {
   }
 
   @Override
-  public void leaderBroadcasting(int epoch) {
+  public void leaderBroadcasting(int epoch, List<Transaction> history) {
     this.ackknowledgedEpoch = epoch;
+    this.initialHistory = history;
     this.count.countDown();
   }
 
   @Override
-  public void followerBroadcasting(int epoch) {
+  public void followerBroadcasting(int epoch, List<Transaction> history) {
     this.ackknowledgedEpoch = epoch;
+    this.initialHistory = history;
     this.count.countDown();
   }
 }
@@ -109,30 +116,33 @@ public class QuorumZabTest extends TestBase  {
                                      .TestState("server1",
                                                 "server1;server2;server3",
                                                 getDirectory())
-                                     .setLog(new DummyLog(0));
+                                     .setLog(new DummyLog(10))
+                                     .setAckEpoch(0);
 
-    QuorumZab zab1 = new QuorumZab(null, cb, state1);
+    QuorumZab zab1 = new QuorumZab(null, cb, state1, null);
+
+    DummyLog log = new DummyLog(5);
 
     QuorumZab.TestState state2 = new QuorumZab
                                      .TestState("server2",
                                                 "server1;server2;server3",
                                                 getDirectory())
-                                     .setLog(new DummyLog(5))
+                                     .setLog(log)
                                      .setProposedEpoch(2)
                                      .setAckEpoch(1);
 
 
-    QuorumZab zab2 = new QuorumZab(null, null, state2);
+    QuorumZab zab2 = new QuorumZab(null, null, state2, null);
 
     QuorumZab.TestState state3 = new QuorumZab
                                      .TestState("server3",
                                                 "server1;server2;server3",
                                                 getDirectory())
-                                     .setLog(new DummyLog(5))
+                                     .setLog(log)
                                      .setProposedEpoch(2)
                                      .setAckEpoch(1);
 
-    QuorumZab zab3 = new QuorumZab(null, null, state3);
+    QuorumZab zab3 = new QuorumZab(null, null, state3, null);
 
     cb.count.await();
     // The established epoch should be 3.
@@ -145,11 +155,351 @@ public class QuorumZabTest extends TestBase  {
     Assert.assertTrue(cb.syncFollower.equals("server2") ||
                       cb.syncFollower.equals("server3"));
 
-
     // The last zxid of the owner of initial history should be (0, 4)
     Assert.assertEquals(cb.syncZxid.compareTo(new Zxid(0, 4)), 0);
 
     // The last ack epoch of the owner of initial history should be 1.
     Assert.assertEquals(cb.syncAckEpoch, 1);
   }
+
+  /**
+   * Test synchronization case 1.
+   *
+   * @throws InterruptedException
+   * @throws IOException in case of IO failure.
+   */
+  @Test(timeout=1000)
+  public void testSynchronizationCase1()
+      throws InterruptedException, IOException {
+    // 4 phase changes : electing -> discovering -> sync -> broadcasting
+    QuorumTestCallback cb1 = new QuorumTestCallback(4);
+    QuorumTestCallback cb2 = new QuorumTestCallback(4);
+
+    /*
+     * Case 1
+     *
+     * Before Synchronization.
+     *
+     *  L : <0, 0> (f.a = 0)
+     *  F : <0, 0> (f.a = 0)
+     *
+     * Expected history of Leader and Follower after synchronization:
+     *
+     * <0, 0>
+     */
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState("server1",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setLog(new DummyLog(1))
+                                     .setAckEpoch(0);
+
+    QuorumZab zab1 = new QuorumZab(null, cb1, state1, null);
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState("server2",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setLog(new DummyLog(1))
+                                     .setAckEpoch(0);
+
+    QuorumZab zab2 = new QuorumZab(null, cb2, state2, null);
+
+    cb1.count.await();
+    cb2.count.await();
+
+    Assert.assertEquals(cb1.initialHistory.size(), 1);
+    Assert.assertEquals(cb1.initialHistory.get(0).getZxid(), new Zxid(0, 0));
+
+    Assert.assertTrue(cb2.initialHistory.size() == 1);
+    Assert.assertEquals(cb2.initialHistory.get(0).getZxid(), new Zxid(0, 0));
+
+  }
+
+  /**
+   * Test synchronization case 2.
+   *
+   * @throws InterruptedException
+   * @throws IOException in case of IO failure.
+   */
+  @Test(timeout=1000)
+  public void testSynchronizationCase2()
+      throws InterruptedException, IOException {
+    // 4 phase changes : electing -> discovering -> sync -> broadcasting
+    QuorumTestCallback cb1 = new QuorumTestCallback(4);
+    QuorumTestCallback cb2 = new QuorumTestCallback(4);
+
+    /*
+     * Case 2
+     *
+     * Before Synchronization.
+     *
+     *  L : <0, 0> <0, 1> (f.a = 0)
+     *  F :               (f.a = 0)
+     *
+     * Expected history of Leader and Follower after synchronization:
+     *
+     * <0, 0>, <0, 1>
+     */
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState("server1",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setLog(new DummyLog(2))
+                                     .setAckEpoch(0);
+
+    QuorumZab zab1 = new QuorumZab(null, cb1, state1, null);
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState("server2",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setLog(new DummyLog(0))
+                                     .setAckEpoch(0);
+
+    QuorumZab zab2 = new QuorumZab(null, cb2, state2, null);
+
+    cb1.count.await();
+    cb2.count.await();
+
+    Assert.assertEquals(cb1.initialHistory.size(), 2);
+    Assert.assertEquals(cb1.initialHistory.get(0).getZxid(), new Zxid(0, 0));
+    Assert.assertEquals(cb1.initialHistory.get(1).getZxid(), new Zxid(0, 1));
+
+    Assert.assertTrue(cb2.initialHistory.size() == 2);
+    Assert.assertEquals(cb2.initialHistory.get(0).getZxid(), new Zxid(0, 0));
+    Assert.assertEquals(cb2.initialHistory.get(1).getZxid(), new Zxid(0, 1));
+  }
+
+  /**
+   * Test synchronization case 3.
+   *
+   * @throws InterruptedException
+   * @throws IOException in case of IO failure.
+   */
+  @Test(timeout=1000)
+  public void testSynchronizationCase3()
+      throws InterruptedException, IOException {
+    // 4 phase changes : electing -> discovering -> sync -> broadcasting
+    QuorumTestCallback cb1 = new QuorumTestCallback(4);
+    QuorumTestCallback cb2 = new QuorumTestCallback(4);
+
+    /*
+     * Case 3
+     *
+     * Before Synchronization.
+     *
+     *  L :               (f.a = 0)
+     *  F : <0, 0>, <0,1> (f.a = 0)
+     *
+     * Expected history of Leader and Follower after synchronization:
+     *
+     * <0, 0>, <0, 1>
+     */
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState("server1",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setLog(new DummyLog(0))
+                                     .setAckEpoch(0);
+
+    QuorumZab zab1 = new QuorumZab(null, cb1, state1, null);
+
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState("server2",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setLog(new DummyLog(2))
+                                     .setAckEpoch(0);
+
+    QuorumZab zab2 = new QuorumZab(null, cb2, state2, null);
+
+    cb1.count.await();
+    cb2.count.await();
+
+    Assert.assertEquals(cb1.initialHistory.size(), 2);
+    Assert.assertEquals(cb1.initialHistory.get(0).getZxid(), new Zxid(0, 0));
+    Assert.assertEquals(cb1.initialHistory.get(1).getZxid(), new Zxid(0, 1));
+
+    Assert.assertTrue(cb2.initialHistory.size() == 2);
+    Assert.assertEquals(cb2.initialHistory.get(0).getZxid(), new Zxid(0, 0));
+    Assert.assertEquals(cb2.initialHistory.get(1).getZxid(), new Zxid(0, 1));
+  }
+
+  /**
+   * Test synchronization case 4.
+   *
+   * @throws InterruptedException
+   * @throws IOException in case of IO failure.
+   */
+  @Test(timeout=1000)
+  public void testSynchronizationCase4()
+      throws InterruptedException, IOException {
+    // 4 phase changes : electing -> discovering -> sync -> broadcasting
+    QuorumTestCallback cb1 = new QuorumTestCallback(4);
+    QuorumTestCallback cb2 = new QuorumTestCallback(4);
+
+    /*
+     * Case 4
+     *
+     * Before Synchronization.
+     *
+     *  L : <0, 0>         <1, 0> (f.a = 1)
+     *  F : <0, 0>, <0,1>         (f.a = 2)
+     *
+     * Expected history of Leader and Follower after synchronization:
+     *
+     * <0, 0>, <0, 1>
+     */
+
+    DummyLog log = new DummyLog(1);
+
+    log.append(new Transaction(new Zxid(1, 0),
+                               ByteBuffer.wrap("1,0".getBytes())));
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState("server1",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setLog(log)
+                                     .setAckEpoch(1);
+
+    QuorumZab zab1 = new QuorumZab(null, cb1, state1, null);
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState("server2",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setLog(new DummyLog(2))
+                                     .setAckEpoch(2);
+
+    QuorumZab zab2 = new QuorumZab(null, cb2, state2, null);
+
+    cb1.count.await();
+    cb2.count.await();
+
+    Assert.assertEquals(cb1.initialHistory.size(), 2);
+    Assert.assertEquals(cb1.initialHistory.get(0).getZxid(), new Zxid(0, 0));
+    Assert.assertEquals(cb1.initialHistory.get(1).getZxid(), new Zxid(0, 1));
+
+    Assert.assertTrue(cb2.initialHistory.size() == 2);
+    Assert.assertEquals(cb2.initialHistory.get(0).getZxid(), new Zxid(0, 0));
+    Assert.assertEquals(cb2.initialHistory.get(1).getZxid(), new Zxid(0, 1));
+  }
+
+  /**
+   * Test synchronization case 5.
+   *
+   * @throws InterruptedException
+   * @throws IOException in case of IO failure.
+   */
+  @Test(timeout=1000)
+  public void testSynchronizationCase5()
+      throws InterruptedException, IOException {
+    // 4 phase changes : electing -> discovering -> sync -> broadcasting
+    QuorumTestCallback cb1 = new QuorumTestCallback(4);
+    QuorumTestCallback cb2 = new QuorumTestCallback(4);
+
+    /*
+     * Case 5
+     *
+     * Before Synchronization.
+     *
+     *  L : <0, 0>  <0, 1>                (f.a = 0)
+     *  F : <0, 0>,         <1,0>         (f.a = 1)
+     *
+     * Expected history of Leader and Follower after synchronization:
+     *
+     * <0, 0>, <1, 0>
+     */
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState("server1",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setLog(new DummyLog(2))
+                                     .setAckEpoch(0);
+
+    QuorumZab zab1 = new QuorumZab(null, cb1, state1, null);
+
+    DummyLog log = new DummyLog(1);
+    log.append(new Transaction(new Zxid(1, 0),
+                               ByteBuffer.wrap("1,0".getBytes())));
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState("server2",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setLog(log)
+                                     .setAckEpoch(1);
+
+    QuorumZab zab2 = new QuorumZab(null, cb2, state2, null);
+
+    cb1.count.await();
+    cb2.count.await();
+
+    Assert.assertEquals(cb1.initialHistory.size(), 2);
+    Assert.assertEquals(cb1.initialHistory.get(0).getZxid(), new Zxid(0, 0));
+    Assert.assertEquals(cb1.initialHistory.get(1).getZxid(), new Zxid(1, 0));
+
+    Assert.assertTrue(cb2.initialHistory.size() == 2);
+    Assert.assertEquals(cb2.initialHistory.get(0).getZxid(), new Zxid(0, 0));
+    Assert.assertEquals(cb2.initialHistory.get(1).getZxid(), new Zxid(1, 0));
+  }
+
+  /**
+   * Test synchronization case 6.
+   *
+   * @throws InterruptedException
+   * @throws IOException in case of IO failure.
+   */
+  @Test(timeout=1000)
+  public void testSynchronizationCase6()
+      throws InterruptedException, IOException {
+    // 4 phase changes : electing -> discovering -> sync -> broadcasting
+    QuorumTestCallback cb1 = new QuorumTestCallback(4);
+    QuorumTestCallback cb2 = new QuorumTestCallback(4);
+
+    /*
+     * Case 6
+     *
+     * Before Synchronization.
+     *
+     *  L :               (f.a = 1)
+     *  F : <0, 0>, <0,1> (f.a = 0)
+     *
+     * Expected history of Leader and Follower after synchronization:
+     *
+     *  <empty>
+     */
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState("server1",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setLog(new DummyLog(0))
+                                     .setAckEpoch(1);
+
+    QuorumZab zab1 = new QuorumZab(null, cb1, state1, null);
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState("server2",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setLog(new DummyLog(2))
+                                     .setAckEpoch(0);
+
+    QuorumZab zab2 = new QuorumZab(null, cb2, state2, null);
+
+    cb1.count.await();
+    cb2.count.await();
+
+    Assert.assertEquals(cb1.initialHistory.size(), 0);
+    Assert.assertEquals(cb2.initialHistory.size(), 0);
+  }
+
 }
