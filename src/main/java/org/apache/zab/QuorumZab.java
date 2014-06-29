@@ -102,14 +102,26 @@ public class QuorumZab extends Zab {
      */
     void followerDiscovering(String electedLeader);
 
+
+    /**
+     * Will be called on leader side when the owner of initial history is
+     * chosen.
+     *
+     * @param server the id of the server whose history is selected for
+     * synchronization.
+     * @param aEpoch the acknowledged epoch of the node whose initial history
+     * is chosen for synchronization.
+     * @param zxid the last transaction id of the node whose initial history
+     * is chosen for synchronization.
+     */
+    void initialHistoryOwner(String server, int aEpoch, Zxid zxid);
+
     /**
      * Will be called when entering synchronization phase of leader.
      *
      * @param epoch the established epoch.
-     * @param server the id of the server whose history is selected for
-     * synchronization.
      */
-    void leaderSynchronizating(int epoch, String server);
+    void leaderSynchronizating(int epoch);
 
     /**
      * Will be called when entering synchronization phase of follower.
@@ -149,6 +161,8 @@ public class QuorumZab extends Zab {
     private final File fAckEpoch;
 
     private final File fProposedEpoch;
+
+    Log log = null;
 
     /**
      * Creates the TestState object. It should be passed to QuorumZab to
@@ -196,6 +210,15 @@ public class QuorumZab extends Zab {
 
     int getAckEpoch() {
       return this.acknowledgedEpoch;
+    }
+
+    TestState setLog(Log tlog) {
+      this.log = tlog;
+      return this;
+    }
+
+    Log getLog() {
+      return this.log;
     }
   }
 }

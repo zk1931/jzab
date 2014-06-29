@@ -31,6 +31,8 @@ class QuorumTestCallback implements QuorumZab.StateChangeCallback {
   int ackknowledgedEpoch = -1;
   String electedLeader;
   String syncFollower;
+  Zxid syncZxid;
+  int syncAckEpoch;
   CountDownLatch count;
 
 
@@ -56,9 +58,15 @@ class QuorumTestCallback implements QuorumZab.StateChangeCallback {
   }
 
   @Override
-  public void leaderSynchronizating(int epoch, String follower) {
+  public void initialHistoryOwner(String server, int aEpoch, Zxid zxid) {
+    this.syncFollower = server;
+    this.syncZxid =zxid;
+    this.syncAckEpoch =aEpoch;
+  }
+
+  @Override
+  public void leaderSynchronizating(int epoch) {
     this.establishedEpoch = epoch;
-    this.syncFollower = follower;
     this.count.countDown();
   }
 
@@ -100,7 +108,8 @@ public class QuorumZabTest extends TestBase  {
     QuorumZab.TestState state1 = new QuorumZab
                                      .TestState("server1",
                                                 "server1;server2;server3",
-                                                getDirectory());
+                                                getDirectory())
+                                     .setLog(new DummyLog(0));
 
     QuorumZab zab1 = new QuorumZab(null, cb, state1);
 
@@ -108,6 +117,7 @@ public class QuorumZabTest extends TestBase  {
                                      .TestState("server2",
                                                 "server1;server2;server3",
                                                 getDirectory())
+                                     .setLog(new DummyLog(5))
                                      .setProposedEpoch(2)
                                      .setAckEpoch(1);
 
@@ -118,6 +128,7 @@ public class QuorumZabTest extends TestBase  {
                                      .TestState("server3",
                                                 "server1;server2;server3",
                                                 getDirectory())
+                                     .setLog(new DummyLog(5))
                                      .setProposedEpoch(2)
                                      .setAckEpoch(1);
 
@@ -133,5 +144,12 @@ public class QuorumZabTest extends TestBase  {
     // server 2 and server 3 should have the "best" history.
     Assert.assertTrue(cb.syncFollower.equals("server2") ||
                       cb.syncFollower.equals("server3"));
+
+
+    // The last zxid of the owner of initial history should be (0, 4)
+    Assert.assertEquals(cb.syncZxid.compareTo(new Zxid(0, 4)), 0);
+
+    // The last ack epoch of the owner of initial history should be 1.
+    Assert.assertEquals(cb.syncAckEpoch, 1);
   }
 }
