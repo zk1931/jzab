@@ -17,7 +17,10 @@ message Message {
     ACK = 8;
     COMMIT = 9;
     PULL_TXN_REQ = 10;
-    PROPOSAL = 11; 
+    PROPOSAL = 11;
+    DIFF = 12;
+    TRUNCATE = 13;
+    SNAPSHOT = 14;
     INVALID_MESSAGE = 30;
   }
 
@@ -31,6 +34,11 @@ message Message {
   optional AckEpoch ack_epoch = 4;
   optional PullTxnReq pull_txn_req = 5;
   optional Proposal proposal = 6;
+  optional Diff diff = 7;
+  optional Truncate truncate = 8;
+  optional NewLeader new_leader = 9;
+  optional Ack ack = 10;
+  optional Snapshot snapshot = 11;
   optional InvalidMessage invalid = 30;
 }
 
@@ -61,12 +69,22 @@ message PullTxnReq {
 
 // Proposal contains transaction id and transaction data.
 message Proposal {
-  
   // Transaction id.
   required Zxid zxid = 1;
-  
   // Transaction body.
   required bytes body = 2;
+}
+
+message Diff {
+  required Zxid last_zxid = 1;
+}
+
+message Truncate {
+  required Zxid last_prefix_zxid = 1;
+}
+
+message Snapshot {
+  required Zxid last_zxid = 1;
 }
 
 message Zxid {
@@ -74,3 +92,10 @@ message Zxid {
   required int32 xid = 2;
 }
 
+message NewLeader {
+  required int32 epoch = 1;
+}
+
+message Ack {
+  required Zxid zxid = 1;
+}

@@ -125,5 +125,20 @@ public class DummyLogTest extends TestBase {
     Assert.assertTrue(txn.getBody().
                       equals(ByteBuffer.wrap("llo World".getBytes())));
   }
+
+  /**
+   * Tests whether the getIterator method works as our expectation.
+   *
+   * @throws IOException in case of IO failure.
+   */
+  @Test
+  public void testIterator() throws IOException {
+    DummyLog log = new DummyLog();
+    log.append(new Transaction(new Zxid(0, 1),
+                               ByteBuffer.wrap("log record 1".getBytes())));
+
+    Log.LogIterator iter = log.getIterator(new Zxid(0, 0));
+    Assert.assertEquals(iter.next().getZxid(), new Zxid(0, 1));
+  }
 }
 

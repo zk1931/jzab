@@ -79,11 +79,9 @@ public class DummyLog implements Log {
     DummyLogIterator iter = new DummyLogIterator();
     while (iter.hasNext()) {
       Zxid z = iter.next().getZxid();
-      if (z.compareTo(zxid) == 0) {
+      if (z.compareTo(zxid) >= 0) {
         // Backtrack one step.
         iter.iter.previous();
-        break;
-      } else if (z.compareTo(zxid) > 0) {
         break;
       }
     }

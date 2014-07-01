@@ -29,7 +29,11 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -45,7 +49,6 @@ import org.apache.zab.transport.DummyTransport;
 import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.TextFormat;
 
@@ -59,7 +62,7 @@ public class Participant implements Runnable,
   /**
    * Used for communication between nodes.
    */
-  protected Transport transport;
+  protected final Transport transport;
 
   /**
    * Callback interface for testing purpose.
@@ -71,18 +74,18 @@ public class Participant implements Runnable,
    * it in queue, it's up to leader/follower/election module to take out
    * the message.
    */
-  protected BlockingQueue<MessageTuple> messageQueue =
+  protected final BlockingQueue<MessageTuple> messageQueue =
     new LinkedBlockingQueue<MessageTuple>();
 
   /**
    * The transaction log.
    */
-  protected Log log;
+  protected final Log log;
 
   /**
    * Configuration of Zab.
    */
-  protected ZabConfig config;
+  protected final ZabConfig config;
 
   /**
    * The file to store the last acknowledged epoch.
@@ -100,6 +103,11 @@ public class Participant implements Runnable,
   protected StateMachine stateMachine = null;
 
   /**
+   * Last committed zxid.
+   */
+  private Zxid lastCommittedZxid = null;
+
+  /**
    * Elected leader.
    */
   String electedLeader = null;
@@ -111,13 +119,15 @@ public class Participant implements Runnable,
 
   private static final Logger LOG = LoggerFactory.getLogger(Participant.class);
 
-  public Participant(ZabConfig config, StateMachine stateMachine)
+  public Participant(ZabConfig config,
+                     StateMachine stateMachine,
+                     Zxid lastCommittedZxid)
       throws IOException {
     this.config = config;
     this.stateMachine = stateMachine;
     this.fAckEpoch = new File(config.getLogDir(), "AckEpoch");
     this.fProposedEpoch = new File(config.getLogDir(), "ProposedEpoch");
-
+    this.lastCommittedZxid = lastCommittedZxid;
 
     // Transaction log file.
     File logFile = new File(this.config.getLogDir(), "transaction.log");
@@ -129,12 +139,14 @@ public class Participant implements Runnable,
 
   Participant(StateMachine stateMachine,
               StateChangeCallback cb,
-              TestState initialState) throws IOException {
+              TestState initialState,
+              Zxid lastCommittedZxid) throws IOException {
 
     this.config = new ZabConfig(initialState.prop);
     this.stateMachine = stateMachine;
     this.fAckEpoch = new File(config.getLogDir(), "AckEpoch");
     this.fProposedEpoch = new File(config.getLogDir(), "ProposedEpoch");
+    this.lastCommittedZxid = lastCommittedZxid;
 
     if (initialState.getLog() == null) {
       // Transaction log file.
@@ -214,7 +226,6 @@ public class Participant implements Runnable,
   public void run() {
 
     try {
-
       if (this.stateChangeCallback != null) {
         this.stateChangeCallback.electing();
       }
@@ -313,21 +324,27 @@ public class Participant implements Runnable,
   }
 
   /**
-   * Gets the expected message. It will discard unexpected messages and
-   * returns only if the expected message is received.
+   * Gets the expected message. It will discard messages of unexpected type
+   * and source and returns only if the expected message is received.
    *
    * @param type the expected message type.
+   * @param source the expected source, null if it can from anyone.
    * @return the message tuple contains the message and its source.
    * @throws TimeoutException in case of timeout.
    * @throws InterruptedException it's interrupted.
    */
-  MessageTuple getExpectedMessage(MessageType type)
+  MessageTuple getExpectedMessage(MessageType type, String source)
       throws TimeoutException, InterruptedException {
     // Waits until the expected message is received.
     while (true) {
       MessageTuple tuple = getMessage();
-      if (tuple.getMessage().getType() == type) {
+      String from = tuple.getSource();
+
+      if (tuple.getMessage().getType() == type &&
+          (source == null || source.equals(from))) {
+        // Return message only if it's expected type and expected source.
         return tuple;
+
       } else if (LOG.isDebugEnabled()) {
         LOG.debug("Got an unexpected message from {}: {}",
                   tuple.getSource(),
@@ -412,6 +429,230 @@ public class Participant implements Runnable,
     this.leaderCondition.await();
   }
 
+
+
+  /* -----------------   For BOTH LEADING and FOLLOWING -------------------- */
+
+  /**
+   * Synchronizes server's history to peer based on the last zxid of peer.
+   * This function is called when the follower syncs its history to leader as
+   * initial history or the leader syncs its initial history to followers in
+   * synchronization phase. Based on the last zxid of peer, the synchronization
+   * can be performed by TRUNCATE, DIFF or SNAPSHOT. The assumption is that
+   * the server has all the committed transactions in its transaction log.
+   *
+   *  . If the epoch of the last transaction is different from the epoch of
+   *  the last transaction of this server's. The whole log of the peer's will be
+   *  truncated by sending SNAPSHOT message and then this server will
+   *  synchronize its history to the peer.
+   *
+   *  . If the epoch of the last transaction of the peer and this server are
+   *  the same, then this server will send DIFF or TRUNCATE to only synchronize
+   *  or truncate the diff.
+   *
+   * @param peerId the id of the peer.
+   * @param peerLatestZxid the last zxid of the peer.
+   */
+  void synchronizePeer(String peerId, Zxid peerLatestZxid) throws IOException {
+
+    LOG.debug("Begins sync {} history to {}(last zxid : {})",
+              this.config.getServerId(),
+              peerId,
+              peerLatestZxid);
+
+    Zxid lastZxid = this.log.getLatestZxid();
+    Zxid syncPoint = null;
+
+    if (lastZxid.getEpoch() == peerLatestZxid.getEpoch()) {
+      // If the peer has same epoch number as the server.
+
+      if (lastZxid.compareTo(peerLatestZxid) >= 0) {
+        // Means peer's history is the prefix of the server's.
+        LOG.debug("{}'s history is >= {}'s, sending DIFF.",
+                  this.config.getServerId(),
+                  peerId);
+
+        syncPoint = new Zxid(peerLatestZxid.getEpoch(),
+                             peerLatestZxid.getXid() + 1);
+
+        Message diff = MessageBuilder.buildDiff(lastZxid);
+        sendMessage(peerId, diff);
+
+      } else {
+        // Means peer's history is the superset of the server's.
+        LOG.debug("{}'s history is < {}'s, sending TRUNCATE.",
+                  this.config.getServerId(),
+                  peerId);
+
+        syncPoint = new Zxid(lastZxid.getEpoch(), lastZxid.getXid() + 1);
+        Message trunc = MessageBuilder.buildTruncate(lastZxid);
+        sendMessage(peerId, trunc);
+      }
+
+    } else {
+      // They have different epoch numbers. Truncate all.
+      LOG.debug("The last epoch of {} and {} are different, sending SNAPSHOT.",
+                this.config.getServerId(),
+                peerId);
+
+      syncPoint = new Zxid(0, 0);
+      Message snapshot = MessageBuilder.buildSnapshot(lastZxid);
+      sendMessage(peerId, snapshot);
+    }
+
+    try (Log.LogIterator iter = this.log.getIterator(syncPoint)) {
+      while (iter.hasNext()) {
+        Transaction txn = iter.next();
+        Message prop = MessageBuilder.buildProposal(txn);
+        sendMessage(peerId, prop);
+      }
+    }
+  }
+
+  /**
+   * Waits synchronization message from peer. This method is called on both
+   * leader side and follower side.
+   *
+   * @param peer the id of the expected peer that synchronization message will
+   * come from.
+   */
+  void waitForSync(String peer)
+      throws InterruptedException, TimeoutException, IOException {
+
+    LOG.debug("{} is waiting sync from {}.", this.config.getServerId(), peer);
+
+    Zxid lastZxid = this.log.getLatestZxid();
+    // The last zxid of peer.
+    Zxid lastZxidPeer = null;
+    Message msg = null;
+    String source = null;
+
+    // Expects getting message of DIFF or TRUNCATE or SNAPSHOT or PULL_TXN_REQ
+    // from elected leader.
+    while (true) {
+      MessageTuple tuple = getMessage();
+      source = tuple.getSource();
+      msg = tuple.getMessage();
+
+      if ((msg.getType() != MessageType.DIFF &&
+           msg.getType() != MessageType.TRUNCATE &&
+           msg.getType() != MessageType.SNAPSHOT &&
+           msg.getType() != MessageType.PULL_TXN_REQ) ||
+          !source.equals(peer)) {
+
+        LOG.debug("Got unexpected message {} from {}.", msg, source);
+        continue;
+
+      } else {
+        break;
+      }
+    }
+
+    if (msg.getType() == MessageType.PULL_TXN_REQ) {
+      // PULL_TXN_REQ message. This message is only received at FOLLOWER side.
+      LOG.debug("{} got pull transaction request from {}",
+                this.config.getServerId(),
+                source);
+
+      ZabMessage.Zxid z = msg.getPullTxnReq().getLastZxid();
+      lastZxidPeer = new Zxid(z.getEpoch(), z.getXid());
+
+      // Synchronize its history to leader.
+      synchronizePeer(source, lastZxidPeer);
+
+      // After synchronization, leader should have same history as this
+      // server, so next message should be an empty DIFF.
+      MessageTuple tuple = getExpectedMessage(MessageType.DIFF, peer);
+      msg = tuple.getMessage();
+
+      ZabMessage.Diff diff = msg.getDiff();
+      lastZxidPeer = MessageBuilder.fromProtoZxid(diff.getLastZxid());
+
+      // Check if they are match.
+      if (lastZxidPeer.compareTo(lastZxid) != 0) {
+        LOG.error("The history of leader and follower are not same.");
+        throw new RuntimeException("Expecting leader and follower have same"
+                                    + "history.");
+      }
+
+      return;
+    }
+
+    if (msg.getType() == MessageType.DIFF) {
+      // DIFF message.
+      LOG.debug("{} got DIFF : {}", this.config.getServerId(), msg);
+      ZabMessage.Diff diff = msg.getDiff();
+      // Remember last zxid of the peer.
+      lastZxidPeer = MessageBuilder.fromProtoZxid(diff.getLastZxid());
+
+      if(lastZxid.compareTo(lastZxidPeer) == 0) {
+        // Means the two nodes have exact same history.
+        return;
+      }
+
+    } else if (msg.getType() == MessageType.TRUNCATE) {
+      // TRUNCATE message.
+      LOG.debug("{} got TRUNCATE: {}", this.config.getServerId(), msg);
+      ZabMessage.Truncate trunc = msg.getTruncate();
+      Zxid lastPrefixZxid = MessageBuilder
+                            .fromProtoZxid(trunc.getLastPrefixZxid());
+      this.log.truncate(lastPrefixZxid);
+      return;
+
+    } else {
+      // SNAPSHOT message.
+      LOG.debug("{} got SNAPSHOT: {}", this.config.getServerId(), msg);
+      ZabMessage.Snapshot snap = msg.getSnapshot();
+      lastZxidPeer = MessageBuilder.fromProtoZxid(snap.getLastZxid());
+      this.log.truncate(Zxid.ZXID_NOT_EXIST);
+
+      // Check if the history of peer is empty.
+      if (lastZxidPeer.compareTo(Zxid.ZXID_NOT_EXIST) == 0) {
+        return;
+      }
+    }
+
+    // Get subsequent proposals.
+    while (true) {
+      MessageTuple tuple = getExpectedMessage(MessageType.PROPOSAL, peer);
+      msg = tuple.getMessage();
+      source = tuple.getSource();
+
+      LOG.debug("{} got PROPOSAL from {} : {}",
+                this.config.getServerId(),
+                source,
+                msg);
+
+      ZabMessage.Proposal prop = msg.getProposal();
+      Zxid zxid = MessageBuilder.fromProtoZxid(prop.getZxid());
+      // Accept the proposal.
+      this.log.append(MessageBuilder.fromProposal(prop));
+
+      // Check if this is the last proposal.
+      if (zxid.compareTo(lastZxidPeer) == 0) {
+        return;
+      }
+    }
+  }
+
+
+  /**
+   * Returns all the transactions appear in log.
+   *
+   * @return a list of transactions.
+   */
+  List<Transaction> getAllTxns() throws IOException {
+    List<Transaction> txns = new ArrayList<Transaction>();
+
+    try(Log.LogIterator iter = this.log.getIterator(new Zxid(0, 0))) {
+      while(iter.hasNext()) {
+        txns.add(iter.next());
+      }
+      return txns;
+    }
+  }
+
+
   /* -----------------   For LEADING state only -------------------- */
 
   /**
@@ -420,11 +661,14 @@ public class Participant implements Runnable,
    */
   void lead() {
 
-    Map<String, FollowerStat> quorumSet = new HashMap<String, FollowerStat>();
+    Map<String, FollowerHandler> quorumSet =
+        new HashMap<String, FollowerHandler>();
 
     try {
 
       /* -- Discovering phase -- */
+
+      LOG.debug("Now {} is in discovering phase.", this.config.getServerId());
 
       if (stateChangeCallback != null) {
         stateChangeCallback.leaderDiscovering(config.getServerId());
@@ -451,22 +695,39 @@ public class Participant implements Runnable,
                 serverId);
 
 
-      /* -- Synchronization phase -- */
+      /* -- Synchronizating phase -- */
+
+      LOG.debug("Now {} is in synchronizating phase.",
+                this.config.getServerId());
 
       if (stateChangeCallback != null) {
         stateChangeCallback.leaderSynchronizating(getProposedEpochFromFile());
       }
 
-      // Pulls history from the server.
-      synchronizeFromFollower(serverId);
+      if (!serverId.equals(this.config.getServerId())) {
+        // Pulls history from the server.
+        synchronizeFromFollower(serverId);
+      }
 
-      synchronizeFollowers();
+      ExecutorService es = Executors
+                           .newCachedThreadPool(DaemonThreadFactory.FACTORY);
+
+      // Synchronization is performed in other threads.
+      for (FollowerHandler fh : quorumSet.values()) {
+        fh.setFuture(es.submit(fh));
+      }
+
+      waitNewLeaderAckFromQuorum(quorumSet);
 
 
       /* -- Broadcasting phase -- */
 
+      LOG.debug("Now {} is in broadcasting phase.", this.config.getServerId());
+
       if (stateChangeCallback != null) {
-        stateChangeCallback.leaderBroadcasting(getAckEpochFromFile());
+
+        stateChangeCallback.leaderBroadcasting(getAckEpochFromFile(),
+                                               getAllTxns());
       }
 
       beginBroadcasting();
@@ -483,11 +744,11 @@ public class Participant implements Runnable,
    * @throws InterruptedException if anything wrong happens.
    * @throws TimeoutException in case of timeout.
    */
-  void getPropsedEpochFromQuorum(Map<String, FollowerStat> quorumSet)
+  void getPropsedEpochFromQuorum(Map<String, FollowerHandler> quorumSet)
       throws InterruptedException, TimeoutException {
     // Gets last proposed epoch from other servers (not including leader).
     while (quorumSet.size() < getQuorumSize() - 1) {
-      MessageTuple tuple = getExpectedMessage(MessageType.PROPOSED_EPOCH);
+      MessageTuple tuple = getExpectedMessage(MessageType.PROPOSED_EPOCH, null);
       Message msg = tuple.getMessage();
       String source = tuple.getSource();
       ProposedEpoch epoch = msg.getProposedEpoch();
@@ -496,7 +757,8 @@ public class Participant implements Runnable,
         throw new RuntimeException("Quorum set has already contained "
             + source + ", probably a bug?");
       }
-      quorumSet.put(source, new FollowerStat(epoch.getProposedEpoch()));
+      quorumSet.put(source, new FollowerHandler(source,
+                                                epoch.getProposedEpoch()));
     }
     LOG.debug("{} got proposed epoch from a quorum.", config.getServerId());
   }
@@ -508,13 +770,14 @@ public class Participant implements Runnable,
    * @param quorumSet the quorum set.
    * @throws IOException in case of IO failure.
    */
-  void proposeNewEpoch(Map<String, FollowerStat> quorumSet) throws IOException {
+  void proposeNewEpoch(Map<String, FollowerHandler> quorumSet)
+      throws IOException {
     List<Integer> epochs = new ArrayList<Integer>();
 
     // Puts leader's last received proposed epoch in list.
     epochs.add(getProposedEpochFromFile());
 
-    for (FollowerStat stat : quorumSet.values()) {
+    for (FollowerHandler stat : quorumSet.values()) {
       epochs.add(stat.getLastProposedEpoch());
     }
 
@@ -539,20 +802,22 @@ public class Participant implements Runnable,
    * @throws InterruptedException if anything wrong happens.
    * @throws TimeoutException in case of timeout.
    */
-  void waitEpochAckFromQuorum(Map<String, FollowerStat> quorumSet)
+  void waitEpochAckFromQuorum(Map<String, FollowerHandler> quorumSet)
       throws InterruptedException, TimeoutException {
 
     int ackCount = 0;
 
     // Waits the Ack from all other peers in the quorum set.
     while (ackCount < quorumSet.size()) {
-      MessageTuple tuple = getExpectedMessage(MessageType.ACK_EPOCH);
+      MessageTuple tuple = getExpectedMessage(MessageType.ACK_EPOCH, null);
       Message msg = tuple.getMessage();
       String source = tuple.getSource();
 
       if (!quorumSet.containsKey(source)) {
-        throw new RuntimeException("The message is not from quorum set,"
-            + "probably a bug?");
+        LOG.warn("The Epoch ACK comes from {} who is not in quorum set, "
+                 + "possibly from previous epoch?",
+                 source);
+        continue;
       }
 
       ackCount++;
@@ -561,9 +826,9 @@ public class Participant implements Runnable,
       ZabMessage.Zxid zxid = ackEpoch.getLastZxid();
 
       // Updates follower's f.a and lastZxid.
-      FollowerStat fs = quorumSet.get(source);
-      fs.setLastAckedEpoch(ackEpoch.getAcknowledgedEpoch());
-      fs.setLastProposedZxid(new Zxid(zxid.getEpoch(), zxid.getXid()));
+      FollowerHandler fh = quorumSet.get(source);
+      fh.setLastAckedEpoch(ackEpoch.getAcknowledgedEpoch());
+      fh.setLastProposedZxid(new Zxid(zxid.getEpoch(), zxid.getXid()));
     }
 
     LOG.debug("{} received ACKs from the quorum set of size {}.",
@@ -579,7 +844,7 @@ public class Participant implements Runnable,
    * @return the id of the server
    * @throws IOException
    */
-  String selectSyncHistoryOwner(Map<String, FollowerStat> quorumSet)
+  String selectSyncHistoryOwner(Map<String, FollowerHandler> quorumSet)
       throws IOException {
     // Starts finding the server who owns the longest transaction history,
     // starts from leader itself.
@@ -587,11 +852,11 @@ public class Participant implements Runnable,
     Zxid zxid = new Zxid(0, 0);
     String serverId = config.getServerId();
 
-    Iterator<Map.Entry<String, FollowerStat>> iter;
+    Iterator<Map.Entry<String, FollowerHandler>> iter;
     iter = quorumSet.entrySet().iterator();
 
     while (iter.hasNext()) {
-      Map.Entry<String, FollowerStat> entry = iter.next();
+      Map.Entry<String, FollowerHandler> entry = iter.next();
 
       int fEpoch = entry.getValue().getLastAckedEpoch();
       Zxid fZxid = entry.getValue().getLastProposedZxid();
@@ -621,17 +886,56 @@ public class Participant implements Runnable,
    *
    * @param serverId the id of the server whose history is selected.
    */
-  void synchronizeFromFollower(String serverId) throws IOException {
+  void synchronizeFromFollower(String serverId)
+      throws IOException, TimeoutException, InterruptedException {
+
     LOG.debug("Begins sync from follower {}.", serverId);
 
-    //Message pullTxn = MessageBuilder.buildPullTxnReq(log.getLatestZxid());
+    Zxid lastZxid = log.getLatestZxid();
+    Message pullTxn = MessageBuilder.buildPullTxnReq(lastZxid);
+    LOG.debug("Last zxid of {} is {}", this.config.getServerId(),
+                                       lastZxid);
+
+    sendMessage(serverId, pullTxn);
+
+    waitForSync(serverId);
   }
 
   /**
-   * Synchronizes leader's history to followers.
+   * Waits for synchronization to followers complete.
+   *
+   * @param quorumSet the followers need to be wait.
+   * @throws TimeoutException in case of timeout.
+   * @throws InterruptedException in case of interrupt.
    */
-  void synchronizeFollowers() {
-    // Not implemented yet.
+  void waitNewLeaderAckFromQuorum(Map<String, FollowerHandler> quorumSet)
+      throws TimeoutException, InterruptedException, IOException {
+
+    LOG.debug("{} is waiting for synchronization to followers complete.",
+              this.config.getServerId());
+
+    int completeCount = 0;
+
+    while (completeCount < quorumSet.size()) {
+      MessageTuple tuple = getExpectedMessage(MessageType.ACK, null);
+      ZabMessage.Ack ack = tuple.getMessage().getAck();
+      String source =tuple.getSource();
+
+      Zxid zxid = MessageBuilder.fromProtoZxid(ack.getZxid());
+
+      if (zxid.compareTo(this.log.getLatestZxid()) != 0) {
+        LOG.error("The follower {} is not correctly synchronized.", source);
+
+        throw new RuntimeException("The synchronized follower's last zxid"
+            + "doesn't match last zxid of current leader.");
+      }
+
+      if (!quorumSet.containsKey(source)) {
+        LOG.warn("Quorum set doesn't contain {}, a bug?", source);
+        continue;
+      }
+      completeCount++;
+    }
   }
 
   /**
@@ -655,6 +959,8 @@ public class Participant implements Runnable,
 
       /* -- Discovering phase -- */
 
+      LOG.debug("Now {} is in discovering phase.", this.config.getServerId());
+
       if (stateChangeCallback != null) {
         stateChangeCallback.followerDiscovering(this.electedLeader);
       }
@@ -664,19 +970,29 @@ public class Participant implements Runnable,
       receiveNewEpoch();
 
 
-      /* -- Synchronization phase -- */
+      /* -- Synchronizating phase -- */
+
+      LOG.debug("Now {} is in synchronizating phase.",
+                this.config.getServerId());
 
       if (stateChangeCallback != null) {
         stateChangeCallback.followerSynchronizating(getProposedEpochFromFile());
       }
 
-      synchronization();
+      waitForSync(this.electedLeader);
+
+      waitNewLeaderMesage();
 
 
       /* -- Broadcasting phase -- */
 
+      LOG.debug("Now {} is in broadcasting phase.", this.config.getServerId());
+
       if (stateChangeCallback != null) {
-        stateChangeCallback.followerBroadcasting(getAckEpochFromFile());
+
+        stateChangeCallback.followerBroadcasting(getAckEpochFromFile(),
+                                                 getAllTxns());
+
       }
 
       beginAccepting();
@@ -706,14 +1022,11 @@ public class Participant implements Runnable,
   void receiveNewEpoch()
       throws InterruptedException, TimeoutException, IOException {
 
-    MessageTuple tuple = getExpectedMessage(MessageType.NEW_EPOCH);
+    MessageTuple tuple = getExpectedMessage(MessageType.NEW_EPOCH,
+                                            this.electedLeader);
+
     Message msg = tuple.getMessage();
     String source = tuple.getSource();
-
-    if (!source.equals(this.electedLeader)) {
-      throw new RuntimeException("The new epoch message is not from current"
-          + "leader, maybe a bug?");
-    }
 
     NewEpoch epoch = msg.getNewEpoch();
 
@@ -745,16 +1058,131 @@ public class Participant implements Runnable,
   }
 
   /**
-   * Entering synchronization phase.
+   * Waits for NEW_LEADER message and sends back ACK and update ACK epoch.
+   *
+   * @throws TimeoutException in case of timeout.
+   * @throws InterruptedException in case of interrupt.
+   * @throws IOException in case of IO failure.
    */
-  void synchronization() {
-    // Not implemented yet.
+  void waitNewLeaderMesage()
+      throws TimeoutException, InterruptedException, IOException {
+
+    LOG.debug("{} is waiting for New Leader message from {}.",
+              this.config.getServerId(),
+              this.electedLeader);
+
+    MessageTuple tuple = getExpectedMessage(MessageType.NEW_LEADER,
+                                            this.electedLeader);
+    Message msg = tuple.getMessage();
+    String source = tuple.getSource();
+
+    LOG.debug("{} got NEW_LEADER message from {} : {}.",
+              this.config.getServerId(),
+              source,
+              msg);
+
+    // NEW_LEADER message.
+    ZabMessage.NewLeader nl = msg.getNewLeader();
+    int epoch = nl.getEpoch();
+    // Sync Ack epoch to disk.
+    setAckEpoch(epoch);
+    this.log.sync();
+
+    Message ack = MessageBuilder.buildAck(this.log.getLatestZxid());
+    sendMessage(source, ack);
   }
 
   /**
    * Entering broadcasting phase.
    */
   void beginAccepting() {
-    // Not implemented yet.
+  }
+
+  /**
+   * Stores the statistics about follower.
+   */
+  class FollowerHandler implements Callable<Integer> {
+    private int lastProposedEpoch = -1;
+    private int lastAckedEpoch = -1;
+    private long lastHeartbeatTime;
+    private Zxid lastProposedZxid = null;
+    private final String serverId;
+    private Future<Integer> future = null;
+    private final BlockingQueue<Message> broadcastingQueue =
+        new LinkedBlockingQueue<Message>();
+
+
+    public FollowerHandler(String serverId, int epoch) {
+      this.serverId = serverId;
+      setLastProposedEpoch(epoch);
+      updateHeartbeatTime();
+    }
+
+    void setFuture(Future<Integer> ft) {
+      this.future = ft;
+    }
+
+    Future<Integer> getFuture() {
+      return this.future;
+    }
+
+    long getLastHeartbeatTime() {
+      return this.lastHeartbeatTime;
+    }
+
+    void updateHeartbeatTime() {
+      this.lastHeartbeatTime = System.nanoTime();
+    }
+
+    int getLastProposedEpoch() {
+      return this.lastProposedEpoch;
+    }
+
+    void setLastProposedEpoch(int epoch) {
+      this.lastProposedEpoch = epoch;
+    }
+
+    int getLastAckedEpoch() {
+      return this.lastAckedEpoch;
+    }
+
+    void setLastAckedEpoch(int epoch) {
+      this.lastAckedEpoch = epoch;
+    }
+
+    Zxid getLastProposedZxid() {
+      return this.lastProposedZxid;
+    }
+
+    void setLastProposedZxid(Zxid zxid) {
+      this.lastProposedZxid = zxid;
+    }
+
+    /**
+     * Puts message in queue.
+     *
+     * @param msg the message which will be sent.
+     */
+    void queueMessage(Message msg) {
+      this.broadcastingQueue.add(msg);
+    }
+
+    @Override
+    public Integer call() throws IOException {
+
+      LOG.debug("Leader {} is synchronizing to {} (last zxid : {}).",
+                config.getServerId(),
+                serverId,
+                this.lastProposedZxid);
+
+      // First sync to follower.
+      synchronizePeer(this.serverId, this.lastProposedZxid);
+
+      // Send NEW_LEADER message to peer.
+      Message nl = MessageBuilder.buildNewLeader(this.lastAckedEpoch);
+      sendMessage(serverId, nl);
+
+      return 0;
+    }
   }
 }
