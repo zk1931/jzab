@@ -47,6 +47,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.protobuf.InvalidProtocolBufferException;
+import com.google.protobuf.TextFormat;
 
 /**
  * Participant.
@@ -182,10 +183,12 @@ public class Participant implements Runnable,
       message.get(buffer);
       Message msg = Message.parseFrom(buffer);
 
-      LOG.debug("{} received message from {} : {} ",
-                this.config.getServerId(),
-                source,
-                msg);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("{} received message from {}: {} ",
+                  this.config.getServerId(),
+                  source,
+                  TextFormat.shortDebugString(msg));
+      }
 
       // Puts the message in message queue.
       this.messageQueue.add(new MessageTuple(source, msg));
@@ -325,11 +328,10 @@ public class Participant implements Runnable,
       MessageTuple tuple = getMessage();
       if (tuple.getMessage().getType() == type) {
         return tuple;
-      } else {
-
+      } else if (LOG.isDebugEnabled()) {
         LOG.debug("Got an unexpected message from {}: {}",
                   tuple.getSource(),
-                  tuple.getMessage());
+                  TextFormat.shortDebugString(tuple.getMessage()));
       }
     }
   }
