@@ -58,13 +58,4 @@ public abstract class Zab {
    * @param zxid trim the log to zxid(including zxid)
    */
   public abstract void trimLogTo(Zxid zxid);
-
-  /**
-   * Redelivers all txns starting from zxid.
-   *
-   * @param zxid the first transaction id to replay
-   * from
-   * @throws IOException in case of IO failures
-   */
-  public abstract void replayLogFrom(Zxid zxid) throws IOException;
 }

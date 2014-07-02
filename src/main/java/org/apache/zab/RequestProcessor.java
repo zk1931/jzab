@@ -1,5 +1,5 @@
 /**
- * Licensed to the Apache Software Foundation (ASF) under one
+ * Licensed to the Apache Software Foundatlion (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
  * regarding copyright ownership.  The ASF licenses this file
@@ -18,39 +18,12 @@
 
 package org.apache.zab;
 
-import java.nio.ByteBuffer;
-
 /**
- * Transaction.
+ * Interface for request processor. Different processors are chained together
+ * to process request in order.
  */
-public class Transaction {
-  private final Zxid zxid;
-  private final ByteBuffer body;
+public interface RequestProcessor {
 
-  public Transaction(Zxid zxid, ByteBuffer body) {
-    this.zxid = zxid;
-    this.body = body;
-  }
+  void processRequest(Request request);
 
-  /**
-   * Get the id of this transaction.
-   *
-   * @return id of the transaction
-   */
-  public Zxid getZxid() {
-    return this.zxid;
-  }
-
-  /**
-   * Get the body of the transaction.
-   *
-   * @return an array of bytes representing the body of the transaction
-   */
-  public ByteBuffer getBody() {
-    return this.body;
-  }
-
-  public String toString() {
-    return this.zxid + " : " + this.body;
-  }
 }

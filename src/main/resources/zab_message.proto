@@ -21,6 +21,7 @@ message Message {
     DIFF = 12;
     TRUNCATE = 13;
     SNAPSHOT = 14;
+    REQUEST = 15;
     INVALID_MESSAGE = 30;
   }
 
@@ -39,6 +40,8 @@ message Message {
   optional NewLeader new_leader = 9;
   optional Ack ack = 10;
   optional Snapshot snapshot = 11;
+  optional Request request = 12;
+  optional Commit commit = 13;
   optional InvalidMessage invalid = 30;
 }
 
@@ -98,4 +101,12 @@ message NewLeader {
 
 message Ack {
   required Zxid zxid = 1;
+}
+
+message Commit {
+  required Zxid zxid = 1;
+}
+
+message Request {
+  required bytes request = 1;
 }

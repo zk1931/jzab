@@ -18,10 +18,12 @@
 
 package org.apache.zab;
 
+import java.nio.ByteBuffer;
 import com.google.protobuf.ByteString;
 import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Ack;
 import org.apache.zab.proto.ZabMessage.AckEpoch;
+import org.apache.zab.proto.ZabMessage.Commit;
 import org.apache.zab.proto.ZabMessage.Diff;
 import org.apache.zab.proto.ZabMessage.InvalidMessage;
 import org.apache.zab.proto.ZabMessage.Message;
@@ -30,9 +32,9 @@ import org.apache.zab.proto.ZabMessage.NewLeader;
 import org.apache.zab.proto.ZabMessage.Proposal;
 import org.apache.zab.proto.ZabMessage.ProposedEpoch;
 import org.apache.zab.proto.ZabMessage.PullTxnReq;
+import org.apache.zab.proto.ZabMessage.Request;
 import org.apache.zab.proto.ZabMessage.Snapshot;
 import org.apache.zab.proto.ZabMessage.Truncate;
-
 import static org.apache.zab.proto.ZabMessage.Message.MessageType;
 
 /**
@@ -69,7 +71,6 @@ public final class MessageBuilder {
     return new Zxid(zxid.getEpoch(), zxid.getXid());
   }
 
-
   /**
    * Converts protobuf Proposal object to Transaction object.
    *
@@ -78,7 +79,20 @@ public final class MessageBuilder {
    */
   public static Transaction fromProposal(Proposal prop) {
     Zxid zxid = fromProtoZxid(prop.getZxid());
-    return new Transaction(zxid, prop.getBody().asReadOnlyByteBuffer());
+    ByteBuffer buffer = prop.getBody().asReadOnlyByteBuffer();
+    return new Transaction(zxid, buffer);
+  }
+
+  /**
+   * Converts Transaction object to protobuf Proposal object.
+   *
+   * @param txn the Transaction object.
+   * @return the protobuf Proposal object.
+   */
+  public static Proposal fromTransaction(Transaction txn) {
+    ZabMessage.Zxid zxid = toProtoZxid(txn.getZxid());
+    ByteString bs = ByteString.copyFrom(txn.getBody());
+    return Proposal.newBuilder().setZxid(zxid).setBody(bs).build();
   }
 
   /**
@@ -256,6 +270,38 @@ public final class MessageBuilder {
 
     return Message.newBuilder().setType(MessageType.SNAPSHOT)
                                .setSnapshot(snapshot)
+                               .build();
+  }
+
+  /**
+   * Creates a REQUEST message.
+   *
+   * @param request the ByteBuffer represents the request.
+   * @return a protobuf message.
+   */
+  public static Message buildRequest(ByteBuffer request) {
+    Request req = Request.newBuilder()
+                         .setRequest(ByteString.copyFrom(request))
+                         .build();
+
+    return Message.newBuilder().setType(MessageType.REQUEST)
+                               .setRequest(req)
+                               .build();
+  }
+
+  /**
+   * Creates a COMMIT message.
+   *
+   * @param zxid the id of the committed transaction.
+   * @return a protobuf message.
+   */
+  public static Message buildCommit(Zxid zxid) {
+    ZabMessage.Zxid cZxid = toProtoZxid(zxid);
+
+    Commit commit = Commit.newBuilder().setZxid(cZxid).build();
+
+    return Message.newBuilder().setType(MessageType.COMMIT)
+                               .setCommit(commit)
                                .build();
   }
 }

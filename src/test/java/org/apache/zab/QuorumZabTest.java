@@ -23,9 +23,10 @@ import java.nio.ByteBuffer;
 import java.util.concurrent.CountDownLatch;
 import java.util.ArrayList;
 import java.util.List;
-
 import org.junit.Assert;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Used for tests.
@@ -101,6 +102,9 @@ class QuorumTestCallback implements QuorumZab.StateChangeCallback {
  */
 public class QuorumZabTest extends TestBase  {
 
+  private static final Logger LOG
+    = LoggerFactory.getLogger(QuorumZabTest.class);
+
   /**
    * Test if the new epoch is established.
    *
@@ -169,16 +173,17 @@ public class QuorumZabTest extends TestBase  {
   public void testSingleServer() throws InterruptedException, IOException {
     // 4 phase changes : electing -> discovering -> sync -> broadcasting
     QuorumTestCallback cb = new QuorumTestCallback(4);
+    TestStateMachine st = new TestStateMachine();
 
     QuorumZab.TestState state = new QuorumZab
                                     .TestState("server1",
                                                "server1",
                                                getDirectory())
                                     .setLog(new DummyLog(0));
-    QuorumZab zab1 = new QuorumZab(null, cb, state, null);
+    QuorumZab zab1 = new QuorumZab(st, cb, state, null);
 
     cb.count.await();
-    Assert.assertEquals(-1, cb.acknowledgedEpoch);
+    Assert.assertEquals(0, cb.acknowledgedEpoch);
     Assert.assertEquals(0, cb.establishedEpoch);
     Assert.assertEquals("server1", cb.electedLeader);
     Assert.assertEquals("server1", cb.syncFollower);
@@ -566,4 +571,62 @@ public class QuorumZabTest extends TestBase  {
     Assert.assertEquals(3, cb1.initialHistory.size());
     Assert.assertEquals(3, cb2.initialHistory.size());
   }
+
+  /**
+   * Test broadcasting.
+   *
+   * @throws InterruptedException if it's interrupted.
+   * @throws IOException in case of IO failure.
+   */
+  @Test(timeout=2000)
+  public void testBroadcasting()
+      throws InterruptedException, IOException {
+    // 4 phase changes : electing -> discovering -> sync -> broadcasting
+    QuorumTestCallback cb1 = new QuorumTestCallback(4);
+    QuorumTestCallback cb2 = new QuorumTestCallback(4);
+    // Expecting 4 delivered transactions.
+    TestStateMachine st1 = new TestStateMachine(4);
+    TestStateMachine st2 = new TestStateMachine(4);
+
+    /*
+     *  Before broadcasting.
+     *
+     *  L : <0, 0> (f.a = 0)
+     *  F : <0, 0> (f.a = 0)
+     *
+     */
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState("server1",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setProposedEpoch(0)
+                                     .setLog(new DummyLog(1))
+                                     .setAckEpoch(0);
+
+    QuorumZab zab1 = new QuorumZab(st1, cb1, state1, null);
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState("server2",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setProposedEpoch(0)
+                                     .setLog(new DummyLog(1))
+                                     .setAckEpoch(0);
+
+    QuorumZab zab2 = new QuorumZab(st2, cb2, state2, null);
+
+    cb1.count.await();
+    cb2.count.await();
+
+    zab1.send(ByteBuffer.wrap("HelloWorld1".getBytes()));
+    zab1.send(ByteBuffer.wrap("HelloWorld2".getBytes()));
+    zab1.send(ByteBuffer.wrap("HelloWorld3".getBytes()));
+
+    st1.txnsCount.await();
+    st2.txnsCount.await();
+    Assert.assertEquals(4, st1.deliveredTxns.size());
+    Assert.assertEquals(4, st2.deliveredTxns.size());
+  }
+
 }
