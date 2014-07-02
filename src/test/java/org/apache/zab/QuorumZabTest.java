@@ -32,7 +32,7 @@ import org.junit.Test;
  */
 class QuorumTestCallback implements QuorumZab.StateChangeCallback {
   int establishedEpoch = -1;
-  int ackknowledgedEpoch = -1;
+  int acknowledgedEpoch = -1;
   String electedLeader;
   String syncFollower;
   Zxid syncZxid;
@@ -83,14 +83,14 @@ class QuorumTestCallback implements QuorumZab.StateChangeCallback {
 
   @Override
   public void leaderBroadcasting(int epoch, List<Transaction> history) {
-    this.ackknowledgedEpoch = epoch;
+    this.acknowledgedEpoch = epoch;
     this.initialHistory = history;
     this.count.countDown();
   }
 
   @Override
   public void followerBroadcasting(int epoch, List<Transaction> history) {
-    this.ackknowledgedEpoch = epoch;
+    this.acknowledgedEpoch = epoch;
     this.initialHistory = history;
     this.count.countDown();
   }
@@ -160,6 +160,30 @@ public class QuorumZabTest extends TestBase  {
 
     // The last ack epoch of the owner of initial history should be 1.
     Assert.assertEquals(cb.syncAckEpoch, 1);
+  }
+
+  /**
+   * Make sure the leader can start up by itself.
+   */
+  @Test(timeout=1000)
+  public void testSingleServer() throws InterruptedException, IOException {
+    // 4 phase changes : electing -> discovering -> sync -> broadcasting
+    QuorumTestCallback cb = new QuorumTestCallback(4);
+
+    QuorumZab.TestState state = new QuorumZab
+                                    .TestState("server1",
+                                               "server1",
+                                               getDirectory())
+                                    .setLog(new DummyLog(0));
+    QuorumZab zab1 = new QuorumZab(null, cb, state, null);
+
+    cb.count.await();
+    Assert.assertEquals(-1, cb.acknowledgedEpoch);
+    Assert.assertEquals(0, cb.establishedEpoch);
+    Assert.assertEquals("server1", cb.electedLeader);
+    Assert.assertEquals("server1", cb.syncFollower);
+    Assert.assertTrue(cb.initialHistory.isEmpty());
+    Assert.assertEquals(0, cb.syncZxid.compareTo(Zxid.ZXID_NOT_EXIST));
   }
 
   /**
@@ -502,4 +526,44 @@ public class QuorumZabTest extends TestBase  {
     Assert.assertEquals(cb2.initialHistory.size(), 0);
   }
 
+  /**
+   * Test synchronization case 7.
+   *
+   * Before the synchronization:
+   *
+   *  L : <0, 0> <0, 1> <0, 2> (f.a = 0)
+   *  F : <0, 0> <0, 1> (f.a = 0)
+   *
+   * Expected history after the synchronization:
+   *
+   *  L : <0, 0> <0, 1> <0, 2> (f.a = 0)
+   *
+   * @throws InterruptedException
+   * @throws IOException in case of IO failure.
+   */
+  @Test(timeout=1000)
+  public void testSynchronizationCase7()
+      throws InterruptedException, IOException {
+    // 4 phase changes : electing -> discovering -> sync -> broadcasting
+    QuorumTestCallback cb1 = new QuorumTestCallback(4);
+    QuorumTestCallback cb2 = new QuorumTestCallback(4);
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState("server1",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setLog(new DummyLog(3))
+                                     .setAckEpoch(0);
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState("server2",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setLog(new DummyLog(2))
+                                     .setAckEpoch(0);
+    QuorumZab zab1 = new QuorumZab(null, cb1, state1, null);
+    QuorumZab zab2 = new QuorumZab(null, cb2, state2, null);
+    cb1.count.await();
+    cb2.count.await();
+    Assert.assertEquals(3, cb1.initialHistory.size());
+    Assert.assertEquals(3, cb2.initialHistory.size());
+  }
 }
