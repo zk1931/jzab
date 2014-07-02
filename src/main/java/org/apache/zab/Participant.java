@@ -846,10 +846,13 @@ public class Participant implements Runnable,
    */
   String selectSyncHistoryOwner(Map<String, FollowerHandler> quorumSet)
       throws IOException {
-    // Starts finding the server who owns the longest transaction history,
-    // starts from leader itself.
+    // L.1.2 Select the history of a follwer f to be the initial history
+    // of the new epoch. Follwer f is such that for every f' in the quorum,
+    // f'.a < f.a or (f'.a == f.a && f'.zxid <= f.zxid).
+
+    // Get the acknowledged epoch and the latest zxid of the leader.
     int ackEpoch = getAckEpochFromFile();
-    Zxid zxid = new Zxid(0, 0);
+    Zxid zxid = log.getLatestZxid();
     String serverId = config.getServerId();
 
     Iterator<Map.Entry<String, FollowerHandler>> iter;
