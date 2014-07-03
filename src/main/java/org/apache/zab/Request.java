@@ -18,39 +18,25 @@
 
 package org.apache.zab;
 
-import java.nio.ByteBuffer;
+import org.apache.zab.proto.ZabMessage.Message;
 
 /**
- * Transaction.
+ * Encapsulates the request needs to be processed by RequestProcessor.
  */
-public class Transaction {
-  private final Zxid zxid;
-  private final ByteBuffer body;
+public class Request {
+  private final String serverId;
+  private final Message message;
 
-  public Transaction(Zxid zxid, ByteBuffer body) {
-    this.zxid = zxid;
-    this.body = body;
+  public Request(String serverId, Message message) {
+    this.serverId = serverId;
+    this.message = message;
   }
 
-  /**
-   * Get the id of this transaction.
-   *
-   * @return id of the transaction
-   */
-  public Zxid getZxid() {
-    return this.zxid;
+  public String getServerId() {
+    return this.serverId;
   }
 
-  /**
-   * Get the body of the transaction.
-   *
-   * @return an array of bytes representing the body of the transaction
-   */
-  public ByteBuffer getBody() {
-    return this.body;
-  }
-
-  public String toString() {
-    return this.zxid + " : " + this.body;
+  public Message getMessage() {
+    return this.message;
   }
 }

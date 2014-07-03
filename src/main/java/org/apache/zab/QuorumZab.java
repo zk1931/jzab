@@ -71,14 +71,11 @@ public class QuorumZab extends Zab {
 
   @Override
   public void send(ByteBuffer message) throws IOException {
+    this.participant.send(message);
   }
 
   @Override
   public void trimLogTo(Zxid zxid) {
-  }
-
-  @Override
-  public void replayLogFrom(Zxid zxid) throws IOException {
   }
 
 
@@ -165,11 +162,6 @@ public class QuorumZab extends Zab {
    * Used for initializing the state of QuorumZab for testing purpose.
    */
   static class TestState {
-
-    int proposedEpoch = -1;
-
-    int acknowledgedEpoch = -1;
-
     Properties prop = new Properties();
 
     File logDir = null;
@@ -208,24 +200,20 @@ public class QuorumZab extends Zab {
 
     }
 
+    public TestState(ZabConfig config) {
+      this(config.getServerId(),
+           config.prop.getProperty("servers"),
+           new File(config.getLogDir()));
+    }
+
     TestState setProposedEpoch(int epoch) throws IOException {
-      this.proposedEpoch = epoch;
       FileUtils.writeIntToFile(epoch, this.fProposedEpoch);
       return this;
     }
 
     TestState setAckEpoch(int epoch) throws IOException {
-      this.acknowledgedEpoch = epoch;
       FileUtils.writeIntToFile(epoch, this.fAckEpoch);
       return this;
-    }
-
-    int getProposedEpoch() {
-      return this.proposedEpoch;
-    }
-
-    int getAckEpoch() {
-      return this.acknowledgedEpoch;
     }
 
     TestState setLog(Log tlog) {

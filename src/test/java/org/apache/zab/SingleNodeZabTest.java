@@ -18,6 +18,7 @@
 
 package org.apache.zab;
 
+import java.util.concurrent.CountDownLatch;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -33,7 +34,19 @@ import org.junit.Test;
  * Dummy StateMachine implementation. Used for test only.
  */
 class TestStateMachine implements StateMachine {
-  ArrayList<ByteBuffer> deliveredTxns = new ArrayList<ByteBuffer>();
+  ArrayList<Transaction> deliveredTxns = new ArrayList<Transaction>();
+
+  /**
+   * The expected delivered txns.
+   */
+  CountDownLatch txnsCount = null;
+
+  public TestStateMachine() {
+  }
+
+  public TestStateMachine(int count) {
+    txnsCount = new CountDownLatch(count);
+  }
 
   @Override
   public ByteBuffer preprocess(Zxid zxid, ByteBuffer message) {
@@ -44,7 +57,11 @@ class TestStateMachine implements StateMachine {
   @Override
   public void deliver(Zxid zxid, ByteBuffer stateUpdate) {
     // Add the delivered message to list.
-    this.deliveredTxns.add(stateUpdate);
+    this.deliveredTxns.add(new Transaction(zxid, stateUpdate));
+
+    if (txnsCount != null) {
+      txnsCount.countDown();
+    }
   }
 
   @Override
@@ -98,16 +115,16 @@ public class SingleNodeZabTest extends TestBase {
     // Make sure there're 4 messages delivered.
     Assert.assertEquals(this.sm.deliveredTxns.size(), 4);
     // Assert first message is correct.
-    Assert.assertTrue(this.sm.deliveredTxns.get(0)
+    Assert.assertTrue(this.sm.deliveredTxns.get(0).getBody()
                       .equals(ByteBuffer.wrap("message 0".getBytes())));
     // Assert second message is correct.
-    Assert.assertTrue(this.sm.deliveredTxns.get(1)
+    Assert.assertTrue(this.sm.deliveredTxns.get(1).getBody()
                       .equals(ByteBuffer.wrap("message 1".getBytes())));
     // Assert third message is correct.
-    Assert.assertTrue(this.sm.deliveredTxns.get(2)
+    Assert.assertTrue(this.sm.deliveredTxns.get(2).getBody()
                       .equals(ByteBuffer.wrap("message 2".getBytes())));
     // Assert fourth message is correct.
-    Assert.assertTrue(this.sm.deliveredTxns.get(3)
+    Assert.assertTrue(this.sm.deliveredTxns.get(3).getBody()
                       .equals(ByteBuffer.wrap("message 3".getBytes())));
   }
 
@@ -125,12 +142,12 @@ public class SingleNodeZabTest extends TestBase {
     // After replay, there should have 3 delivered messages in list.
     Assert.assertEquals(this.sm.deliveredTxns.size(), 3);
     // First message should be "message 0"
-    Assert.assertTrue(this.sm.deliveredTxns.get(0)
+    Assert.assertTrue(this.sm.deliveredTxns.get(0).getBody()
                       .equals(ByteBuffer.wrap("message 0".getBytes())));
     // The last two messages should be identical.
-    Assert.assertTrue(this.sm.deliveredTxns.get(1)
+    Assert.assertTrue(this.sm.deliveredTxns.get(1).getBody()
                       .equals(ByteBuffer.wrap("message 1".getBytes())));
-    Assert.assertTrue(this.sm.deliveredTxns.get(2)
+    Assert.assertTrue(this.sm.deliveredTxns.get(2).getBody()
                       .equals(ByteBuffer.wrap("message 1".getBytes())));
   }
 
@@ -154,9 +171,9 @@ public class SingleNodeZabTest extends TestBase {
     // After recovery, there should have 2 delivered messages in list.
     Assert.assertEquals(this.sm.deliveredTxns.size(), 2);
     // Assert that the redelivered messages are correct.
-    Assert.assertTrue(this.sm.deliveredTxns.get(0)
+    Assert.assertTrue(this.sm.deliveredTxns.get(0).getBody()
                       .equals(ByteBuffer.wrap("message 0".getBytes())));
-    Assert.assertTrue(this.sm.deliveredTxns.get(1)
+    Assert.assertTrue(this.sm.deliveredTxns.get(1).getBody()
                       .equals(ByteBuffer.wrap("message 1".getBytes())));
   }
 }

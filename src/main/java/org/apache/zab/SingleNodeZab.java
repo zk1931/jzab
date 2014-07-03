@@ -105,7 +105,6 @@ public class SingleNodeZab extends Zab {
    * @param zxid the first transaction id to replay from.
    * @throws IOException in case of IO failures
    */
-  @Override
   public void replayLogFrom(Zxid zxid) throws IOException {
     try (Log.LogIterator iter = this.txnLog.getIterator(zxid)) {
       while (iter.hasNext()) {
