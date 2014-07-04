@@ -21,6 +21,7 @@ package org.apache.zab;
 import java.nio.ByteBuffer;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -78,6 +79,11 @@ public class SyncProposalProcessor implements RequestProcessor,
     try {
       while (true) {
         Request request = this.proposalQueue.take();
+
+        if (request == Request.REQUEST_OF_DEATH) {
+          break;
+        }
+
         Transaction txn = MessageBuilder
                           .fromProposal(request.getMessage().getProposal());
         LOG.debug("Syncing transaction {} to disk.", txn);
@@ -89,12 +95,13 @@ public class SyncProposalProcessor implements RequestProcessor,
       LOG.error("Caught exception in SyncProposalProcessor!");
       throw e;
     }
+    LOG.debug("SyncProposalProcessor has been shut down.");
+    return null;
   }
 
   @Override
-  public void shutdown() {
-    this.ft.cancel(true);
-    LOG.debug("SyncProposalProcessor has been shut down.");
+  public void shutdown() throws InterruptedException, ExecutionException {
+    this.proposalQueue.add(Request.REQUEST_OF_DEATH);
+    this.ft.get();
   }
-
 }

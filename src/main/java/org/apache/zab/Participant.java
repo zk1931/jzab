@@ -31,9 +31,9 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -679,7 +679,10 @@ public class Participant implements Callable<Void>,
             + source + ", probably a bug?");
       }
 
-      PeerHandler ph = new PeerHandler(source, this.transport);
+      PeerHandler ph = new PeerHandler(source,
+                                       this.transport,
+                                       this.config.getTimeout() / 3);
+
       ph.setLastProposedEpoch(epoch.getProposedEpoch());
       quorumSet.put(source, ph);
     }
@@ -895,35 +898,28 @@ public class Participant implements Callable<Void>,
   void beginBroadcasting(Map<String, PeerHandler> quorumSet,
                          ExecutorService es)
       throws TimeoutException, InterruptedException, IOException {
-
     int currentEpoch = getAckEpochFromFile();
     Zxid nextZxid = new Zxid(currentEpoch, 0);
     PreProcessor preproc = new PreProcessor(this.stateMachine,
                                             nextZxid,
                                             quorumSet);
     AckProcessor ackProcessor = new AckProcessor(quorumSet, getQuorumSize());
-    // Starts broadcasting HEARTBEAT message.
-    HeartbeatTask heartbeatTask = new HeartbeatTask(quorumSet);
-
     // Adds leader itself to quorum set.
     SyncProposalProcessor syncProcessor =
         new SyncProposalProcessor(this.log,
                                   this.transport);
-
     CommitProcessor commitProcessor =
         new CommitProcessor(this.log,
                             this.stateMachine,
                             this.config.getServerId());
-
     ShortCircuitTransport scTransport =
         new ShortCircuitTransport(syncProcessor, commitProcessor);
-
     // Adds itself in quorumSet.
     PeerHandler lh = new PeerHandler(this.config.getServerId(),
-                                     scTransport);
+                                     scTransport,
+                                     this.config.getTimeout() / 3);
     lh.setFuture(es.submit(lh));
     quorumSet.put(this.config.getServerId(), lh);
-
     // Sends commit message to commit all the transactions proposed in
     // synchronizing phase.
     Zxid lastZxid = this.log.getLatestZxid();
@@ -979,7 +975,9 @@ public class Participant implements Callable<Void>,
           AckEpoch ackEpoch = msg.getAckEpoch();
           Zxid zxid = MessageBuilder.fromProtoZxid(ackEpoch.getLastZxid());
           // Updates follower's f.a and lastZxid.
-          PeerHandler ph = new PeerHandler(source, this.transport);
+          PeerHandler ph = new PeerHandler(source,
+                                           this.transport,
+                                           this.config.getTimeout() / 3);
           ph.setLastZxid(zxid);
           ph.setNewLeaderEpoch(currentEpoch);
           ph.setSyncTask(new SyncPeerTask(source, zxid));
@@ -1030,12 +1028,17 @@ public class Participant implements Callable<Void>,
           getQuorumSize());
 
     } finally {
-      heartbeatTask.shutdown();
       // Stop all the processors.
-      ackProcessor.shutdown();
-      preproc.shutdown();
-      commitProcessor.shutdown();
-      syncProcessor.shutdown();
+      try {
+        ackProcessor.shutdown();
+        preproc.shutdown();
+        commitProcessor.shutdown();
+        syncProcessor.shutdown();
+      } catch (ExecutionException e) {
+        LOG.error("Leader {} caught exectuion exception.",
+                  this.config.getServerId(),
+                  e);
+      }
       for (PeerHandler ph : quorumSet.values()) {
         ph.shutdown();
       }
@@ -1053,6 +1056,9 @@ public class Participant implements Callable<Void>,
     long currentTime = System.nanoTime();
     long timeoutNs = this.config.getTimeout() * (long)1000000;
     for (PeerHandler ph : quorumSet.values()) {
+      if (ph.getServerId().equals(this.config.getServerId())) {
+        continue;
+      }
       if (currentTime - ph.getLastHeartbeatTime() >= timeoutNs) {
         // Removes the peer who is likely to be dead.
         quorumSet.remove(ph.getServerId());
@@ -1261,8 +1267,30 @@ public class Participant implements Callable<Void>,
         Message msg = tuple.getMessage();
         String source = tuple.getSource();
 
-        if (source.equals(this.electedLeader)) {
-          // Updates the time of last received HEARTBEAT message from leader.
+        // The follower only expect receiving message from leader and
+        // itself(REQUEST).
+        if (!source.equals(this.electedLeader)) {
+
+          long timeDiff = (System.nanoTime() - lastHeartbeatTime) / 1000000;
+
+          if ((int)timeDiff >= this.config.getTimeout()) {
+            // HEARTBEAT timeout.
+            LOG.warn("Follower {} detects there's a timeout in waiting"
+                + "message from leader {}, goes back to leader electing",
+                this.config.getServerId(),
+                this.electedLeader);
+
+            throw new TimeoutException("HEARTBEAT timeout!");
+          }
+
+          if (!source.equals(this.config.getServerId())) {
+            LOG.debug("Follower {} got unexpected message from {}, ignores.",
+                      this.config.getServerId(),
+                      source);
+            continue;
+          }
+        } else {
+          // Updates leader's last HEARTBEAT message time.
           lastHeartbeatTime = System.nanoTime();
         }
 
@@ -1302,21 +1330,14 @@ public class Participant implements Callable<Void>,
         } else {
           LOG.warn("Unexpected messgae : {} from {}", msg, source);
         }
-
-        // Checks if the leader is alive or not.
-        if (System.nanoTime() - lastHeartbeatTime >=
-            this.config.getTimeout() * (long)1000000) {
-          LOG.debug("Follower {} detects the timeout from leader {}. Now goes"
-              + " back to leader election.",
-              this.config.getServerId(),
-              this.electedLeader);
-
-          throw new TimeoutException("Heartbeat timeout!");
-        }
       }
     } finally {
-      syncProcessor.shutdown();
-      commitProcessor.shutdown();
+      try {
+        commitProcessor.shutdown();
+        syncProcessor.shutdown();
+      } catch (ExecutionException e) {
+        LOG.error("Follower {} caught execution exception.", e);
+      }
     }
   }
 
@@ -1404,37 +1425,6 @@ public class Participant implements Callable<Void>,
           Message prop = MessageBuilder.buildProposal(txn);
           sendMessage(peerId, prop);
         }
-      }
-    }
-  }
-
-  /*
-   * Task that broadcasts HEARTBEAT message to all the peers in quorum set.
-   */
-  class HeartbeatTask implements Callable<Void> {
-    private final Map<String, PeerHandler> quorumSet;
-    private final int heartbeatInterval = config.getTimeout() / 2;
-    private Future<Void> ft;
-
-    public HeartbeatTask(Map<String, PeerHandler> quorumSet) {
-      this.quorumSet = quorumSet;
-      this.ft = Executors.newSingleThreadExecutor().submit(this);
-    }
-
-    public void shutdown() {
-      this.ft.cancel(true);
-      LOG.debug("Heartbeat task has been shutdown.");
-    }
-
-    @Override
-    public Void call() throws InterruptedException {
-      LOG.debug("Heartbeat task gets started.");
-      Message msg = MessageBuilder.buildHeartbeat();
-      while (true) {
-        LOG.debug("Leader broadcasts HEARTBEAT message to quorum of size {}",
-                  this.quorumSet.keySet().size());
-        broadcast(this.quorumSet.keySet().iterator(), msg);
-        Thread.sleep(this.heartbeatInterval);
       }
     }
   }
