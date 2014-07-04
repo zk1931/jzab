@@ -27,6 +27,8 @@ public class Request {
   private final String serverId;
   private final Message message;
 
+  public static final Request REQ_DEAD = new Request(null, null);
+
   public Request(String serverId, Message message) {
     this.serverId = serverId;
     this.message = message;

@@ -20,9 +20,11 @@ package org.apache.zab;
 
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+
 import org.apache.zab.proto.ZabMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,6 +73,11 @@ public class CommitProcessor implements RequestProcessor,
     try {
       while (true) {
         Request request = this.commitQueue.take();
+
+        if (request == Request.REQ_DEAD) {
+          break;
+        }
+
         ZabMessage.Commit commit = request.getMessage().getCommit();
         Zxid zxid = MessageBuilder.fromProtoZxid(commit.getZxid());
         LOG.debug("{} got commit request {}, last {}.",
@@ -119,11 +126,13 @@ public class CommitProcessor implements RequestProcessor,
       LOG.error("Caught exception in CommitProcessor!", e);
       throw e;
     }
+    LOG.debug("CommitProcessor has been shut down.");
+    return null;
   }
 
   @Override
-  public void shutdown() {
-    this.ft.cancel(true);
-    LOG.debug("CommitProcessor has been shut down.");
+  public void shutdown() throws InterruptedException, ExecutionException {
+    this.commitQueue.add(Request.REQ_DEAD);
+    this.ft.get();
   }
 }

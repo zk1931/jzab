@@ -92,6 +92,11 @@ public class PeerHandler implements Callable<Void> {
    */
   protected final Transport transport;
 
+  /**
+   * The intervals of sending HEARTBEAT messages.
+   */
+  protected final int heartbeatIntervalMs;
+
   protected Future<Void> future = null;
 
   private static final Logger LOG = LoggerFactory.getLogger(PeerHandler.class);
@@ -101,10 +106,14 @@ public class PeerHandler implements Callable<Void> {
    *
    * @param serverId the server id of the peer.
    * @param transport the transport object used to send messages.
+   * @param heartbeatIntervalMs the interval of sending HEARTBEAT messages.
    */
-  public PeerHandler(String serverId, Transport transport) {
+  public PeerHandler(String serverId,
+                     Transport transport,
+                     int heartbeatIntervalMs) {
     this.serverId = serverId;
     this.transport = transport;
+    this.heartbeatIntervalMs = heartbeatIntervalMs;
     updateHeartbeatTime();
   }
 
@@ -199,10 +208,17 @@ public class PeerHandler implements Callable<Void> {
       sendMessage(nl);
     }
 
+    Message heartbeat = MessageBuilder.buildHeartbeat();
+
     while (true) {
-      Message msg = this.broadcastingQueue.poll(100, TimeUnit.MILLISECONDS);
+
+      Message msg = this.broadcastingQueue.poll(this.heartbeatIntervalMs,
+                                                TimeUnit.MILLISECONDS);
 
       if (msg == null) {
+        // Only send HEARTBEAT message if there hasn't been any other outgoing
+        // messages for a certain duration.
+        sendMessage(heartbeat);
         continue;
       }
 
