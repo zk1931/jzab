@@ -18,42 +18,42 @@
 
 package org.apache.zab;
 
-import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Message;
-import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
 /**
- * This class will send acknowledgment to leader.
+ * Accepts acknowledgment from peers and broadcasts COMMIT message if there're
+ * any committed transactions.
  */
 public class AckProcessor implements RequestProcessor,
-                                     Callable<Integer> {
+                                        Callable<Void> {
 
   private final BlockingQueue<Request> ackQueue =
       new LinkedBlockingQueue<Request>();
 
-  private final Transport transport;
+  private final Map<String, PeerHandler> quorumSet;
+
+  private final int quorumSize;
 
   private static final Logger LOG =
       LoggerFactory.getLogger(AckProcessor.class);
 
-  Future<Integer> ft;
+  Future<Void> ft;
 
-  /**
-   * Constructs an AckProcessor.
-   *
-   * @param transport it will be used to send acknowledgment.
-   */
-  public AckProcessor(Transport transport) {
-    this.transport = transport;
-    // Starts running.
+  public AckProcessor(Map<String, PeerHandler> quorumSet,
+                         int quorumSize) {
+    this.quorumSet = quorumSet;
+    this.quorumSize = quorumSize;
     ft = Executors.newSingleThreadExecutor().submit(this);
   }
 
@@ -63,21 +63,42 @@ public class AckProcessor implements RequestProcessor,
   }
 
   @Override
-  public Integer call() throws Exception {
-
+  public Void call() throws Exception {
     LOG.debug("AckProcessor gets started.");
-
-    while (true) {
-      Request req = ackQueue.take();
-      String leaderId = req.getServerId();
-      Zxid ackZxid = MessageBuilder.fromProtoZxid(req.getMessage()
-                                                     .getProposal()
-                                                     .getZxid());
-      Message ack = MessageBuilder.buildAck(ackZxid);
-      ByteBuffer buffer = ByteBuffer.wrap(ack.toByteArray());
-      this.transport.send(leaderId, buffer);
+    try {
+      while (true) {
+        Request request = ackQueue.take();
+        String source = request.getServerId();
+        ZabMessage.Ack ack = request.getMessage().getAck();
+        Zxid zxid = MessageBuilder.fromProtoZxid(ack.getZxid());
+        this.quorumSet.get(source).setLastAckedZxid(zxid);
+        ArrayList<Zxid> zxids = new ArrayList<Zxid>();
+        for (PeerHandler ph : quorumSet.values()) {
+          zxids.add(ph.getLastAckedZxid());
+        }
+        // Sorts the last ACK zxid of each peer to find one transaction which
+        // can be committed safely.
+        Collections.sort(zxids);
+        Zxid zxidCanCommit = zxids.get(zxids.size() - this.quorumSize);
+        LOG.debug("CAN COMMIT : {}", zxidCanCommit);
+        if (zxidCanCommit.compareTo(Zxid.ZXID_NOT_EXIST) == 0) {
+          continue;
+        }
+        LOG.debug("Will send commit {} to quorum set.", zxidCanCommit);
+        Message commit = MessageBuilder.buildCommit(zxidCanCommit);
+        for (PeerHandler ph : quorumSet.values()) {
+          ph.queueMessage(commit);
+        }
+      }
+    } catch (Exception e) {
+      LOG.error("Caught exception in AckProcessor!", e);
+      throw e;
     }
-
   }
 
+  @Override
+  public void shutdown() {
+    this.ft.cancel(true);
+    LOG.debug("AckProcesser has been shut down.");
+  }
 }

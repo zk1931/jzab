@@ -29,12 +29,17 @@ import java.util.Properties;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Dummy StateMachine implementation. Used for test only.
  */
 class TestStateMachine implements StateMachine {
   ArrayList<Transaction> deliveredTxns = new ArrayList<Transaction>();
+
+  private static final Logger LOG =
+      LoggerFactory.getLogger(TestStateMachine.class);
 
   /**
    * The expected delivered txns.
@@ -57,6 +62,7 @@ class TestStateMachine implements StateMachine {
   @Override
   public void deliver(Zxid zxid, ByteBuffer stateUpdate) {
     // Add the delivered message to list.
+    LOG.debug("Delivers txn {}", zxid);
     this.deliveredTxns.add(new Transaction(zxid, stateUpdate));
 
     if (txnsCount != null) {

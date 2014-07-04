@@ -18,30 +18,32 @@
 
 package org.apache.zab;
 
+import java.nio.ByteBuffer;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import org.apache.zab.proto.ZabMessage.Message;
+import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * This class manages the logic synchronizing the transactions to disk. It can
- * batch several transactions and sync to disk once. The next request processor
- * should be AckProcessor to acknowledge the synchronized transactions.
+ * batch several transactions and sync to disk once.
  */
 public class SyncProposalProcessor implements RequestProcessor,
-                                              Callable<Integer> {
+                                              Callable<Void> {
 
   private final Log log;
-
-  private final RequestProcessor nextProcessor;
 
   private final BlockingQueue<Request> proposalQueue =
       new LinkedBlockingQueue<Request>();
 
-  Future<Integer> ft;
+  Future<Void> ft;
+
+  private final Transport transport;
 
   private static final Logger LOG =
       LoggerFactory.getLogger(SyncProposalProcessor.class);
@@ -50,11 +52,11 @@ public class SyncProposalProcessor implements RequestProcessor,
    * Constructs a SyncProposalProcessor object.
    *
    * @param log the log which the transaction will be synchronized to.
-   * @param nextProcessor next request processor. (it should be AckProcessor)
+   * @param transport used to send acknowledgment.
    */
-  public SyncProposalProcessor(Log log, RequestProcessor nextProcessor) {
+  public SyncProposalProcessor(Log log, Transport transport) {
     this.log = log;
-    this.nextProcessor = nextProcessor;
+    this.transport = transport;
     // Starts running.
     ft = Executors.newSingleThreadExecutor().submit(this);
   }
@@ -64,25 +66,35 @@ public class SyncProposalProcessor implements RequestProcessor,
     proposalQueue.add(request);
   }
 
+  void sendAck(String source, Zxid ackZxid) {
+    Message ack = MessageBuilder.buildAck(ackZxid);
+    ByteBuffer buffer = ByteBuffer.wrap(ack.toByteArray());
+    this.transport.send(source, buffer);
+  }
+
   @Override
-  public Integer call() throws Exception {
-
+  public Void call() throws Exception {
     LOG.debug("SyncRequestProcessor gets started.");
-
-    while (true) {
-
-      Request request = this.proposalQueue.take();
-
-      Transaction txn = MessageBuilder
-                        .fromProposal(request.getMessage().getProposal());
-
-      LOG.debug("Syncing transaction {} to disk.", txn);
-      this.log.append(txn);
-      this.log.sync();
-
-      // Passe to AckProcessor.
-      this.nextProcessor.processRequest(request);
+    try {
+      while (true) {
+        Request request = this.proposalQueue.take();
+        Transaction txn = MessageBuilder
+                          .fromProposal(request.getMessage().getProposal());
+        LOG.debug("Syncing transaction {} to disk.", txn);
+        this.log.append(txn);
+        this.log.sync();
+        sendAck(request.getServerId(), txn.getZxid());
+      }
+    } catch (Exception e) {
+      LOG.error("Caught exception in SyncProposalProcessor!");
+      throw e;
     }
+  }
+
+  @Override
+  public void shutdown() {
+    this.ft.cancel(true);
+    LOG.debug("SyncProposalProcessor has been shut down.");
   }
 
 }

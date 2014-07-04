@@ -21,7 +21,8 @@ package org.apache.zab;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.ListIterator;
 
 /**
@@ -30,8 +31,7 @@ import java.util.ListIterator;
  */
 public class DummyLog implements Log {
 
-  private final ArrayList<Transaction> memLog = new ArrayList<Transaction>();
-
+  private final List<Transaction> memLog = new LinkedList<Transaction>();
 
   public DummyLog() {
   }
@@ -47,7 +47,7 @@ public class DummyLog implements Log {
   }
 
   @Override
-  public void append(Transaction txn) {
+  public synchronized void append(Transaction txn) {
     if (txn.getZxid().compareTo(getLatestZxid()) <= 0) {
       throw new RuntimeException("The zxid of txn is smaller than last zxid"
           + "in log");
@@ -56,7 +56,7 @@ public class DummyLog implements Log {
   }
 
   @Override
-  public void truncate(Zxid zxid) {
+  public synchronized void truncate(Zxid zxid) {
     int idx;
     for (idx = 0; idx < memLog.size(); ++idx) {
       if (memLog.get(idx).getZxid().compareTo(zxid) > 0) {
@@ -67,7 +67,7 @@ public class DummyLog implements Log {
   }
 
   @Override
-  public Zxid getLatestZxid() {
+  public synchronized Zxid getLatestZxid() {
     if (memLog.size() == 0) {
       return Zxid.ZXID_NOT_EXIST;
     }
@@ -75,7 +75,7 @@ public class DummyLog implements Log {
   }
 
   @Override
-  public LogIterator getIterator(Zxid zxid) throws IOException {
+  public synchronized LogIterator getIterator(Zxid zxid) throws IOException {
     DummyLogIterator iter = new DummyLogIterator();
     while (iter.hasNext()) {
       Zxid z = iter.next().getZxid();

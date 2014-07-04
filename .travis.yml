@@ -24,3 +24,6 @@ script:
 # Publish javadoc to http://zk-1931.github.io/javazab/javadoc
 after_success:
   - .utility/publish-artifacts.sh
+
+after_failure:
+  - cat target/surefire-reports/*output.txt

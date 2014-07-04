@@ -21,9 +21,13 @@ package org.apache.zab;
 import java.io.IOException;
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.List;
 import java.util.Properties;
+import org.apache.zab.transport.DummyTransport.Message;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,34 +43,34 @@ public class QuorumZab extends Zab {
 
   private static final Logger LOG = LoggerFactory.getLogger(QuorumZab.class);
 
+  Future<Void> ft;
+
   public QuorumZab(StateMachine stateMachine,
-                   Properties prop,
-                   Zxid lastCommittedZxid)
+                   Properties prop)
       throws IOException {
     super(stateMachine, prop);
 
     this.participant = new Participant(this.config,
-                                       stateMachine,
-                                       lastCommittedZxid);
+                                       stateMachine);
 
-    Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY)
-             .execute(this.participant);
+    this.ft = Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY)
+             .submit(this.participant);
   }
 
   QuorumZab(StateMachine stateMachine,
             StateChangeCallback cb,
-            TestState initialState,
-            Zxid lastCommittedZxid) throws IOException {
+            FailureCaseCallback fcb,
+            TestState initialState) throws IOException {
 
     super(stateMachine, initialState.prop);
 
     this.participant = new Participant(stateMachine,
                                        cb,
-                                       initialState,
-                                       lastCommittedZxid);
+                                       fcb,
+                                       initialState);
 
-    Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY)
-             .execute(this.participant);
+    this.ft = Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY)
+             .submit(this.participant);
   }
 
   @Override
@@ -159,6 +163,69 @@ public class QuorumZab extends Zab {
   }
 
   /**
+   * Will be thrown to force servers go back to electing phase, for test
+   * purpose only.
+   */
+  static class SimulatedException extends RuntimeException {
+    private static final long serialVersionUID = 1L;
+
+    public SimulatedException(String desc) {
+      super(desc);
+    }
+
+    public SimulatedException() {}
+  }
+
+  /**
+   * Interface of callbacks which simulate different kinds of failure cases for
+   * testing purpose.
+   */
+  interface FailureCaseCallback {
+
+    /**
+     * Will be called when entering discovering phase of leader.
+     *
+     * @throws SimulatedException forces leader goes back to electing phase.
+     */
+    void leaderDiscovering();
+
+    /**
+     * Will be called when entering discovering phase of followers.
+     *
+     * @throws SimulatedException forces followers goes back to electing phase.
+     */
+    void followerDiscovering();
+
+    /**
+     * Will be called when entering synchronizing phase of leader.
+     *
+     * @throws SimulatedException forces leader goes back to electing phase.
+     */
+    void leaderSynchronizing();
+
+    /**
+     * Will be called when entering synchronizing phase of followers.
+     *
+     * @throws SimulatedException forces followers goes back to electing phase.
+     */
+    void followerSynchronizing();
+
+    /**
+     * Will be called when entering broadcasting phase of leader.
+     *
+     * @throws SimulatedException forces leader goes back to electing phase.
+     */
+    void leaderBroadcasting();
+
+    /**
+     * Will be called when entering discovering phase of followers.
+     *
+     * @throws SimulatedException forces followers goes back to electing phase.
+     */
+    void followerBroadcasting();
+  }
+
+  /**
    * Used for initializing the state of QuorumZab for testing purpose.
    */
   static class TestState {
@@ -171,6 +238,8 @@ public class QuorumZab extends Zab {
     private final File fProposedEpoch;
 
     Log log = null;
+
+    private ConcurrentHashMap<String, BlockingQueue<Message>> queueMap = null;
 
     /**
      * Creates the TestState object. It should be passed to QuorumZab to
@@ -223,6 +292,16 @@ public class QuorumZab extends Zab {
 
     Log getLog() {
       return this.log;
+    }
+
+    ConcurrentHashMap<String, BlockingQueue<Message>> getTransportMap() {
+      return this.queueMap;
+    }
+
+    TestState setTransportMap(
+        ConcurrentHashMap<String, BlockingQueue<Message>> qMap) {
+      this.queueMap = qMap;
+      return this;
     }
   }
 }

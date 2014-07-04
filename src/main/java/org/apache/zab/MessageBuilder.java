@@ -318,4 +318,13 @@ public final class MessageBuilder {
                                .setHandshake(handshake)
                                .build();
   }
+
+  /**
+   * Creates a HEARTBEAT message.
+   *
+   * @return a protobuf message.
+   */
+  public static Message buildHeartbeat() {
+    return Message.newBuilder().setType(MessageType.HEARTBEAT).build();
+  }
 }

@@ -23,7 +23,18 @@ package org.apache.zab;
  * to process request in order.
  */
 public interface RequestProcessor {
+  int POLL_INTERVAL_MS = 100;
 
+  /**
+   * This function should be asynchronous normally, the request should be
+   * processed in separate thread.
+   *
+   * @param request the request object.
+   */
   void processRequest(Request request);
 
+  /**
+   * Shutdown the processor.
+   */
+  void shutdown();
 }
