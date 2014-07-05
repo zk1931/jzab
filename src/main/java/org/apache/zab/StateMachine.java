@@ -42,9 +42,9 @@ public interface StateMachine {
   ByteBuffer preprocess(Zxid zxid, ByteBuffer message);
 
   /**
-   * Called after the state update has been committed.
-   * This method is called from a single thread to ensure
-   * that the state updates are applied in the same order
+   * Upcall to deliver a state update. This method is
+   * called from a single thread to ensure that the
+   * state updates are applied in the same order
    * they arrived.
    *
    * @param zxid zxid of the message
@@ -53,10 +53,10 @@ public interface StateMachine {
   void deliver(Zxid zxid, ByteBuffer stateUpdate);
 
   /**
-   * Serializes state of the application to OutputStream.
-   * Once this callback is called. The user should write
-   * the state of their application to os. This can be
-   * called from a different thread of the that calls deliver
+   * Upcall to serialize the application state using an
+   * OutputStream. Upon a call to getState, the application
+   * writes its state to os. getState must be called from a
+   * different thread of the one that calls deliver
    * to avoid blocking the delivery of the message.
    *
    * @param os the output stream
@@ -65,10 +65,10 @@ public interface StateMachine {
 
   /**
    * Deserializes the state of the application from the
-   * IputStream. Once this callback is called. The user
-   * could restore their application state from the input
-   * stream. This can be only called from the same thread of
-   * the one calls deliver to avoid ending up in inconsistent
+   * InputStream. Once this callback is called. The app
+   * restores the state using the input stream. This
+   * method must be called from the same thread of the
+   * one calls deliver to avoid ending up in inconsistent
    * state.
    *
    * @param is the input stream
