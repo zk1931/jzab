@@ -38,12 +38,22 @@ public abstract class Transport {
 
   /**
    * Sends a message to a specific server. The channel delivers
-   * the message in FIFO order.
+   * the message in FIFO order. Transport establishes a connection to the
+   * destination implicitly the first time this method is called with a given
+   * destination.
    *
    * @param destination the id of the message destination
    * @param message the message to be sent
    */
   public abstract void send(String destination, ByteBuffer message);
+
+  /**
+   * Closes the connection to the destination. If there is no connection to the
+   * destination, this method does nothing. This method clears any pending
+   * outgoing messages. Transport reestablishes the connection on the next
+   * send().
+   */
+  public abstract void disconnect(String destination);
 
   /**
    * Broadcasts message to all the peers.
@@ -71,9 +81,12 @@ public abstract class Transport {
 
     /**
      * Callback that notifies the the connection to peer is disconnected.
+     * Note that this callback is invoked even when the connection was closed
+     * explicitly by the user via the disconnect() method.
      *
-     * @param serverId the id of peer which is disconnected from this one.
+     * @param destination the ID of the peer from which the transport got
+     *                    disconnected
      */
-    void onDisconnected(String serverId);
+    void onDisconnected(String destination);
   }
 }

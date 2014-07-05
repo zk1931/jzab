@@ -117,6 +117,7 @@ public class DummyTransport extends Transport {
    *
    * @param destination the id of the message destination.
    */
+  @Override
   public void disconnect(String destination) {
     send(destination, new DisconnectMessage(this.serverId));
   }
