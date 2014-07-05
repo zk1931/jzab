@@ -56,12 +56,16 @@ public abstract class Transport {
   public abstract void disconnect(String destination);
 
   /**
-   * Broadcasts message to all the peers.
+   * Broadcasts a message to a set of peers.
    *
    * @param peers the set of destination peers.
    * @param message the message to be broadcasted.
    */
-  public abstract void broadcast(Iterator<String> peers, ByteBuffer message);
+  public void broadcast(Iterator<String> peers, ByteBuffer message) {
+    while (peers.hasNext()) {
+      send(peers.next(), message);
+    }
+  }
 
   /**
    * Interface of receiver class. Transport will notify the receiver of
