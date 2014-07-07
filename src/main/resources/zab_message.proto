@@ -22,6 +22,7 @@ message Message {
     TRUNCATE = 13;
     SNAPSHOT = 14;
     REQUEST = 15;
+    HANDSHAKE = 16;
     INVALID_MESSAGE = 30;
   }
 
@@ -42,6 +43,7 @@ message Message {
   optional Snapshot snapshot = 11;
   optional Request request = 12;
   optional Commit commit = 13;
+  optional Handshake handshake = 14;
   optional InvalidMessage invalid = 30;
 }
 
@@ -109,4 +111,13 @@ message Commit {
 
 message Request {
   required bytes request = 1;
+}
+
+// This message is used by NettyTransport. When a TCP connection is established,
+// the TCP client send a Handshake message with its own node ID (hostname:port) to
+// the TCP server, where the port is the port the TCP client is listening to for
+// accepting incoming connections. When the TCP server receives the Handshake
+// message, it sends back a Handshake message with its node ID.
+message Handshake {
+  required string node_id = 1;
 }

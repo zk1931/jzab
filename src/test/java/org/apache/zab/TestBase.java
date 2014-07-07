@@ -19,6 +19,9 @@
 package org.apache.zab;
 
 import java.io.File;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.zab.transport.DummyTransport;
 import org.junit.Rule;
 import org.junit.rules.TestName;
@@ -32,6 +35,9 @@ import org.slf4j.LoggerFactory;
  */
 public class TestBase {
   private static final Logger LOG = LoggerFactory.getLogger(TestBase.class);
+
+  // Used to generate unique port number for unit tests.
+  private static AtomicInteger portGenerator = new AtomicInteger(50000);
 
   @Rule public TestName testName = new TestName();
 
@@ -72,5 +78,31 @@ public class TestBase {
     LOG.debug("Creating a data directory: {}", dirName);
     dir.mkdirs();
     return dir;
+  }
+
+  /**
+   * Returns a unique integer to be used as a port number.
+   */
+  protected int getUniquePort() {
+    return portGenerator.getAndIncrement();
+  }
+
+  /**
+   * Returns host:port with a given port.
+   */
+  protected String getHostPort(int port) {
+    try {
+      return InetAddress.getLocalHost().getCanonicalHostName().toString() +
+             ":" + port;
+    } catch (UnknownHostException ex) {
+      return "localhost" + ":" + port;
+    }
+  }
+
+  /**
+   * Returns host:port string with a unique port.
+   */
+  protected String getUniqueHostPort() {
+    return getHostPort(getUniquePort());
   }
 }

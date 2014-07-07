@@ -25,6 +25,7 @@ import org.apache.zab.proto.ZabMessage.Ack;
 import org.apache.zab.proto.ZabMessage.AckEpoch;
 import org.apache.zab.proto.ZabMessage.Commit;
 import org.apache.zab.proto.ZabMessage.Diff;
+import org.apache.zab.proto.ZabMessage.Handshake;
 import org.apache.zab.proto.ZabMessage.InvalidMessage;
 import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.NewEpoch;
@@ -302,6 +303,19 @@ public final class MessageBuilder {
 
     return Message.newBuilder().setType(MessageType.COMMIT)
                                .setCommit(commit)
+                               .build();
+  }
+
+  /**
+   * Creates a HANDSHAKE message.
+   *
+   * @param nodeId the node ID in the handshake message.
+   * @return a protobuf message.
+   */
+  public static Message buildHandshake(String nodeId) {
+    Handshake handshake = Handshake.newBuilder().setNodeId(nodeId).build();
+    return Message.newBuilder().setType(MessageType.HANDSHAKE)
+                               .setHandshake(handshake)
                                .build();
   }
 }
