@@ -146,12 +146,17 @@ public class NettyTransport extends Transport {
         }
 
         String remoteId = message.getHandshake().getNodeId();
+        LOG.debug("{} received handshake from {}", hostPort, remoteId);
         Sender sender = new Sender(remoteId, ctx.channel());
         Sender currentSender = senders.putIfAbsent(remoteId, sender);
 
         if (currentSender != null) {
           if (currentSender.isServerSide) {
             LOG.debug("Rejecting a duplicate handshake from {}", remoteId);
+            ctx.close();
+            return;
+          } else if (currentSender.future != null) {
+            LOG.debug("{} is already running. Ignore {}", hostPort, remoteId);
             ctx.close();
             return;
           } else if (hostPort.compareTo(remoteId) > 0) {
@@ -173,7 +178,8 @@ public class NettyTransport extends Transport {
         ctx.channel().attr(REMOTE_ID).set(remoteId);
 
         // Send a response and remove the handler from the pipeline.
-        LOG.debug("Responding to handshake message");
+        LOG.debug("Server-side handshake completed from {} to {}", hostPort,
+                  remoteId);
         Message response = MessageBuilder.buildHandshake(hostPort);
         ByteBuffer buf = ByteBuffer.wrap(response.toByteArray());
         ctx.channel().writeAndFlush(Unpooled.wrappedBuffer(buf));
@@ -196,8 +202,6 @@ public class NettyTransport extends Transport {
       ByteBuf bb = (ByteBuf)msg;
       try {
         String remoteId = ctx.channel().attr(NettyTransport.REMOTE_ID).get();
-        LOG.debug("Received a message: {} {}", bb, remoteId);
-
         // TODO avoid copying ByteBuf to ByteBuffer.
         byte[] bytes = new byte[bb.readableBytes()];
         bb.readBytes(bytes);
@@ -245,15 +249,21 @@ public class NettyTransport extends Transport {
       return;
     }
 
-    Sender sender = senders.get(destination);
-    if (sender != null) {
-      sender.requests.add(message);
+    Sender currentSender = senders.get(destination);
+    if (currentSender != null) {
+      currentSender.requests.add(message);
     } else {
       // no connection exists.
-      LOG.debug("No connection to {}. Creating a new one", destination);
-      sender = new Sender(hostPort, destination);
-      sender.requests.add(message);
-      senders.putIfAbsent(destination, sender);
+      LOG.debug("No connection from {} to {}. Creating a new one",
+                hostPort, destination);
+      Sender newSender = new Sender(hostPort, destination);
+      currentSender = senders.putIfAbsent(destination, newSender);
+      if (currentSender == null) {
+        newSender.requests.add(message);
+        newSender.startHandshake();
+      } else {
+        currentSender.requests.add(message);
+      }
     }
   }
 
@@ -271,11 +281,14 @@ public class NettyTransport extends Transport {
    */
   public class Sender implements Callable<Void> {
     private final String destination;
+    private Bootstrap bootstrap = null;
     private Channel channel;
     private Future<Void> future;
     private EventLoopGroup workerGroup = new NioEventLoopGroup();
     boolean isServerSide;
     final BlockingDeque<ByteBuffer> requests = new LinkedBlockingDeque<>();
+    private int handshakeRetries = 0;
+    private static final int MAX_HANDSHAKE_RETRIES = 3;
 
     public Sender(String destination, Channel channel) {
       this.destination = destination;
@@ -286,17 +299,13 @@ public class NettyTransport extends Transport {
     public Sender(final String source, final String destination) {
       this.isServerSide = false;
       this.destination = destination;
-      String[] address = destination.split(":", 2);
-      String host = address[0];
-      int port = Integer.parseInt(address[1]);
-      LOG.debug("host: {}, port: {}", host, port);
-      Bootstrap b = new Bootstrap();
-      b.group(workerGroup);
-      b.channel(NioSocketChannel.class);
-      b.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 1000);
-      b.option(ChannelOption.SO_KEEPALIVE, true);
-      b.option(ChannelOption.TCP_NODELAY, true);
-      b.handler(new ChannelInitializer<SocketChannel>() {
+      bootstrap = new Bootstrap();
+      bootstrap.group(workerGroup);
+      bootstrap.channel(NioSocketChannel.class);
+      bootstrap.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 1000);
+      bootstrap.option(ChannelOption.SO_KEEPALIVE, true);
+      bootstrap.option(ChannelOption.TCP_NODELAY, true);
+      bootstrap.handler(new ChannelInitializer<SocketChannel>() {
         @Override
         public void initChannel(SocketChannel ch) throws Exception {
           // Inbound handlers.
@@ -308,12 +317,20 @@ public class NettyTransport extends Transport {
           ch.pipeline().addLast("frameEncoder", new LengthFieldPrepender(4));
         }
       });
-      b.connect(host, port).addListener(new ChannelFutureListener() {
+    }
+
+    public void startHandshake() {
+      String[] address = destination.split(":", 2);
+      String host = address[0];
+      int port = Integer.parseInt(address[1]);
+      LOG.debug("host: {}, port: {}", host, port);
+      bootstrap.connect(host, port).addListener(new ChannelFutureListener() {
         @Override
         public void operationComplete(ChannelFuture cfuture) {
           if (cfuture.isSuccess()) {
-            LOG.debug("Connected to {}. Sending a handshake", destination);
-            Message msg = MessageBuilder.buildHandshake(source);
+            LOG.debug("{} connected to {}. Sending a handshake",
+                      hostPort, destination);
+            Message msg = MessageBuilder.buildHandshake(hostPort);
             ByteBuffer bb = ByteBuffer.wrap(msg.toByteArray());
             channel = cfuture.channel();
             channel.writeAndFlush(Unpooled.wrappedBuffer(bb));
@@ -326,8 +343,9 @@ public class NettyTransport extends Transport {
     }
 
     public void handshakeCompleted() {
-      LOG.debug("Client-side handshake completed to {}", destination);
+      LOG.debug("Client handshake completed: {} => {}", hostPort, destination);
       Sender sender = senders.get(destination);
+      assert sender == this;
       sender.channel.attr(REMOTE_ID).set(destination);
       sender.channel.pipeline().remove(ReadTimeoutHandler.class);
       sender.channel.pipeline().addLast(new ByteBufferHandler());
@@ -336,12 +354,19 @@ public class NettyTransport extends Transport {
     }
 
     public void handshakeFailed() {
-      if (senders.remove(destination, this)) {
-        LOG.debug("Removed itself from the senders map: {}", destination);
+      handshakeRetries++;
+      if (handshakeRetries < MAX_HANDSHAKE_RETRIES) {
+        Sender sender = senders.get(destination);
+        if (sender == this) {
+          LOG.debug("Restarting handshake: {} => {}", hostPort, destination);
+          startHandshake();
+        }
+      } else if (senders.remove(destination, this)) {
+        LOG.debug("Removed itself from the senders map: {} => {}",
+                  hostPort, destination);
         receiver.onDisconnected(destination);
-      } else if (!senders.containsKey(destination)) {
-        LOG.debug("Handshake failed to : {}", destination);
-        receiver.onDisconnected(destination);
+      } else {
+        assert senders.containsKey(destination);
       }
     }
 
@@ -355,7 +380,7 @@ public class NettyTransport extends Transport {
 
     @Override
     public Void call() throws Exception {
-      LOG.debug("Started the sender to {}", destination);
+      LOG.debug("Started the sender: {} => {}", hostPort, destination);
       try {
         while (true) {
           ByteBuffer buf = requests.take();
@@ -417,7 +442,6 @@ public class NettyTransport extends Transport {
           }
 
           // Handshake is finished. Remove the handler from the pipeline.
-          LOG.debug("Handshake completed. Remote server id: {}", response);
           ctx.pipeline().remove(this);
           handshakeCompleted();
         } finally {
