@@ -20,8 +20,13 @@ package org.apache.zab.transport;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.LinkedList;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.apache.zab.TestBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -45,10 +50,17 @@ public class NettyTransportTest extends TestBase {
     }
   };
 
+  public static ByteBuffer createByteBuffer(int num) {
+    ByteBuffer bb = ByteBuffer.allocate(4);
+    bb.putInt(num);
+    bb.flip();
+    return bb;
+  }
+
   /**
    * Make sure the constructor fails when the port is invalid.
    */
-  @Test(timeout=1000, expected=IllegalArgumentException.class)
+  @Test(timeout=5000, expected=IllegalArgumentException.class)
   public void testInvalidPort() throws Exception {
     NettyTransport transport = new NettyTransport(getHostPort(-1), NOOP);
   }
@@ -71,10 +83,7 @@ public class NettyTransportTest extends TestBase {
     // send messages to itself.
     NettyTransport transport = new NettyTransport(localId, receiver);
     for (int i = 0; i < 20; i++) {
-      ByteBuffer bb = ByteBuffer.allocate(4);
-      bb.putInt(i);
-      bb.flip();
-      transport.send(localId, bb);
+      transport.send(localId, createByteBuffer(i));
     }
 
     // receive messages.
@@ -99,10 +108,7 @@ public class NettyTransportTest extends TestBase {
       }
     };
     NettyTransport transportA = new NettyTransport(peerA, receiverA);
-    ByteBuffer bb = ByteBuffer.allocate(4);
-    bb.putInt(0);
-    bb.flip();
-    transportA.send(peerB, bb);
+    transportA.send(peerB, createByteBuffer(0));
     disconnected.await();
   }
 
@@ -143,10 +149,7 @@ public class NettyTransportTest extends TestBase {
 
     // send messages from A to B.
     for (int i = 0; i < messageCount; i++) {
-      ByteBuffer bb = ByteBuffer.allocate(4);
-      bb.putInt(i);
-      bb.flip();
-      transportA.send(peerB, bb);
+      transportA.send(peerB, createByteBuffer(i));
     }
     latchB.await();
     for (int i = 0; i < messageCount; i++) {
@@ -158,10 +161,7 @@ public class NettyTransportTest extends TestBase {
 
     // send messages from B to A.
     for (int i = 0; i < messageCount; i++) {
-      ByteBuffer bb = ByteBuffer.allocate(4);
-      bb.putInt(i);
-      bb.flip();
-      transportB.send(peerA, bb);
+      transportB.send(peerA, createByteBuffer(i));
     }
     latchA.await();
     for (int i = 0; i < messageCount; i++) {
@@ -204,10 +204,7 @@ public class NettyTransportTest extends TestBase {
     NettyTransport transportB = new NettyTransport(peerB, receiverB);
 
     // A initiates a handshake.
-    ByteBuffer bb = ByteBuffer.allocate(4);
-    bb.putInt(0);
-    bb.flip();
-    transportA.send(peerB, bb);
+    transportA.send(peerB, createByteBuffer(0));
     latchB.await();
 
     // shutdown A and make sure B removes the channel to A.
@@ -245,10 +242,7 @@ public class NettyTransportTest extends TestBase {
     NettyTransport transportB = new NettyTransport(peerB, receiverB);
 
     // A initiates a handshake.
-    ByteBuffer bb = ByteBuffer.allocate(4);
-    bb.putInt(0);
-    bb.flip();
-    transportA.send(peerB, bb);
+    transportA.send(peerB, createByteBuffer(0));
     latchB.await();
 
     // shutdown B and make sure A removes the channel to B.
@@ -300,10 +294,7 @@ public class NettyTransportTest extends TestBase {
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
           // B initiates another handshake before responding to A's handshake.
           for (int i = 0; i < messageCount; i++) {
-            ByteBuffer bb = ByteBuffer.allocate(4);
-            bb.putInt(0);
-            bb.flip();
-            transportB.send(peerA, bb);
+            transportB.send(peerA, createByteBuffer(i));
           }
           ctx.pipeline().remove(this);
           ctx.fireChannelRead(msg);
@@ -312,16 +303,10 @@ public class NettyTransportTest extends TestBase {
 
     // A initiates a handshake.
     for (int i = 0; i < messageCount; i++) {
-      ByteBuffer bb = ByteBuffer.allocate(4);
-      bb.putInt(0);
-      bb.flip();
-      transportA.send(peerB, bb);
+      transportA.send(peerB, createByteBuffer(i));
     }
     latchA.await();
-    // A might have gotten disconnected when it lost the tie-breaker.
-    if (disconnectedA.getCount() > 0) {
-      latchB.await();
-    }
+    latchB.await();
     transportA.shutdown();
     transportB.shutdown();
   }
@@ -360,10 +345,7 @@ public class NettyTransportTest extends TestBase {
     final NettyTransport transportB = new NettyTransport(peerB, receiverB);
 
     for (int i = 0; i < messageCount; i++) {
-      ByteBuffer bb = ByteBuffer.allocate(4);
-      bb.putInt(0);
-      bb.flip();
-      transportA.send(peerB, bb);
+      transportA.send(peerB, createByteBuffer(i));
     }
     latchB.await();
     transportA.disconnect(peerB);
@@ -407,10 +389,7 @@ public class NettyTransportTest extends TestBase {
     final NettyTransport transportB = new NettyTransport(peerB, receiverB);
 
     for (int i = 0; i < messageCount; i++) {
-      ByteBuffer bb = ByteBuffer.allocate(4);
-      bb.putInt(0);
-      bb.flip();
-      transportA.send(peerB, bb);
+      transportA.send(peerB, createByteBuffer(i));
     }
     latchB.await();
     transportB.disconnect(peerA);
@@ -451,12 +430,88 @@ public class NettyTransportTest extends TestBase {
         }
       });
 
-    ByteBuffer bb = ByteBuffer.allocate(4);
-    bb.putInt(0);
-    bb.flip();
-    transportA.send(peerB, bb);
+    transportA.send(peerB, createByteBuffer(0));
     disconnectedA.await();
     transportA.shutdown();
     transportB.shutdown();
+  }
+
+  @Test(timeout=5000)
+  public void testBroadcast() throws Exception {
+    final int messageCount = 100;
+    final String peerA = getUniqueHostPort();
+    final String peerB = getUniqueHostPort();
+    final String peerC = getUniqueHostPort();
+    final CountDownLatch latchA = new CountDownLatch(messageCount * 2);
+    final CountDownLatch latchB = new CountDownLatch(messageCount * 2);
+    final CountDownLatch latchC = new CountDownLatch(messageCount * 2);
+    Transport.Receiver receiverA = new Transport.Receiver() {
+      public void onReceived(String source, ByteBuffer message) {
+        latchA.countDown();
+        LOG.debug("A :{} {} {}", source, message.getInt(), latchA.getCount());
+      }
+      public void onDisconnected(String source) {
+      }
+    };
+    Transport.Receiver receiverB = new Transport.Receiver() {
+      public void onReceived(String source, ByteBuffer message) {
+        latchB.countDown();
+        LOG.debug("B :{} {} {}", source, message.getInt(), latchB.getCount());
+      }
+      public void onDisconnected(String source) {
+      }
+    };
+    Transport.Receiver receiverC = new Transport.Receiver() {
+      public void onReceived(String source, ByteBuffer message) {
+        latchC.countDown();
+        LOG.debug("C :{} {} {}", source, message.getInt(), latchC.getCount());
+      }
+      public void onDisconnected(String source) {
+      }
+    };
+    final NettyTransport transportA = new NettyTransport(peerA, receiverA);
+    final NettyTransport transportB = new NettyTransport(peerB, receiverB);
+    final NettyTransport transportC = new NettyTransport(peerC, receiverC);
+
+    Callable<Void> broadcastA = new Callable<Void>() {
+      public Void call() throws Exception {
+        for (int i = 0; i < messageCount; i++) {
+          transportA.broadcast(Arrays.asList(peerB, peerC).listIterator(),
+                               createByteBuffer(i));
+        }
+        return null;
+      }
+    };
+    Callable<Void> broadcastB = new Callable<Void>() {
+      public Void call() throws Exception {
+        for (int i = 0; i < messageCount; i++) {
+          transportB.broadcast(Arrays.asList(peerA, peerC).listIterator(),
+                               createByteBuffer(i));
+        }
+        return null;
+      }
+    };
+    Callable<Void> broadcastC = new Callable<Void>() {
+      public Void call() throws Exception {
+        for (int i = 0; i < messageCount; i++) {
+          transportC.broadcast(Arrays.asList(peerA, peerB).listIterator(),
+                               createByteBuffer(i));
+        }
+        return null;
+      }
+    };
+    ExecutorService service = Executors.newFixedThreadPool(3);
+    Future<Void> futureA = service.submit(broadcastA);
+    Future<Void> futureB = service.submit(broadcastB);
+    Future<Void> futureC = service.submit(broadcastC);
+    latchA.await();
+    latchB.await();
+    latchC.await();
+    futureA.get();
+    futureB.get();
+    futureC.get();
+    transportA.shutdown();
+    transportB.shutdown();
+    transportC.shutdown();
   }
 }
