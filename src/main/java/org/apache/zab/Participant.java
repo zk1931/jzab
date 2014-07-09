@@ -24,12 +24,12 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -37,6 +37,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.apache.zab.QuorumZab.FailureCaseCallback;
 import org.apache.zab.QuorumZab.StateChangeCallback;
 import org.apache.zab.QuorumZab.TestState;
 import org.apache.zab.proto.ZabMessage;
@@ -53,9 +54,9 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.TextFormat;
 
 /**
- * Participant.
+ * Participant of a Zab ensemble.
  */
-public class Participant implements Runnable,
+public class Participant implements Callable<Void>,
                                     Transport.Receiver,
                                     ServerState,
                                     Election.ElectionCallback {
@@ -68,6 +69,12 @@ public class Participant implements Runnable,
    * Callback interface for testing purpose.
    */
   protected StateChangeCallback stateChangeCallback = null;
+
+  /**
+   * Callback which will be called in different points of code path to simulate
+   * different kinds of failure cases.
+   */
+  protected FailureCaseCallback failCallback = null;
 
   /**
    * Message queue. The receiving callback simply parses the message and puts
@@ -103,11 +110,6 @@ public class Participant implements Runnable,
   protected StateMachine stateMachine = null;
 
   /**
-   * Last committed zxid.
-   */
-  private Zxid lastCommittedZxid = null;
-
-  /**
    * Elected leader.
    */
   String electedLeader = null;
@@ -118,44 +120,6 @@ public class Participant implements Runnable,
   CountDownLatch leaderCondition;
 
   private static final Logger LOG = LoggerFactory.getLogger(Participant.class);
-
-  public Participant(ZabConfig config,
-                     StateMachine stateMachine,
-                     Zxid lastCommittedZxid)
-      throws IOException {
-    this(stateMachine, null, new TestState(config), lastCommittedZxid);
-  }
-
-  Participant(StateMachine stateMachine,
-              StateChangeCallback cb,
-              TestState initialState,
-              Zxid lastCommittedZxid) throws IOException {
-
-    this.config = new ZabConfig(initialState.prop);
-    this.stateMachine = stateMachine;
-    this.fAckEpoch = new File(config.getLogDir(), "AckEpoch");
-    this.fProposedEpoch = new File(config.getLogDir(), "ProposedEpoch");
-    this.lastCommittedZxid = lastCommittedZxid;
-
-    if (lastCommittedZxid == null) {
-      this.lastCommittedZxid = Zxid.ZXID_NOT_EXIST;
-    }
-
-    if (initialState.getLog() == null) {
-      // Transaction log file.
-      File logFile = new File(this.config.getLogDir(), "transaction.log");
-      this.log = new SimpleLog(logFile);
-    } else {
-      this.log = initialState.getLog();
-    }
-
-    LOG.debug("Txn log file for {} is {} ", this.config.getServerId(),
-                                            this.config.getLogDir());
-
-    this.stateChangeCallback = cb;
-    this.transport = new DummyTransport(this.config.getServerId(), this);
-  }
-
 
   /**
    * A tuple holds both message and its source.
@@ -175,6 +139,43 @@ public class Participant implements Runnable,
 
     Message getMessage() {
       return this.message;
+    }
+  }
+
+  public Participant(ZabConfig config,
+                     StateMachine stateMachine)
+      throws IOException {
+    this(stateMachine, null, null, new TestState(config));
+  }
+
+  Participant(StateMachine stateMachine,
+              StateChangeCallback cb,
+              FailureCaseCallback fcb,
+              TestState initialState) throws IOException {
+    this.config = new ZabConfig(initialState.prop);
+    this.stateMachine = stateMachine;
+    this.fAckEpoch = new File(config.getLogDir(), "AckEpoch");
+    this.fProposedEpoch = new File(config.getLogDir(), "ProposedEpoch");
+
+    if (initialState.getLog() == null) {
+      // Transaction log file.
+      File logFile = new File(this.config.getLogDir(), "transaction.log");
+      this.log = new SimpleLog(logFile);
+    } else {
+      this.log = initialState.getLog();
+    }
+
+    LOG.debug("Txn log file for {} is {} ", this.config.getServerId(),
+                                            this.config.getLogDir());
+
+    this.stateChangeCallback = cb;
+    this.failCallback = fcb;
+    if (initialState.getTransportMap() == null) {
+      this.transport = new DummyTransport(this.config.getServerId(), this);
+    } else {
+      this.transport = new DummyTransport(this.config.getServerId(),
+                                          this,
+                                          initialState.getTransportMap());
     }
   }
 
@@ -198,7 +199,7 @@ public class Participant implements Runnable,
         LOG.debug("{} received message from {}: {} ",
                   this.config.getServerId(),
                   source,
-                  TextFormat.shortDebugString(msg));
+                  msg);
       }
 
       // Puts the message in message queue.
@@ -222,28 +223,30 @@ public class Participant implements Runnable,
    * Starts main logic of participant.
    */
   @Override
-  public void run() {
+  public Void call() throws Exception {
 
-    try {
-      if (this.stateChangeCallback != null) {
-        this.stateChangeCallback.electing();
+    while (true) {
+      try {
+        if (this.stateChangeCallback != null) {
+          this.stateChangeCallback.electing();
+        }
+
+        Election electionAlg = new RoundRobinElection();
+        startLeaderElection(electionAlg);
+        waitLeaderElected();
+
+        LOG.debug("{} selected {} as prospective leader.",
+                  this.config.getServerId(),
+                  this.electedLeader);
+
+        if (this.electedLeader.equals(this.config.getServerId())) {
+          lead();
+        } else {
+          follow();
+        }
+      } catch (Exception e) {
+        LOG.warn("Caught an exception ", e);
       }
-
-      Election electionAlg = new RoundRobinElection();
-      startLeaderElection(electionAlg);
-      waitLeaderElected();
-
-      LOG.debug("{} selected {} as prospective leader.",
-                this.config.getServerId(),
-                this.electedLeader);
-
-      if (this.electedLeader.equals(this.config.getServerId())) {
-        lead();
-      } else {
-        follow();
-      }
-    } catch (Exception e) {
-      LOG.warn("Caught election ", e);
     }
   }
 
@@ -345,7 +348,8 @@ public class Participant implements Runnable,
         return tuple;
 
       } else if (LOG.isDebugEnabled()) {
-        LOG.debug("Got an unexpected message from {}: {}",
+        LOG.debug("{} got an unexpected message from {}: {}",
+                  this.config.getServerId(),
                   tuple.getSource(),
                   TextFormat.shortDebugString(tuple.getMessage()));
       }
@@ -407,7 +411,11 @@ public class Participant implements Runnable,
    * @param message the message to be sent.
    */
   void sendMessage(String dest, Message message) {
-    transport.send(dest, ByteBuffer.wrap(message.toByteArray()));
+    LOG.debug("{} sends to {} message {}",
+              this.config.getServerId(),
+              dest,
+              message);
+    this.transport.send(dest, ByteBuffer.wrap(message.toByteArray()));
   }
 
   /* -----------------   For ELECTING state only -------------------- */
@@ -429,84 +437,7 @@ public class Participant implements Runnable,
   }
 
 
-
   /* -----------------   For BOTH LEADING and FOLLOWING -------------------- */
-
-  /**
-   * Synchronizes server's history to peer based on the last zxid of peer.
-   * This function is called when the follower syncs its history to leader as
-   * initial history or the leader syncs its initial history to followers in
-   * synchronization phase. Based on the last zxid of peer, the synchronization
-   * can be performed by TRUNCATE, DIFF or SNAPSHOT. The assumption is that
-   * the server has all the committed transactions in its transaction log.
-   *
-   *  . If the epoch of the last transaction is different from the epoch of
-   *  the last transaction of this server's. The whole log of the peer's will be
-   *  truncated by sending SNAPSHOT message and then this server will
-   *  synchronize its history to the peer.
-   *
-   *  . If the epoch of the last transaction of the peer and this server are
-   *  the same, then this server will send DIFF or TRUNCATE to only synchronize
-   *  or truncate the diff.
-   *
-   * @param peerId the id of the peer.
-   * @param peerLatestZxid the last zxid of the peer.
-   */
-  void synchronizePeer(String peerId, Zxid peerLatestZxid) throws IOException {
-
-    LOG.debug("Begins sync {} history to {}(last zxid : {})",
-              this.config.getServerId(),
-              peerId,
-              peerLatestZxid);
-
-    Zxid lastZxid = this.log.getLatestZxid();
-    Zxid syncPoint = null;
-
-    if (lastZxid.getEpoch() == peerLatestZxid.getEpoch()) {
-      // If the peer has same epoch number as the server.
-
-      if (lastZxid.compareTo(peerLatestZxid) >= 0) {
-        // Means peer's history is the prefix of the server's.
-        LOG.debug("{}'s history is >= {}'s, sending DIFF.",
-                  this.config.getServerId(),
-                  peerId);
-
-        syncPoint = new Zxid(peerLatestZxid.getEpoch(),
-                             peerLatestZxid.getXid() + 1);
-
-        Message diff = MessageBuilder.buildDiff(lastZxid);
-        sendMessage(peerId, diff);
-
-      } else {
-        // Means peer's history is the superset of the server's.
-        LOG.debug("{}'s history is < {}'s, sending TRUNCATE.",
-                  this.config.getServerId(),
-                  peerId);
-
-        syncPoint = new Zxid(lastZxid.getEpoch(), lastZxid.getXid() + 1);
-        Message trunc = MessageBuilder.buildTruncate(lastZxid);
-        sendMessage(peerId, trunc);
-      }
-
-    } else {
-      // They have different epoch numbers. Truncate all.
-      LOG.debug("The last epoch of {} and {} are different, sending SNAPSHOT.",
-                this.config.getServerId(),
-                peerId);
-
-      syncPoint = new Zxid(0, 0);
-      Message snapshot = MessageBuilder.buildSnapshot(lastZxid);
-      sendMessage(peerId, snapshot);
-    }
-
-    try (Log.LogIterator iter = this.log.getIterator(syncPoint)) {
-      while (iter.hasNext()) {
-        Transaction txn = iter.next();
-        Message prop = MessageBuilder.buildProposal(txn);
-        sendMessage(peerId, prop);
-      }
-    }
-  }
 
   /**
    * Waits synchronization message from peer. This method is called on both
@@ -517,36 +448,29 @@ public class Participant implements Runnable,
    */
   void waitForSync(String peer)
       throws InterruptedException, TimeoutException, IOException {
-
     LOG.debug("{} is waiting sync from {}.", this.config.getServerId(), peer);
-
     Zxid lastZxid = this.log.getLatestZxid();
     // The last zxid of peer.
     Zxid lastZxidPeer = null;
     Message msg = null;
     String source = null;
-
     // Expects getting message of DIFF or TRUNCATE or SNAPSHOT or PULL_TXN_REQ
     // from elected leader.
     while (true) {
       MessageTuple tuple = getMessage();
       source = tuple.getSource();
       msg = tuple.getMessage();
-
       if ((msg.getType() != MessageType.DIFF &&
            msg.getType() != MessageType.TRUNCATE &&
            msg.getType() != MessageType.SNAPSHOT &&
            msg.getType() != MessageType.PULL_TXN_REQ) ||
           !source.equals(peer)) {
-
         LOG.debug("Got unexpected message {} from {}.", msg, source);
         continue;
-
       } else {
         break;
       }
     }
-
     if (msg.getType() == MessageType.PULL_TXN_REQ) {
       // PULL_TXN_REQ message. This message is only received at FOLLOWER side.
       LOG.debug("{} got pull transaction request from {}",
@@ -555,9 +479,9 @@ public class Participant implements Runnable,
 
       ZabMessage.Zxid z = msg.getPullTxnReq().getLastZxid();
       lastZxidPeer = new Zxid(z.getEpoch(), z.getXid());
-
       // Synchronize its history to leader.
-      synchronizePeer(source, lastZxidPeer);
+      SyncPeerTask syncTask = new SyncPeerTask(source, lastZxidPeer);
+      syncTask.run();
 
       // After synchronization, leader should have same history as this
       // server, so next message should be an empty DIFF.
@@ -567,13 +491,12 @@ public class Participant implements Runnable,
       ZabMessage.Diff diff = msg.getDiff();
       lastZxidPeer = MessageBuilder.fromProtoZxid(diff.getLastZxid());
 
-      // Check if they are match.
+      // Check if they match.
       if (lastZxidPeer.compareTo(lastZxid) != 0) {
         LOG.error("The history of leader and follower are not same.");
         throw new RuntimeException("Expecting leader and follower have same"
                                     + "history.");
       }
-
       return;
     }
 
@@ -583,12 +506,10 @@ public class Participant implements Runnable,
       ZabMessage.Diff diff = msg.getDiff();
       // Remember last zxid of the peer.
       lastZxidPeer = MessageBuilder.fromProtoZxid(diff.getLastZxid());
-
       if(lastZxid.compareTo(lastZxidPeer) == 0) {
         // Means the two nodes have exact same history.
         return;
       }
-
     } else if (msg.getType() == MessageType.TRUNCATE) {
       // TRUNCATE message.
       LOG.debug("{} got TRUNCATE: {}", this.config.getServerId(), msg);
@@ -597,7 +518,6 @@ public class Participant implements Runnable,
                             .fromProtoZxid(trunc.getLastPrefixZxid());
       this.log.truncate(lastPrefixZxid);
       return;
-
     } else {
       // SNAPSHOT message.
       LOG.debug("{} got SNAPSHOT: {}", this.config.getServerId(), msg);
@@ -610,7 +530,6 @@ public class Participant implements Runnable,
         return;
       }
     }
-
     // Get subsequent proposals.
     while (true) {
       MessageTuple tuple = getExpectedMessage(MessageType.PROPOSAL, peer);
@@ -652,42 +571,6 @@ public class Participant implements Runnable,
   }
 
 
-  /**
-   * This will be called once receive the COMMIT messge.
-   *
-   * @param zxid the zxid of the committed transaction.
-   */
-  void onCommit(Zxid zxid) throws IOException {
-
-    LOG.debug("{} on commit {} {}", this.config.getServerId(), zxid,
-                                    this.lastCommittedZxid);
-
-    Zxid tZxid = this.lastCommittedZxid;
-    this.lastCommittedZxid = zxid;
-
-    // It will deliver all the transactions from last committed point.
-    try (Log.LogIterator iter = this.log.getIterator(tZxid)) {
-      if (iter.hasNext()) {
-
-        if (tZxid != Zxid.ZXID_NOT_EXIST) {
-          // Skip last one.
-          iter.next();
-        }
-
-        while (iter.hasNext()) {
-          Transaction txn = iter.next();
-
-          if (txn.getZxid().compareTo(zxid) > 0) {
-            break;
-          }
-
-          this.stateMachine.deliver(txn.getZxid(), txn.getBody());
-        }
-      }
-    }
-  }
-
-
   /* -----------------   For LEADING state only -------------------- */
 
   /**
@@ -697,7 +580,10 @@ public class Participant implements Runnable,
   void lead() {
 
     Map<String, PeerHandler> quorumSet =
-        new HashMap<String, PeerHandler>();
+        new ConcurrentHashMap<String, PeerHandler>();
+
+    ExecutorService es = Executors
+                         .newCachedThreadPool(DaemonThreadFactory.FACTORY);
 
     try {
 
@@ -709,13 +595,12 @@ public class Participant implements Runnable,
         stateChangeCallback.leaderDiscovering(config.getServerId());
       }
 
-      // Gets the proposed message from a quorum.
+      if (failCallback != null) {
+        failCallback.leaderDiscovering();
+      }
+
       getPropsedEpochFromQuorum(quorumSet);
-
-      // Proposes new epoch to followers.
       proposeNewEpoch(quorumSet);
-
-      // Waits the new epoch is established.
       waitEpochAckFromQuorum(quorumSet);
 
       LOG.debug("Leader {} established new epoch {}!",
@@ -724,7 +609,6 @@ public class Participant implements Runnable,
 
       // Finds one who has the "best" history.
       String serverId = selectSyncHistoryOwner(quorumSet);
-
       LOG.debug("Leader {} chooses {} to pull its history.",
                 this.config.getServerId(),
                 serverId);
@@ -739,22 +623,17 @@ public class Participant implements Runnable,
         stateChangeCallback.leaderSynchronizating(getProposedEpochFromFile());
       }
 
+      if (failCallback != null) {
+        failCallback.leaderSynchronizing();
+      }
+
       if (!serverId.equals(this.config.getServerId())) {
-        // Pulls history from the server.
+        // Pulls history from the follower.
         synchronizeFromFollower(serverId);
       }
-
       // Updates ACK EPOCH of leader.
       setAckEpoch(getProposedEpochFromFile());
-
-      ExecutorService es = Executors
-                           .newCachedThreadPool(DaemonThreadFactory.FACTORY);
-
-      // Synchronization is performed in other threads.
-      for (PeerHandler ph : quorumSet.values()) {
-        ph.setFuture(es.submit(ph));
-      }
-
+      beginSynchronizing(quorumSet, es);
       waitNewLeaderAckFromQuorum(quorumSet);
 
 
@@ -763,20 +642,19 @@ public class Participant implements Runnable,
       LOG.debug("Now {} is in broadcasting phase.", this.config.getServerId());
 
       if (stateChangeCallback != null) {
-
         stateChangeCallback.leaderBroadcasting(getAckEpochFromFile(),
                                                getAllTxns());
       }
 
-      // Adds itself in quorumSet.
-      PeerHandler lh = new LeaderHandler();
-      lh.setFuture(es.submit(lh));
-      quorumSet.put(this.config.getServerId(), lh);
+      if (failCallback != null) {
+        failCallback.leaderBroadcasting();
+      }
 
-      beginBroadcasting(quorumSet);
+      beginBroadcasting(quorumSet, es);
 
-    } catch (InterruptedException | TimeoutException | IOException e) {
-      LOG.error("Leader caught exception", e);
+    } catch (InterruptedException | TimeoutException | IOException |
+        RuntimeException e) {
+      LOG.error("Leader {} caught exception", this.config.getServerId(), e);
     }
   }
 
@@ -800,8 +678,10 @@ public class Participant implements Runnable,
         throw new RuntimeException("Quorum set has already contained "
             + source + ", probably a bug?");
       }
-      quorumSet.put(source, new PeerHandler(source,
-                                                epoch.getProposedEpoch()));
+
+      PeerHandler ph = new PeerHandler(source, this.transport);
+      ph.setLastProposedEpoch(epoch.getProposedEpoch());
+      quorumSet.put(source, ph);
     }
     LOG.debug("{} got proposed epoch from a quorum.", config.getServerId());
   }
@@ -826,7 +706,7 @@ public class Participant implements Runnable,
 
     int newEpoch = Collections.max(epochs) + 1;
 
-    // Updates itself's last proposed epoch.
+    // Updates leader's last proposed epoch.
     setProposedEpoch(newEpoch);
 
     LOG.debug("{} begins proposing new epoch {}",
@@ -871,7 +751,7 @@ public class Participant implements Runnable,
       // Updates follower's f.a and lastZxid.
       PeerHandler ph = quorumSet.get(source);
       ph.setLastAckedEpoch(ackEpoch.getAcknowledgedEpoch());
-      ph.setLastProposedZxid(new Zxid(zxid.getEpoch(), zxid.getXid()));
+      ph.setLastZxid(MessageBuilder.fromProtoZxid(zxid));
     }
 
     LOG.debug("{} received ACKs from the quorum set of size {}.",
@@ -905,7 +785,7 @@ public class Participant implements Runnable,
       Map.Entry<String, PeerHandler> entry = iter.next();
 
       int fEpoch = entry.getValue().getLastAckedEpoch();
-      Zxid fZxid = entry.getValue().getLastProposedZxid();
+      Zxid fZxid = entry.getValue().getLastZxid();
 
       if (fEpoch > ackEpoch ||
           (fEpoch == ackEpoch && fZxid.compareTo(zxid) > 0)) {
@@ -923,7 +803,6 @@ public class Participant implements Runnable,
                                                    ackEpoch,
                                                    zxid);
     }
-
     return serverId;
   }
 
@@ -935,7 +814,9 @@ public class Participant implements Runnable,
   void synchronizeFromFollower(String serverId)
       throws IOException, TimeoutException, InterruptedException {
 
-    LOG.debug("Begins sync from follower {}.", serverId);
+    LOG.debug("Leader {} begins synchronizing from follower {}.",
+              this.config.getServerId(),
+              serverId);
 
     Zxid lastZxid = log.getLatestZxid();
     Message pullTxn = MessageBuilder.buildPullTxnReq(lastZxid);
@@ -943,7 +824,7 @@ public class Participant implements Runnable,
                                        lastZxid);
 
     sendMessage(serverId, pullTxn);
-
+    // Waits until the synchronization is finished.
     waitForSync(serverId);
   }
 
@@ -985,6 +866,24 @@ public class Participant implements Runnable,
   }
 
   /**
+   * Starts synchronizing peers in background threads.
+   *
+   * @param quorumSet the quorum set.
+   * @param es the ExecutorService used to running synchronizing tasks.
+   * @throws IOException in case of IO failure.
+   */
+  void beginSynchronizing(Map<String, PeerHandler> quorumSet,
+                          ExecutorService es) throws IOException {
+    // Synchronization is performed in other threads.
+    for (PeerHandler ph : quorumSet.values()) {
+      ph.setSyncTask(new SyncPeerTask(ph.getServerId(),
+                                      ph.getLastZxid()));
+      ph.setNewLeaderEpoch(getProposedEpochFromFile());
+      ph.setFuture(es.submit(ph));
+    }
+  }
+
+  /**
    * Entering broadcasting phase, leader broadcasts proposal to
    * followers.
    *
@@ -993,112 +892,154 @@ public class Participant implements Runnable,
    * @throws TimeoutException in case of timeout.
    * @throws IOException in case of IO failure.
    */
-  void beginBroadcasting(Map<String, PeerHandler> quorumSet)
+  void beginBroadcasting(Map<String, PeerHandler> quorumSet,
+                         ExecutorService es)
       throws TimeoutException, InterruptedException, IOException {
 
-    PeerHandler lh = quorumSet.get(this.config.getServerId());
+    int currentEpoch = getAckEpochFromFile();
+    Zxid nextZxid = new Zxid(currentEpoch, 0);
+    PreProcessor preproc = new PreProcessor(this.stateMachine,
+                                            nextZxid,
+                                            quorumSet);
+    AckProcessor ackProcessor = new AckProcessor(quorumSet, getQuorumSize());
+    // Starts broadcasting HEARTBEAT message.
+    HeartbeatTask heartbeatTask = new HeartbeatTask(quorumSet);
 
-    // Send commit message to commit all the transactions synced in
-    // synchronization phase.
-    Message commit = MessageBuilder.buildCommit(this.log.getLatestZxid());
+    // Adds leader itself to quorum set.
+    SyncProposalProcessor syncProcessor =
+        new SyncProposalProcessor(this.log,
+                                  this.transport);
+
+    CommitProcessor commitProcessor =
+        new CommitProcessor(this.log,
+                            this.stateMachine,
+                            this.config.getServerId());
+
+    ShortCircuitTransport scTransport =
+        new ShortCircuitTransport(syncProcessor, commitProcessor);
+
+    // Adds itself in quorumSet.
+    PeerHandler lh = new PeerHandler(this.config.getServerId(),
+                                     scTransport);
+    lh.setFuture(es.submit(lh));
+    quorumSet.put(this.config.getServerId(), lh);
+
+    // Sends commit message to commit all the transactions proposed in
+    // synchronizing phase.
+    Zxid lastZxid = this.log.getLatestZxid();
+    Message commit = MessageBuilder.buildCommit(lastZxid);
     queueAllPeers(commit, quorumSet);
 
-    while (true) {
-      MessageTuple tuple = getMessage();
-      Message msg = tuple.getMessage();
-      String source = tuple.getSource();
+    try {
+      while (quorumSet.size() >= getQuorumSize()) {
+        /*
+         * Starts broadcasting loop, the leader will handle 5 kinds of messages
+         * in the loop.
+         *
+         *  1) PROPOSED_EPOCH : The new follower may join the quorum set in
+         *     broadcasting phase of leader. The leader will send back the
+         *     established epoch number (NEW_EPOCH) to follower.
+         *
+         *  2) ACK_EPOCH : Once the follower receives NEW_EPOCH from leader,
+         *     followers will send back ACK_EPOCH message, the leader will add
+         *     the follower to quorum set and starts synchronizing in
+         *     background thread.
+         *
+         *  3) REQUEST : The follower or client may send REQUEST to leader,
+         *     once the leader receives REQUEST, it will hand it to
+         *     PreProcessor to convert it into transaction and broadcast to
+         *     all the followers.
+         *
+         *  4) ACK : Once followers accept the proposal, they will send ACK to
+         *     leader, leader will hand it to AckProcessor to find out the
+         *     potential newly committed transactions and notify followers with
+         *     the COMMIT message.
+         *
+         *  5) HEARTBEAT : The leader will send HEARTBEAT message to followers
+         *     periodically, and followers will reply HEARTBEAT message. Once
+         *     the leader receive the HEARTBEAT message, it will update the
+         *     followers' last replied HEAERTBEAT time in order to mark them as
+         *     alive.
+         */
+        MessageTuple tuple = getMessage();
+        Message msg = tuple.getMessage();
+        String source = tuple.getSource();
 
-      if (msg.getType() == MessageType.PROPOSED_EPOCH) {
-
-        LOG.debug("Leader {} got PROPOSED_EPOCH.", this.config.getServerId());
-
-      } else {
-
-        if (!quorumSet.containsKey(source)) {
-          // In broadcasting phase, the only expected messages come outside
-          // the quorum set is PROPOSED_EPOCH.
-          LOG.debug("Leader {} got message {} from {} outside quorum.",
-                    this.config.getServerId(),
-                    msg,
-                    source);
-          continue;
-        }
-
-        if (msg.getType() == MessageType.PROPOSAL) {
-          // Got PROPOSAL, it should be sent from LeaderHandler.
-          LOG.debug("Leader {} got PROPOSAL.", this.config.getServerId());
-
-          if (!source.equals(this.config.getServerId())) {
-            // The proposal should be enqueued by leader itself.
-            LOG.warn("Leader {} got PROPOSAL not come from itself.");
-            throw new RuntimeException("Proposal not from leader.");
-          }
-
-          // Broadcasts to follower.
-          queueAllPeers(msg, quorumSet);
-
-        } else if (msg.getType() == MessageType.ACK) {
-          // Got ACK from peers.
-          LOG.debug("Leader {} got ACK {} from {}.",
-                    this.config.getServerId(),
-                    msg,
-                    source);
-
-          onAck(msg.getAck(), quorumSet, source);
-
-        } else if (msg.getType() == MessageType.REQUEST) {
-          // Got REQUEST from user or other peers.
-          LOG.debug("Leader {} got REQUEST.", this.config.getServerId());
-          // Let LeaderHandler converts the request to transaction.
-          lh.queueMessage(msg);
-
-        } else if (msg.getType() == MessageType.HEARTBEAT) {
-          // Got HEARTBEAT message.
-          LOG.debug("Leader {} got HEARTBEAAT from {}",
+        if (msg.getType() == MessageType.PROPOSED_EPOCH) {
+          LOG.debug("Leader {} got PROPOSED_EPOCH from {}.",
                     this.config.getServerId(),
                     source);
-
+          // Sends NEW_EPOCH message.
+          Message newEpoch = MessageBuilder.buildNewEpochMessage(currentEpoch);
+          sendMessage(source, newEpoch);
+        } else if (msg.getType() == MessageType.ACK_EPOCH) {
+          LOG.debug("Leader {} got ACK_EPOCH from {}",
+                    this.config.getServerId(),
+                    source);
+          AckEpoch ackEpoch = msg.getAckEpoch();
+          Zxid zxid = MessageBuilder.fromProtoZxid(ackEpoch.getLastZxid());
+          // Updates follower's f.a and lastZxid.
+          PeerHandler ph = new PeerHandler(source, this.transport);
+          ph.setLastZxid(zxid);
+          ph.setNewLeaderEpoch(currentEpoch);
+          ph.setSyncTask(new SyncPeerTask(source, zxid));
+          quorumSet.put(source, ph);
+          // Starts background thread for synchronizing.
+          ph.setFuture(es.submit(ph));
         } else {
-
-          LOG.warn("Unexpected messgae : {} from {}", msg, source);
-
+          // In broadcasting phase, the only expected messages come outside
+          // the quorum set is PROPOSED_EPOCH and ACK_EPOCH.
+          if (!quorumSet.containsKey(source)) {
+            LOG.debug("Leader {} got message {} from {} outside quorum.",
+                      this.config.getServerId(),
+                      msg,
+                      source);
+            continue;
+          }
+          if (msg.getType() == MessageType.ACK) {
+            // Got ACK from peers.
+            LOG.debug("Leader {} got ACK {} from {}.",
+                      this.config.getServerId(),
+                      MessageBuilder.fromProtoZxid(msg.getAck().getZxid()),
+                      source);
+            ackProcessor.processRequest(new Request(source, msg));
+          } else if (msg.getType() == MessageType.REQUEST) {
+            // Got REQUEST from user or other peers.
+            LOG.debug("Leader {} got REQUEST from {}.",
+                      this.config.getServerId(),
+                      source);
+            preproc.processRequest(new Request(this.config.getServerId(), msg));
+          } else if (msg.getType() == MessageType.HEARTBEAT) {
+            // Got HEARTBEAT message.
+            LOG.debug("Leader {} got HEARTBEAT replies from {}",
+                      this.config.getServerId(),
+                      source);
+          } else {
+            LOG.warn("Unexpected messgae : {} from {}", msg, source);
+          }
+          // Updates last received message time for this follower.
+          quorumSet.get(source).updateHeartbeatTime();
+          // Checks if any peers in quorum set are dead.
+          checkFollowerLiveness(quorumSet);
         }
       }
-    }
-  }
 
-  /**
-   * Handles the proposal acknowledgement from followers.
-   *
-   * @param ack the acknowledgement message.
-   * @param quorumSet the quorum set.
-   * @param source the source of the mssage.
-   */
-  void onAck(ZabMessage.Ack ack,
-             Map<String, PeerHandler> quorumSet,
-             String source) {
+      LOG.debug("Leader {} detects the size of the ensemble is less than the"
+          + "quorum size {}, goes back to electing phase.",
+          this.config.getServerId(),
+          getQuorumSize());
 
-    LOG.debug("ON ACK {}", ack);
-    Zxid zxid = MessageBuilder.fromProtoZxid(ack.getZxid());
-    quorumSet.get(source).setLastAckedZxid(zxid);
-
-    ArrayList<Zxid> zxids = new ArrayList<Zxid>();
-
-    for (PeerHandler ph : quorumSet.values()) {
-      zxids.add(ph.getLastAckedZxid());
-    }
-
-    // Sorts the last ack zxid of each peer to find one transaction which can
-    // be committed safely.
-    Collections.sort(zxids);
-    Zxid zxidCanCommit = zxids.get(zxids.size() - getQuorumSize());
-    LOG.debug("CAN COMMIT : {}", zxidCanCommit);
-
-    // Checks whether we've sent this commit message or not.
-    if (!this.lastCommittedZxid.equals(zxidCanCommit)) {
-      LOG.debug("Will send commit {} to quorum set.", zxidCanCommit);
-      Message commit = MessageBuilder.buildCommit(zxidCanCommit);
-      queueAllPeers(commit, quorumSet);
+    } finally {
+      heartbeatTask.shutdown();
+      // Stop all the processors.
+      ackProcessor.shutdown();
+      preproc.shutdown();
+      commitProcessor.shutdown();
+      syncProcessor.shutdown();
+      for (PeerHandler ph : quorumSet.values()) {
+        ph.shutdown();
+      }
+      es.shutdown();
     }
   }
 
@@ -1108,6 +1049,18 @@ public class Participant implements Runnable,
     }
   }
 
+  void checkFollowerLiveness(Map<String, PeerHandler> quorumSet) {
+    long currentTime = System.nanoTime();
+    long timeoutNs = this.config.getTimeout() * (long)1000000;
+    for (PeerHandler ph : quorumSet.values()) {
+      if (currentTime - ph.getLastHeartbeatTime() >= timeoutNs) {
+        // Removes the peer who is likely to be dead.
+        quorumSet.remove(ph.getServerId());
+        LOG.warn("Peer {} is likely to be dead, remove it from quorum set.",
+                 ph.getServerId());
+      }
+    }
+  }
 
   /* -----------------   For FOLLOWING state only -------------------- */
 
@@ -1127,6 +1080,10 @@ public class Participant implements Runnable,
         stateChangeCallback.followerDiscovering(this.electedLeader);
       }
 
+      if (failCallback != null) {
+        failCallback.followerDiscovering();
+      }
+
       sendProposedEpoch();
 
       receiveNewEpoch();
@@ -1141,6 +1098,10 @@ public class Participant implements Runnable,
         stateChangeCallback.followerSynchronizating(getProposedEpochFromFile());
       }
 
+      if (failCallback != null) {
+        failCallback.followerSynchronizing();
+      }
+
       waitForSync(this.electedLeader);
 
       waitNewLeaderMesage();
@@ -1151,16 +1112,19 @@ public class Participant implements Runnable,
       LOG.debug("Now {} is in broadcasting phase.", this.config.getServerId());
 
       if (stateChangeCallback != null) {
-
         stateChangeCallback.followerBroadcasting(getAckEpochFromFile(),
                                                  getAllTxns());
+      }
 
+      if (failCallback != null) {
+        failCallback.followerBroadcasting();
       }
 
       beginAccepting();
 
-    } catch (InterruptedException | TimeoutException | IOException e) {
-      LOG.error("Follower caught exception.", e);
+    } catch (InterruptedException | TimeoutException | IOException |
+        RuntimeException e) {
+      LOG.error("Follower {} caught exception.", this.config.getServerId(), e);
     }
   }
 
@@ -1189,7 +1153,6 @@ public class Participant implements Runnable,
 
     Message msg = tuple.getMessage();
     String source = tuple.getSource();
-
     NewEpoch epoch = msg.getNewEpoch();
 
     if (epoch.getNewEpoch() < getProposedEpochFromFile()) {
@@ -1264,249 +1227,215 @@ public class Participant implements Runnable,
   void beginAccepting()
       throws TimeoutException, InterruptedException, IOException {
 
-    AckProcessor ackProcessor = new AckProcessor(this.transport);
-
     SyncProposalProcessor syncProcessor =
-        new SyncProposalProcessor(this.log, ackProcessor);
+        new SyncProposalProcessor(this.log, this.transport);
 
-    while (true) {
+    CommitProcessor commitProcessor =
+        new CommitProcessor(log, stateMachine, this.config.getServerId());
 
-      MessageTuple tuple = getMessage();
-      Message msg = tuple.getMessage();
-      String source = tuple.getSource();
+    // The last time of HEARTBEAT message comes from leader.
+    long lastHeartbeatTime = System.nanoTime();
 
-      if (msg.getType() == MessageType.PROPOSAL) {
-
-        LOG.debug("Follower {} got PROPOSAL {}.",
-                  this.config.getServerId(),
-                  msg.getProposal());
-        onProposal(msg, syncProcessor);
-
-      } else if (msg.getType() == MessageType.COMMIT) {
-
-        LOG.debug("Follower {} got COMMIT.", this.config.getServerId());
-        ZabMessage.Commit commit = msg.getCommit();
-        Zxid zxid = MessageBuilder.fromProtoZxid(commit.getZxid());
-        onCommit(zxid);
-
-      } else if (msg.getType() == MessageType.REQUEST) {
-
-        LOG.debug("Follower {} got REQUEST.", this.config.getServerId());
-
-      } else if (msg.getType() == MessageType.HEARTBEAT) {
-
-        LOG.debug("Follower {} got HEARTBEAT.", this.config.getServerId());
-
-      } else {
-
-        LOG.warn("Unexpected messgae : {} from {}", msg, source);
-
-      }
-    }
-
-  }
-
-  /**
-   * It's called when the follower receives a proposal.
-   *
-   * @param prop the proposal the follower received.
-   * @param syncProcessor used to synchronize the proposal to disk
-   * and send back acknowledgment.
-   */
-  void onProposal(Message prop,
-                  SyncProposalProcessor syncProcessor) throws IOException {
-
-    Transaction txn = MessageBuilder.fromProposal(prop.getProposal());
-    Zxid zxid = txn.getZxid();
-
-    if (zxid.getEpoch() == getAckEpochFromFile()) {
-      // Dispatch to SyncProposalProcessor.
-      syncProcessor.processRequest(new Request(this.electedLeader, prop));
-    } else {
-      LOG.error("The proposal has the wrong epoch number {}.", zxid.getEpoch());
-      throw new RuntimeException("The proposal has wrong epoch number.");
-    }
-  }
-
-  /**
-   * Handles follower connection.
-   */
-  class PeerHandler implements Callable<Integer> {
-    protected int lastProposedEpoch = -1;
-    protected int lastAckedEpoch = -1;
-    protected long lastHeartbeatTime;
-    protected Zxid lastProposedZxid = null;
-    protected Zxid lastAckedZxid = Zxid.ZXID_NOT_EXIST;
-    protected final String serverId;
-    protected Future<Integer> future = null;
-    protected final BlockingQueue<Message> broadcastingQueue =
-        new LinkedBlockingQueue<Message>();
-
-    public PeerHandler(String serverId, int epoch) {
-      this.serverId = serverId;
-      setLastProposedEpoch(epoch);
-      updateHeartbeatTime();
-    }
-
-    void setFuture(Future<Integer> ft) {
-      this.future = ft;
-    }
-
-    Future<Integer> getFuture() {
-      return this.future;
-    }
-
-    long getLastHeartbeatTime() {
-      return this.lastHeartbeatTime;
-    }
-
-    void updateHeartbeatTime() {
-      this.lastHeartbeatTime = System.nanoTime();
-    }
-
-    int getLastProposedEpoch() {
-      return this.lastProposedEpoch;
-    }
-
-    void setLastProposedEpoch(int epoch) {
-      this.lastProposedEpoch = epoch;
-    }
-
-    int getLastAckedEpoch() {
-      return this.lastAckedEpoch;
-    }
-
-    void setLastAckedEpoch(int epoch) {
-      this.lastAckedEpoch = epoch;
-    }
-
-    Zxid getLastProposedZxid() {
-      return this.lastProposedZxid;
-    }
-
-    void setLastProposedZxid(Zxid zxid) {
-      this.lastProposedZxid = zxid;
-    }
-
-    void setLastAckedZxid(Zxid zxid) {
-      this.lastAckedZxid = zxid;
-    }
-
-    Zxid getLastAckedZxid() {
-      return this.lastAckedZxid;
-    }
-
-    /**
-     * Puts message in queue.
-     *
-     * @param msg the message which will be sent.
-     */
-    void queueMessage(Message msg) {
-      this.broadcastingQueue.add(msg);
-    }
-
-    @Override
-    public Integer call() throws IOException, InterruptedException {
-
-      LOG.debug("Leader {} is synchronizing to {} (last zxid : {}).",
-                config.getServerId(),
-                serverId,
-                this.lastProposedZxid);
-
-      // First sync to follower.
-      synchronizePeer(this.serverId, this.lastProposedZxid);
-
-      // Send NEW_LEADER message to peer.
-      Message nl = MessageBuilder.buildNewLeader(getAckEpochFromFile());
-      sendMessage(serverId, nl);
-
+    try {
       while (true) {
-        Message msg = this.broadcastingQueue.take();
+        /*
+         * Starts accepting loop, the follower will handle 4 kinds of messages
+         * in the loop.
+         *
+         *  1) PROPOSAL : The leader will propose proposals to followers,
+         *  followers will hand it to SyncProposalProcessor to accept it and
+         *  send back ACK to leader.
+         *
+         *  2) COMMIT : Once a quorum of followers accept the proposal, the
+         *  leader will send COMMIT message to all the peers in quorum set.
+         *  Followers will hand in to DeliverProcesor to deliver it to client
+         *  application.
+         *
+         *  3) REQUEST : The client may send REQUEST to followers, followers
+         *  simply forward the request to leader.
+         *
+         *  4) HEARTBEAT : Leader will send HEARTBEAT messages to followers
+         *  periodically, followers will reply the same message to leader.
+         */
+        MessageTuple tuple = getMessage();
+        Message msg = tuple.getMessage();
+        String source = tuple.getSource();
 
-        if (msg.getType() == MessageType.PROPOSAL) {
-          // Got PROPOSAL message, send it to follower.
-          LOG.debug("PeerHandler got PROPOSAL");
-          // Sends this proposal to follower.
-          sendMessage(this.serverId, msg);
-
-        } else if (msg.getType() == MessageType.COMMIT) {
-          // Got COMMIT message, send it to follower.
-          LOG.debug("FollowerHandler got COMMIT {}", msg.getCommit());
-          // Sends commit to follower.
-          sendMessage(this.serverId, msg);
+        if (source.equals(this.electedLeader)) {
+          // Updates the time of last received HEARTBEAT message from leader.
+          lastHeartbeatTime = System.nanoTime();
         }
-      }
-    }
-  }
-
-  /**
-   * Handles leader itself.
-   */
-  class LeaderHandler extends PeerHandler {
-
-    // The zxid of the next proposed transaction.
-    Zxid nextZxid = null;
-
-    public LeaderHandler() throws IOException {
-      super(config.getServerId(), -1);
-      this.nextZxid = new Zxid(getAckEpochFromFile(), 0);
-    }
-
-    /**
-     * Sends message to leader itself by short circuiting.
-     *
-     * @param msg the message to itself.
-     */
-    void sendMessage(Message msg) {
-      messageQueue.add(new MessageTuple(config.getServerId(), msg));
-    }
-
-    @Override
-    public Integer call() throws IOException, InterruptedException {
-
-      LOG.debug("LeaderHandler starts.");
-      AckProcessor ackProcessor = new AckProcessor(transport);
-      SyncProposalProcessor syncProcessor =
-          new SyncProposalProcessor(log, ackProcessor);
-
-      while (true) {
-
-        Message msg = broadcastingQueue.take();
 
         if (msg.getType() == MessageType.PROPOSAL) {
-          // Got PROPOSAL message from itself, accept it locally.
-
-          LOG.debug("LeaderHandler got PROPOSAL");
-          syncProcessor.processRequest(new Request(this.serverId, msg));
-
+          LOG.debug("Follower {} got PROPOSAL {}.",
+                    this.config.getServerId(),
+                    MessageBuilder.fromProtoZxid(msg.getProposal().getZxid()));
+          Transaction txn = MessageBuilder.fromProposal(msg.getProposal());
+          Zxid zxid = txn.getZxid();
+          if (zxid.getEpoch() == getAckEpochFromFile()) {
+            // Dispatch to SyncProposalProcessor.
+            syncProcessor.processRequest(new Request(this.electedLeader, msg));
+          } else {
+            LOG.debug("The proposal has the wrong epoch number {}.",
+                      zxid.getEpoch());
+            throw new RuntimeException("The proposal has wrong epoch number.");
+          }
         } else if (msg.getType() == MessageType.COMMIT) {
-          // Got COMMIT message from itself, deliver it locally.
-
-          LOG.debug("LeaderHandler got COMMIT {}", msg.getCommit());
-          Zxid zxid = MessageBuilder.fromProtoZxid(msg.getCommit().getZxid());
-          onCommit(zxid);
-
+          LOG.debug("Follower {} got COMMIT {} from {}.",
+                    this.config.getServerId(),
+                    MessageBuilder.fromProtoZxid(msg.getCommit().getZxid()),
+                    source);
+          commitProcessor.processRequest(new Request(source, msg));
         } else if (msg.getType() == MessageType.REQUEST) {
-          // Got REQUEST message, convert the REQUEST to PROPOSAL, and
-          // short circuit it to leader's message queue..
+          LOG.debug("Follower {} got REQUEST from {}.",
+                    this.config.getServerId(),
+                    source);
+          // Forwards REQUEST to the leader.
+          sendMessage(this.electedLeader, msg);
+        } else if (msg.getType() == MessageType.HEARTBEAT) {
+          LOG.debug("Follower {} got HEARTBEAT from {}.",
+                    this.config.getServerId(),
+                    source);
+          // Replies HEARTBEAT message to leader.
+          Message heartbeatReply = MessageBuilder.buildHeartbeat();
+          sendMessage(source, heartbeatReply);
+        } else {
+          LOG.warn("Unexpected messgae : {} from {}", msg, source);
+        }
 
-          LOG.debug("LeaderHandler got REQUEST {}", msg.getRequest());
-          ZabMessage.Request req = msg.getRequest();
-          ByteBuffer buf = req.getRequest().asReadOnlyByteBuffer();
+        // Checks if the leader is alive or not.
+        if (System.nanoTime() - lastHeartbeatTime >=
+            this.config.getTimeout() * (long)1000000) {
+          LOG.debug("Follower {} detects the timeout from leader {}. Now goes"
+              + " back to leader election.",
+              this.config.getServerId(),
+              this.electedLeader);
 
-          // Let users to convert the request to transaction.
-          buf = stateMachine.preprocess(this.nextZxid, buf);
-          Transaction txn = new Transaction(this.nextZxid, buf);
-          ZabMessage.Message prop = MessageBuilder.buildProposal(txn);
-          sendMessage(prop);
+          throw new TimeoutException("Heartbeat timeout!");
+        }
+      }
+    } finally {
+      syncProcessor.shutdown();
+      commitProcessor.shutdown();
+    }
+  }
 
-          // Bump next proposed zxid.
-          this.nextZxid = new Zxid(this.nextZxid.getEpoch(),
-                                   this.nextZxid.getXid() + 1);
+  /**
+   * Synchronizes server's history to peer based on the last zxid of peer.
+   * This function is called when the follower syncs its history to leader as
+   * initial history or the leader syncs its initial history to followers in
+   * synchronization phase. Based on the last zxid of peer, the synchronization
+   * can be performed by TRUNCATE, DIFF or SNAPSHOT. The assumption is that
+   * the server has all the committed transactions in its transaction log.
+   *
+   *  . If the epoch of the last transaction is different from the epoch of
+   *  the last transaction of this server's. The whole log of the peer's will be
+   *  truncated by sending SNAPSHOT message and then this server will
+   *  synchronize its history to the peer.
+   *
+   *  . If the epoch of the last transaction of the peer and this server are
+   *  the same, then this server will send DIFF or TRUNCATE to only synchronize
+   *  or truncate the diff.
+   */
+  class SyncPeerTask {
+    private final String peerId;
+    private final Zxid peerLatestZxid;
+
+   /**
+    * Constructs the SyncPeerTask object.
+    *
+    * @param peerId the id of the peer.
+    * @param peerLatestZxid the last zxid of the peer.
+    */
+    public SyncPeerTask(String peerId, Zxid peerLatestZxid) {
+      this.peerId = peerId;
+      this.peerLatestZxid = peerLatestZxid;
+    }
+
+    public void run() throws IOException {
+      LOG.debug("Begins sync {} history to {}(last zxid : {})",
+                config.getServerId(),
+                peerId,
+                peerLatestZxid);
+
+      Zxid lastZxid = log.getLatestZxid();
+      Zxid syncPoint = null;
+
+      if (lastZxid.getEpoch() == peerLatestZxid.getEpoch()) {
+        // If the peer has same epoch number as the server.
+
+        if (lastZxid.compareTo(peerLatestZxid) >= 0) {
+          // Means peer's history is the prefix of the server's.
+          LOG.debug("{}'s history is >= {}'s, sending DIFF.",
+                    config.getServerId(),
+                    peerId);
+
+          syncPoint = new Zxid(peerLatestZxid.getEpoch(),
+                               peerLatestZxid.getXid() + 1);
+
+          Message diff = MessageBuilder.buildDiff(lastZxid);
+          sendMessage(peerId, diff);
+
+        } else {
+          // Means peer's history is the superset of the server's.
+          LOG.debug("{}'s history is < {}'s, sending TRUNCATE.",
+                    config.getServerId(),
+                    peerId);
+
+          syncPoint = new Zxid(lastZxid.getEpoch(), lastZxid.getXid() + 1);
+          Message trunc = MessageBuilder.buildTruncate(lastZxid);
+          sendMessage(peerId, trunc);
+        }
+      } else {
+        // They have different epoch numbers. Truncate all.
+        LOG.debug("The last epoch of {} and {} are different, sending "
+                  + "SNAPSHOT.",
+                  config.getServerId(),
+                  peerId);
+
+        syncPoint = new Zxid(0, 0);
+        Message snapshot = MessageBuilder.buildSnapshot(lastZxid);
+        sendMessage(peerId, snapshot);
+      }
+
+      try (Log.LogIterator iter = log.getIterator(syncPoint)) {
+        while (iter.hasNext()) {
+          Transaction txn = iter.next();
+          Message prop = MessageBuilder.buildProposal(txn);
+          sendMessage(peerId, prop);
         }
       }
     }
   }
 
-}
+  /*
+   * Task that broadcasts HEARTBEAT message to all the peers in quorum set.
+   */
+  class HeartbeatTask implements Callable<Void> {
+    private final Map<String, PeerHandler> quorumSet;
+    private final int heartbeatInterval = config.getTimeout() / 2;
+    private Future<Void> ft;
 
+    public HeartbeatTask(Map<String, PeerHandler> quorumSet) {
+      this.quorumSet = quorumSet;
+      this.ft = Executors.newSingleThreadExecutor().submit(this);
+    }
+
+    public void shutdown() {
+      this.ft.cancel(true);
+      LOG.debug("Heartbeat task has been shutdown.");
+    }
+
+    @Override
+    public Void call() throws InterruptedException {
+      LOG.debug("Heartbeat task gets started.");
+      Message msg = MessageBuilder.buildHeartbeat();
+      while (true) {
+        LOG.debug("Leader broadcasts HEARTBEAT message to quorum of size {}",
+                  this.quorumSet.keySet().size());
+        broadcast(this.quorumSet.keySet().iterator(), msg);
+        Thread.sleep(this.heartbeatInterval);
+      }
+    }
+  }
+}

@@ -78,7 +78,6 @@ public class NettyTransport extends Transport {
     super(receiver);
     this.hostPort = hostPort;
     String[] address = hostPort.split(":", 2);
-    String host = address[0];
     int port = Integer.parseInt(address[1]);
     ServerBootstrap b = new ServerBootstrap();
     b.group(bossGroup, workerGroup)

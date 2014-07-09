@@ -38,12 +38,13 @@ public class DummyTransport extends Transport {
                                     .getLogger(DummyTransport.class);
 
   // Maps server id to its incoming message queue.
-  private static ConcurrentHashMap<String, BlockingQueue<Message>> queueMap;
+  private static ConcurrentHashMap<String, BlockingQueue<Message>> sQueueMap;
+  private final ConcurrentHashMap<String, BlockingQueue<Message>> queueMap;
   private final String serverId;
   private BlockingQueue<Message> incomingQueue;
 
   static {
-    queueMap = new ConcurrentHashMap<String, BlockingQueue<Message>>();
+    sQueueMap = new ConcurrentHashMap<String, BlockingQueue<Message>>();
   }
 
   /**
@@ -57,6 +58,20 @@ public class DummyTransport extends Transport {
     super(receiver);
     this.serverId = serverId;
     this.receiver = receiver;
+    this.queueMap = sQueueMap;
+    initIncomingQueue();
+    // Starts receiving thread.
+    Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY).execute(
+        new ReceivingThread());
+  }
+
+  public DummyTransport(String serverId,
+                        Receiver receiver,
+                        ConcurrentHashMap<String, BlockingQueue<Message>> qm) {
+    super(receiver);
+    this.serverId = serverId;
+    this.receiver = receiver;
+    this.queueMap = qm;
     initIncomingQueue();
     // Starts receiving thread.
     Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY).execute(
@@ -123,7 +138,7 @@ public class DummyTransport extends Transport {
   }
 
   public static void clearMessageQueue() {
-    queueMap.clear();
+    sQueueMap.clear();
   }
 
   /**
@@ -192,7 +207,7 @@ public class DummyTransport extends Transport {
   /**
    * Message used for communication.
    */
-  static class Message {
+  public static class Message {
     private final ByteBuffer body;
     private final String server;
 
