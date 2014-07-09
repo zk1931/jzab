@@ -86,7 +86,7 @@ public class SyncProposalProcessor implements RequestProcessor,
 
         Transaction txn = MessageBuilder
                           .fromProposal(request.getMessage().getProposal());
-        LOG.debug("Syncing transaction {} to disk.", txn);
+        LOG.debug("Syncing transaction {} to disk.", txn.getZxid());
         this.log.append(txn);
         this.log.sync();
         sendAck(request.getServerId(), txn.getZxid());

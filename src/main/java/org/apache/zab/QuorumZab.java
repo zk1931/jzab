@@ -180,49 +180,49 @@ public class QuorumZab extends Zab {
    * Interface of callbacks which simulate different kinds of failure cases for
    * testing purpose.
    */
-  interface FailureCaseCallback {
+  abstract static class FailureCaseCallback {
 
     /**
      * Will be called when entering discovering phase of leader.
      *
      * @throws SimulatedException forces leader goes back to electing phase.
      */
-    void leaderDiscovering();
+    void leaderDiscovering() {};
 
     /**
      * Will be called when entering discovering phase of followers.
      *
      * @throws SimulatedException forces followers goes back to electing phase.
      */
-    void followerDiscovering();
+    void followerDiscovering() {};
 
     /**
      * Will be called when entering synchronizing phase of leader.
      *
      * @throws SimulatedException forces leader goes back to electing phase.
      */
-    void leaderSynchronizing();
+    void leaderSynchronizing() {};
 
     /**
      * Will be called when entering synchronizing phase of followers.
      *
      * @throws SimulatedException forces followers goes back to electing phase.
      */
-    void followerSynchronizing();
+    void followerSynchronizing() {};
 
     /**
      * Will be called when entering broadcasting phase of leader.
      *
      * @throws SimulatedException forces leader goes back to electing phase.
      */
-    void leaderBroadcasting();
+    void leaderBroadcasting() {};
 
     /**
      * Will be called when entering discovering phase of followers.
      *
      * @throws SimulatedException forces followers goes back to electing phase.
      */
-    void followerBroadcasting();
+    void followerBroadcasting() {};
   }
 
   /**

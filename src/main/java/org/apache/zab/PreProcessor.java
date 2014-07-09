@@ -81,7 +81,7 @@ public class PreProcessor implements RequestProcessor,
         }
 
         ZabMessage.Request req = request.getMessage().getRequest();
-        ByteBuffer bufReq = ByteBuffer.wrap(req.toByteArray());
+        ByteBuffer bufReq = req.getRequest().asReadOnlyByteBuffer();
         // Invoke the callback to convert the request into transaction.
         ByteBuffer update = this.stateMachine.preprocess(this.nextZxid, bufReq);
         Message prop = MessageBuilder

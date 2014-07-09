@@ -25,11 +25,14 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+
 import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.Message.MessageType;
 import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.protobuf.TextFormat;
 
 /**
  * Handles peer connection.
@@ -224,7 +227,8 @@ public class PeerHandler implements Callable<Void> {
 
       if (msg.getType() == MessageType.PROPOSAL) {
         // Got PROPOSAL message, send it to follower.
-        LOG.debug("PeerHandler got PROPOSAL");
+        LOG.debug("PeerHandler got PROPOSAL {}",
+                   TextFormat.shortDebugString(msg));
         // Sends this proposal to follower.
         sendMessage(msg);
       } else if (msg.getType() == MessageType.COMMIT) {

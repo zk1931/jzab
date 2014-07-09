@@ -50,6 +50,7 @@ import org.apache.zab.transport.DummyTransport;
 import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.TextFormat;
 
@@ -112,14 +113,25 @@ public class Participant implements Callable<Void>,
   /**
    * Elected leader.
    */
-  String electedLeader = null;
+  private String electedLeader = null;
 
   /**
    * Used for leader election.
    */
-  CountDownLatch leaderCondition;
+  private CountDownLatch leaderCondition;
+
+  /**
+   * Current State of QuorumZab.
+   */
+  private ZabState currentState = ZabState.LOOKING;
 
   private static final Logger LOG = LoggerFactory.getLogger(Participant.class);
+
+  enum ZabState {
+    LOOKING,
+    FOLLOWING,
+    LEADING
+  }
 
   /**
    * A tuple holds both message and its source.
@@ -157,6 +169,9 @@ public class Participant implements Callable<Void>,
     this.fAckEpoch = new File(config.getLogDir(), "AckEpoch");
     this.fProposedEpoch = new File(config.getLogDir(), "ProposedEpoch");
 
+    MDC.put("serverId", this.config.getServerId());
+    MDC.put("state", "looking");
+
     if (initialState.getLog() == null) {
       // Transaction log file.
       File logFile = new File(this.config.getLogDir(), "transaction.log");
@@ -180,6 +195,10 @@ public class Participant implements Callable<Void>,
   }
 
   void send(ByteBuffer request) {
+    if (this.currentState == ZabState.LOOKING) {
+      throw new RuntimeException("QuorumZab in LOOKING state can't serve "
+          + "request.");
+    }
     Message msg = MessageBuilder.buildRequest(request);
     MessageTuple tuple = new MessageTuple(this.config.getServerId(), msg);
     this.messageQueue.add(tuple);
@@ -195,11 +214,10 @@ public class Participant implements Callable<Void>,
       message.get(buffer);
       Message msg = Message.parseFrom(buffer);
 
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("{} received message from {}: {} ",
-                  this.config.getServerId(),
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("Received message from {}: {} ",
                   source,
-                  msg);
+                  TextFormat.shortDebugString(msg));
       }
 
       // Puts the message in message queue.
@@ -224,27 +242,31 @@ public class Participant implements Callable<Void>,
    */
   @Override
   public Void call() throws Exception {
-
+    LOG.debug("Participant starts running.");
+    Election electionAlg = new RoundRobinElection();
     while (true) {
       try {
+        MDC.put("state", "looking");
+        MDC.put("phase", "electing");
+        this.currentState = ZabState.LOOKING;
         if (this.stateChangeCallback != null) {
           this.stateChangeCallback.electing();
         }
 
-        Election electionAlg = new RoundRobinElection();
         startLeaderElection(electionAlg);
         waitLeaderElected();
 
-        LOG.debug("{} selected {} as prospective leader.",
-                  this.config.getServerId(),
+        LOG.debug("Selected {} as prospective leader.",
                   this.electedLeader);
 
         if (this.electedLeader.equals(this.config.getServerId())) {
+          MDC.put("state", "leading");
           lead();
         } else {
+          MDC.put("state", "following");
           follow();
         }
-      } catch (Exception e) {
+      } catch (RuntimeException e) {
         LOG.warn("Caught an exception ", e);
       }
     }
@@ -337,6 +359,7 @@ public class Participant implements Callable<Void>,
    */
   MessageTuple getExpectedMessage(MessageType type, String source)
       throws TimeoutException, InterruptedException {
+    int startTime = (int) (System.nanoTime() / 1000000);
     // Waits until the expected message is received.
     while (true) {
       MessageTuple tuple = getMessage();
@@ -347,11 +370,16 @@ public class Participant implements Callable<Void>,
         // Return message only if it's expected type and expected source.
         return tuple;
 
-      } else if (LOG.isDebugEnabled()) {
-        LOG.debug("{} got an unexpected message from {}: {}",
-                  this.config.getServerId(),
-                  tuple.getSource(),
-                  TextFormat.shortDebugString(tuple.getMessage()));
+      } else {
+        int curTime = (int) (System.nanoTime() / 1000000);
+        if (curTime - startTime >= this.config.getTimeout()) {
+          throw new TimeoutException("Timeout in getExpectedMessage.");
+        }
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Got an unexpected message from {}: {}",
+                    tuple.getSource(),
+                    TextFormat.shortDebugString(tuple.getMessage()));
+        }
       }
     }
   }
@@ -411,10 +439,9 @@ public class Participant implements Callable<Void>,
    * @param message the message to be sent.
    */
   void sendMessage(String dest, Message message) {
-    LOG.debug("{} sends to {} message {}",
-              this.config.getServerId(),
+    LOG.trace("Sends to {} message {}",
               dest,
-              message);
+              TextFormat.shortDebugString(message));
     this.transport.send(dest, ByteBuffer.wrap(message.toByteArray()));
   }
 
@@ -448,7 +475,7 @@ public class Participant implements Callable<Void>,
    */
   void waitForSync(String peer)
       throws InterruptedException, TimeoutException, IOException {
-    LOG.debug("{} is waiting sync from {}.", this.config.getServerId(), peer);
+    LOG.debug("Waiting sync from {}.", peer);
     Zxid lastZxid = this.log.getLatestZxid();
     // The last zxid of peer.
     Zxid lastZxidPeer = null;
@@ -465,7 +492,9 @@ public class Participant implements Callable<Void>,
            msg.getType() != MessageType.SNAPSHOT &&
            msg.getType() != MessageType.PULL_TXN_REQ) ||
           !source.equals(peer)) {
-        LOG.debug("Got unexpected message {} from {}.", msg, source);
+        LOG.debug("Got unexpected message {} from {}.",
+                  TextFormat.shortDebugString(msg),
+                  source);
         continue;
       } else {
         break;
@@ -473,8 +502,7 @@ public class Participant implements Callable<Void>,
     }
     if (msg.getType() == MessageType.PULL_TXN_REQ) {
       // PULL_TXN_REQ message. This message is only received at FOLLOWER side.
-      LOG.debug("{} got pull transaction request from {}",
-                this.config.getServerId(),
+      LOG.debug("Got pull transaction request from {}",
                 source);
 
       ZabMessage.Zxid z = msg.getPullTxnReq().getLastZxid();
@@ -502,7 +530,8 @@ public class Participant implements Callable<Void>,
 
     if (msg.getType() == MessageType.DIFF) {
       // DIFF message.
-      LOG.debug("{} got DIFF : {}", this.config.getServerId(), msg);
+      LOG.debug("Got DIFF : {}",
+                TextFormat.shortDebugString(msg));
       ZabMessage.Diff diff = msg.getDiff();
       // Remember last zxid of the peer.
       lastZxidPeer = MessageBuilder.fromProtoZxid(diff.getLastZxid());
@@ -512,7 +541,8 @@ public class Participant implements Callable<Void>,
       }
     } else if (msg.getType() == MessageType.TRUNCATE) {
       // TRUNCATE message.
-      LOG.debug("{} got TRUNCATE: {}", this.config.getServerId(), msg);
+      LOG.debug("Got TRUNCATE: {}",
+                TextFormat.shortDebugString(msg));
       ZabMessage.Truncate trunc = msg.getTruncate();
       Zxid lastPrefixZxid = MessageBuilder
                             .fromProtoZxid(trunc.getLastPrefixZxid());
@@ -520,7 +550,8 @@ public class Participant implements Callable<Void>,
       return;
     } else {
       // SNAPSHOT message.
-      LOG.debug("{} got SNAPSHOT: {}", this.config.getServerId(), msg);
+      LOG.debug("Got SNAPSHOT: {}",
+                TextFormat.shortDebugString(msg));
       ZabMessage.Snapshot snap = msg.getSnapshot();
       lastZxidPeer = MessageBuilder.fromProtoZxid(snap.getLastZxid());
       this.log.truncate(Zxid.ZXID_NOT_EXIST);
@@ -536,10 +567,9 @@ public class Participant implements Callable<Void>,
       msg = tuple.getMessage();
       source = tuple.getSource();
 
-      LOG.debug("{} got PROPOSAL from {} : {}",
-                this.config.getServerId(),
+      LOG.debug("Got PROPOSAL from {} : {}",
                 source,
-                msg);
+                TextFormat.shortDebugString(msg));
 
       ZabMessage.Proposal prop = msg.getProposal();
       Zxid zxid = MessageBuilder.fromProtoZxid(prop.getZxid());
@@ -588,8 +618,8 @@ public class Participant implements Callable<Void>,
     try {
 
       /* -- Discovering phase -- */
-
-      LOG.debug("Now {} is in discovering phase.", this.config.getServerId());
+      MDC.put("phase", "discovering");
+      LOG.debug("Now it's in discovering phase.");
 
       if (stateChangeCallback != null) {
         stateChangeCallback.leaderDiscovering(config.getServerId());
@@ -603,21 +633,18 @@ public class Participant implements Callable<Void>,
       proposeNewEpoch(quorumSet);
       waitEpochAckFromQuorum(quorumSet);
 
-      LOG.debug("Leader {} established new epoch {}!",
-                config.getServerId(),
+      LOG.debug("Established new epoch {}!",
                 getProposedEpochFromFile());
 
       // Finds one who has the "best" history.
       String serverId = selectSyncHistoryOwner(quorumSet);
-      LOG.debug("Leader {} chooses {} to pull its history.",
-                this.config.getServerId(),
+      LOG.debug("Chooses {} to pull its history.",
                 serverId);
 
 
       /* -- Synchronizing phase -- */
-
-      LOG.debug("Now {} is in synchronizating phase.",
-                this.config.getServerId());
+      MDC.put("phase", "synchronizing");
+      LOG.debug("It's in synchronizating phase.");
 
       if (stateChangeCallback != null) {
         stateChangeCallback.leaderSynchronizating(getProposedEpochFromFile());
@@ -638,23 +665,29 @@ public class Participant implements Callable<Void>,
 
 
       /* -- Broadcasting phase -- */
+      MDC.put("phase", "broadcast");
+      LOG.debug("Now it's in broadcasting phase.");
 
-      LOG.debug("Now {} is in broadcasting phase.", this.config.getServerId());
+      if (failCallback != null) {
+        failCallback.leaderBroadcasting();
+      }
 
       if (stateChangeCallback != null) {
         stateChangeCallback.leaderBroadcasting(getAckEpochFromFile(),
                                                getAllTxns());
       }
 
-      if (failCallback != null) {
-        failCallback.leaderBroadcasting();
-      }
-
+      this.currentState = ZabState.LEADING;
       beginBroadcasting(quorumSet, es);
 
     } catch (InterruptedException | TimeoutException | IOException |
         RuntimeException e) {
-      LOG.error("Leader {} caught exception", this.config.getServerId(), e);
+      LOG.error("Caught exception", e);
+      // Shutdown all the PeerHandlers in quorum set.
+      for (PeerHandler ph : quorumSet.values()) {
+        ph.shutdown();
+      }
+      es.shutdown();
     }
   }
 
@@ -686,7 +719,7 @@ public class Participant implements Callable<Void>,
       ph.setLastProposedEpoch(epoch.getProposedEpoch());
       quorumSet.put(source, ph);
     }
-    LOG.debug("{} got proposed epoch from a quorum.", config.getServerId());
+    LOG.debug("Got proposed epoch from a quorum.");
   }
 
   /**
@@ -712,8 +745,7 @@ public class Participant implements Callable<Void>,
     // Updates leader's last proposed epoch.
     setProposedEpoch(newEpoch);
 
-    LOG.debug("{} begins proposing new epoch {}",
-              config.getServerId(),
+    LOG.debug("Begins proposing new epoch {}",
               newEpoch);
 
     // Sends new epoch message to quorum.
@@ -757,8 +789,7 @@ public class Participant implements Callable<Void>,
       ph.setLastZxid(MessageBuilder.fromProtoZxid(zxid));
     }
 
-    LOG.debug("{} received ACKs from the quorum set of size {}.",
-              config.getServerId(),
+    LOG.debug("Received ACKs from the quorum set of size {}.",
               quorumSet.size() + 1);
   }
 
@@ -817,8 +848,7 @@ public class Participant implements Callable<Void>,
   void synchronizeFromFollower(String serverId)
       throws IOException, TimeoutException, InterruptedException {
 
-    LOG.debug("Leader {} begins synchronizing from follower {}.",
-              this.config.getServerId(),
+    LOG.debug("Begins synchronizing from follower {}.",
               serverId);
 
     Zxid lastZxid = log.getLatestZxid();
@@ -841,8 +871,7 @@ public class Participant implements Callable<Void>,
   void waitNewLeaderAckFromQuorum(Map<String, PeerHandler> quorumSet)
       throws TimeoutException, InterruptedException, IOException {
 
-    LOG.debug("{} is waiting for synchronization to followers complete.",
-              this.config.getServerId());
+    LOG.debug("Waiting for synchronization to followers complete.");
 
     int completeCount = 0;
 
@@ -913,7 +942,9 @@ public class Participant implements Callable<Void>,
                             this.stateMachine,
                             this.config.getServerId());
     ShortCircuitTransport scTransport =
-        new ShortCircuitTransport(syncProcessor, commitProcessor);
+        new ShortCircuitTransport(syncProcessor,
+                                  commitProcessor,
+                                  this.messageQueue);
     // Adds itself in quorumSet.
     PeerHandler lh = new PeerHandler(this.config.getServerId(),
                                      scTransport,
@@ -988,32 +1019,30 @@ public class Participant implements Callable<Void>,
           // In broadcasting phase, the only expected messages come outside
           // the quorum set is PROPOSED_EPOCH and ACK_EPOCH.
           if (!quorumSet.containsKey(source)) {
-            LOG.debug("Leader {} got message {} from {} outside quorum.",
-                      this.config.getServerId(),
-                      msg,
+            LOG.debug("Got message {} from {} outside quorum.",
+                      TextFormat.shortDebugString(msg),
                       source);
             continue;
           }
           if (msg.getType() == MessageType.ACK) {
             // Got ACK from peers.
-            LOG.debug("Leader {} got ACK {} from {}.",
-                      this.config.getServerId(),
+            LOG.debug("Got ACK {} from {}.",
                       MessageBuilder.fromProtoZxid(msg.getAck().getZxid()),
                       source);
             ackProcessor.processRequest(new Request(source, msg));
           } else if (msg.getType() == MessageType.REQUEST) {
             // Got REQUEST from user or other peers.
-            LOG.debug("Leader {} got REQUEST from {}.",
-                      this.config.getServerId(),
+            LOG.debug("Got REQUEST from {}.",
                       source);
             preproc.processRequest(new Request(this.config.getServerId(), msg));
           } else if (msg.getType() == MessageType.HEARTBEAT) {
             // Got HEARTBEAT message.
-            LOG.debug("Leader {} got HEARTBEAT replies from {}",
-                      this.config.getServerId(),
+            LOG.trace("Got HEARTBEAT replies from {}",
                       source);
           } else {
-            LOG.warn("Unexpected messgae : {} from {}", msg, source);
+            LOG.warn("Unexpected messgae : {} from {}",
+                      TextFormat.shortDebugString(msg),
+                      source);
           }
           // Updates last received message time for this follower.
           quorumSet.get(source).updateHeartbeatTime();
@@ -1022,9 +1051,8 @@ public class Participant implements Callable<Void>,
         }
       }
 
-      LOG.debug("Leader {} detects the size of the ensemble is less than the"
+      LOG.debug("Detects the size of the ensemble is less than the"
           + "quorum size {}, goes back to electing phase.",
-          this.config.getServerId(),
           getQuorumSize());
 
     } finally {
@@ -1035,14 +1063,9 @@ public class Participant implements Callable<Void>,
         commitProcessor.shutdown();
         syncProcessor.shutdown();
       } catch (ExecutionException e) {
-        LOG.error("Leader {} caught exectuion exception.",
-                  this.config.getServerId(),
+        LOG.error("Caught exectuion exception.",
                   e);
       }
-      for (PeerHandler ph : quorumSet.values()) {
-        ph.shutdown();
-      }
-      es.shutdown();
     }
   }
 
@@ -1061,6 +1084,7 @@ public class Participant implements Callable<Void>,
       }
       if (currentTime - ph.getLastHeartbeatTime() >= timeoutNs) {
         // Removes the peer who is likely to be dead.
+        ph.shutdown();
         quorumSet.remove(ph.getServerId());
         LOG.warn("Peer {} is likely to be dead, remove it from quorum set.",
                  ph.getServerId());
@@ -1079,8 +1103,8 @@ public class Participant implements Callable<Void>,
     try {
 
       /* -- Discovering phase -- */
-
-      LOG.debug("Now {} is in discovering phase.", this.config.getServerId());
+      MDC.put("phase", "discovering");
+      LOG.debug("It's in discovering phase.");
 
       if (stateChangeCallback != null) {
         stateChangeCallback.followerDiscovering(this.electedLeader);
@@ -1096,9 +1120,8 @@ public class Participant implements Callable<Void>,
 
 
       /* -- Synchronizing phase -- */
-
-      LOG.debug("Now {} is in synchronizating phase.",
-                this.config.getServerId());
+      MDC.put("phase", "synchronizing");
+      LOG.debug("Now it's in synchronizating phase.");
 
       if (stateChangeCallback != null) {
         stateChangeCallback.followerSynchronizating(getProposedEpochFromFile());
@@ -1114,8 +1137,8 @@ public class Participant implements Callable<Void>,
 
 
       /* -- Broadcasting phase -- */
-
-      LOG.debug("Now {} is in broadcasting phase.", this.config.getServerId());
+      MDC.put("phase", "broadcast");
+      LOG.debug("Now it's in broadcasting phase.");
 
       if (stateChangeCallback != null) {
         stateChangeCallback.followerBroadcasting(getAckEpochFromFile(),
@@ -1126,11 +1149,12 @@ public class Participant implements Callable<Void>,
         failCallback.followerBroadcasting();
       }
 
+      this.currentState = ZabState.FOLLOWING;
       beginAccepting();
 
     } catch (InterruptedException | TimeoutException | IOException |
         RuntimeException e) {
-      LOG.error("Follower {} caught exception.", this.config.getServerId(), e);
+      LOG.error("Caught exception.", e);
     }
   }
 
@@ -1174,14 +1198,11 @@ public class Participant implements Callable<Void>,
     // Updates follower's last proposed epoch.
     setProposedEpoch(epoch.getNewEpoch());
 
-    LOG.debug("{} receives the new epoch proposal {} from {}.",
-              config.getServerId(),
+    LOG.debug("Received the new epoch proposal {} from {}.",
               epoch.getNewEpoch(),
               source);
 
     Zxid zxid = log.getLatestZxid();
-    LOG.debug("Get last zxid : {}", zxid);
-
     // Sends ACK to leader.
     sendMessage(this.electedLeader,
                 MessageBuilder.buildAckEpoch(getAckEpochFromFile(),
@@ -1207,10 +1228,9 @@ public class Participant implements Callable<Void>,
     Message msg = tuple.getMessage();
     String source = tuple.getSource();
 
-    LOG.debug("{} got NEW_LEADER message from {} : {}.",
-              this.config.getServerId(),
+    LOG.debug("Got NEW_LEADER message from {} : {}.",
               source,
-              msg);
+              TextFormat.shortDebugString(msg));
 
     // NEW_LEADER message.
     ZabMessage.NewLeader nl = msg.getNewLeader();
@@ -1269,34 +1289,27 @@ public class Participant implements Callable<Void>,
 
         // The follower only expect receiving message from leader and
         // itself(REQUEST).
-        if (!source.equals(this.electedLeader)) {
-
+        if (source.equals(this.electedLeader)) {
+          lastHeartbeatTime = System.nanoTime();
+        } else {
+          // Checks if the leader is alive.
           long timeDiff = (System.nanoTime() - lastHeartbeatTime) / 1000000;
-
           if ((int)timeDiff >= this.config.getTimeout()) {
             // HEARTBEAT timeout.
-            LOG.warn("Follower {} detects there's a timeout in waiting"
+            LOG.warn("Detects there's a timeout in waiting"
                 + "message from leader {}, goes back to leader electing",
-                this.config.getServerId(),
                 this.electedLeader);
-
             throw new TimeoutException("HEARTBEAT timeout!");
           }
-
           if (!source.equals(this.config.getServerId())) {
-            LOG.debug("Follower {} got unexpected message from {}, ignores.",
-                      this.config.getServerId(),
+            LOG.debug("Got unexpected message from {}, ignores.",
                       source);
             continue;
           }
-        } else {
-          // Updates leader's last HEARTBEAT message time.
-          lastHeartbeatTime = System.nanoTime();
         }
 
         if (msg.getType() == MessageType.PROPOSAL) {
-          LOG.debug("Follower {} got PROPOSAL {}.",
-                    this.config.getServerId(),
+          LOG.debug("Got PROPOSAL {}.",
                     MessageBuilder.fromProtoZxid(msg.getProposal().getZxid()));
           Transaction txn = MessageBuilder.fromProposal(msg.getProposal());
           Zxid zxid = txn.getZxid();
@@ -1309,26 +1322,25 @@ public class Participant implements Callable<Void>,
             throw new RuntimeException("The proposal has wrong epoch number.");
           }
         } else if (msg.getType() == MessageType.COMMIT) {
-          LOG.debug("Follower {} got COMMIT {} from {}.",
-                    this.config.getServerId(),
+          LOG.debug("Got COMMIT {} from {}.",
                     MessageBuilder.fromProtoZxid(msg.getCommit().getZxid()),
                     source);
           commitProcessor.processRequest(new Request(source, msg));
         } else if (msg.getType() == MessageType.REQUEST) {
-          LOG.debug("Follower {} got REQUEST from {}.",
-                    this.config.getServerId(),
+          LOG.debug("Got REQUEST from {}.",
                     source);
           // Forwards REQUEST to the leader.
           sendMessage(this.electedLeader, msg);
         } else if (msg.getType() == MessageType.HEARTBEAT) {
-          LOG.debug("Follower {} got HEARTBEAT from {}.",
-                    this.config.getServerId(),
+          LOG.trace("Got HEARTBEAT from {}.",
                     source);
           // Replies HEARTBEAT message to leader.
           Message heartbeatReply = MessageBuilder.buildHeartbeat();
           sendMessage(source, heartbeatReply);
         } else {
-          LOG.warn("Unexpected messgae : {} from {}", msg, source);
+          LOG.warn("Unexpected messgae : {} from {}",
+                    TextFormat.shortDebugString(msg),
+                    source);
         }
       }
     } finally {
@@ -1374,8 +1386,7 @@ public class Participant implements Callable<Void>,
     }
 
     public void run() throws IOException {
-      LOG.debug("Begins sync {} history to {}(last zxid : {})",
-                config.getServerId(),
+      LOG.debug("Begins synchronizing history to {}(last zxid : {})",
                 peerId,
                 peerLatestZxid);
 

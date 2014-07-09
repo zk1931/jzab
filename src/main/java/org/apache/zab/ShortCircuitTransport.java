@@ -20,13 +20,13 @@ package org.apache.zab;
 
 import java.nio.ByteBuffer;
 import java.util.Iterator;
-
+import java.util.concurrent.BlockingQueue;
+import org.apache.zab.Participant.MessageTuple;
 import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.Message.MessageType;
 import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import com.google.protobuf.InvalidProtocolBufferException;
 
 /**
@@ -38,19 +38,24 @@ class ShortCircuitTransport extends Transport {
   private static final Logger LOG =
       LoggerFactory.getLogger(ShortCircuitTransport.class);
 
-  SyncProposalProcessor syncProcessor;
+  final SyncProposalProcessor syncProcessor;
 
-  CommitProcessor commitProcessor;
+  final CommitProcessor commitProcessor;
+
+  final BlockingQueue<MessageTuple> messageQueue;
 
   public ShortCircuitTransport(SyncProposalProcessor syncProcessor,
-                               CommitProcessor commitProcessor) {
+                               CommitProcessor commitProcessor,
+                               BlockingQueue<MessageTuple> messageQueue) {
     super(null);
     this.syncProcessor = syncProcessor;
     this.commitProcessor = commitProcessor;
+    this.messageQueue = messageQueue;
   }
 
   @Override
   public void send(String destination, ByteBuffer message) {
+
     try {
       // Parses it to protocol message.
       byte[] buffer = new byte[message.remaining()];
@@ -63,6 +68,10 @@ class ShortCircuitTransport extends Transport {
       } else if (msg.getType() == MessageType.COMMIT) {
         // Got COMMIT message from itself, deliver it locally.
         commitProcessor.processRequest(new Request(destination, msg));
+      } else if (msg.getType() == MessageType.HEARTBEAT) {
+        Message heartbeat = MessageBuilder.buildHeartbeat();
+        MessageTuple tuple = new MessageTuple(destination, heartbeat);
+        this.messageQueue.add(tuple);
       }
     } catch (InvalidProtocolBufferException e) {
       LOG.error("Exception when parse protocol buffer.", e);

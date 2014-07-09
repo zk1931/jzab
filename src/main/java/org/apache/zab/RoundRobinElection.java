@@ -18,6 +18,9 @@
 
 package org.apache.zab;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Simply choose the leader in a round robin way.
  */
@@ -25,9 +28,15 @@ public class RoundRobinElection implements Election {
   private int round = 0;
   private int lastEpoch = -1;
 
+  private static final Logger LOG =
+      LoggerFactory.getLogger(RoundRobinElection.class);
+
   @Override
   public void initialize(ServerState state, ElectionCallback cb) {
     if (state.getProposedEpoch() != this.lastEpoch) {
+      LOG.debug("Last proposed epoch is changed from {} to {}, resets round.",
+                this.lastEpoch,
+                state.getProposedEpoch());
       // Reset round to zero once change to a new epoch.
       this.round = 0;
       this.lastEpoch = state.getProposedEpoch();

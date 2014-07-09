@@ -25,7 +25,8 @@ import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
-
+import org.apache.zab.QuorumZab.FailureCaseCallback;
+import org.apache.zab.QuorumZab.SimulatedException;
 import org.apache.zab.transport.DummyTransport.Message;
 import org.junit.Assert;
 import org.junit.Test;
@@ -102,6 +103,10 @@ class QuorumTestCallback implements QuorumZab.StateChangeCallback {
 
   @Override
   public void followerBroadcasting(int epoch, List<Transaction> history) {
+    LOG.debug("The history after synchronization:");
+    for (Transaction txn : history) {
+      LOG.debug("Txn zxid : {}", txn.getZxid());
+    }
     this.acknowledgedEpoch = epoch;
     this.initialHistory = history;
     this.conditionBroadcasting.countDown();
@@ -128,6 +133,7 @@ public class QuorumZabTest extends TestBase  {
         new ConcurrentHashMap<String, BlockingQueue<Message>>();
 
     QuorumTestCallback cb = new QuorumTestCallback();
+    TestStateMachine st = new TestStateMachine();
 
     QuorumZab.TestState state1 = new QuorumZab
                                      .TestState("server1",
@@ -137,7 +143,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setAckEpoch(0)
                                      .setTransportMap(queueMap);
 
-    QuorumZab zab1 = new QuorumZab(null, cb, null, state1);
+    QuorumZab zab1 = new QuorumZab(st, cb, null, state1);
 
     DummyLog log = new DummyLog(5);
 
@@ -151,7 +157,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setTransportMap(queueMap);
 
 
-    QuorumZab zab2 = new QuorumZab(null, null, null, state2);
+    QuorumZab zab2 = new QuorumZab(st, null, null, state2);
 
     QuorumZab.TestState state3 = new QuorumZab
                                      .TestState("server3",
@@ -162,7 +168,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setAckEpoch(1)
                                      .setTransportMap(queueMap);
 
-    QuorumZab zab3 = new QuorumZab(null, null, null, state3);
+    QuorumZab zab3 = new QuorumZab(st, null, null, state3);
 
     cb.conditionBroadcasting.await();
     // The established epoch should be 3.
@@ -224,7 +230,7 @@ public class QuorumZabTest extends TestBase  {
         new ConcurrentHashMap<String, BlockingQueue<Message>>();
     QuorumTestCallback cb1 = new QuorumTestCallback();
     QuorumTestCallback cb2 = new QuorumTestCallback();
-
+    TestStateMachine st = new TestStateMachine();
     /*
      * Case 1
      *
@@ -246,7 +252,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setAckEpoch(0)
                                      .setTransportMap(queueMap);
 
-    QuorumZab zab1 = new QuorumZab(null, cb1, null, state1);
+    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
 
     QuorumZab.TestState state2 = new QuorumZab
                                      .TestState("server2",
@@ -256,7 +262,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setAckEpoch(0)
                                      .setTransportMap(queueMap);
 
-    QuorumZab zab2 = new QuorumZab(null, cb2, null, state2);
+    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
 
     cb1.conditionBroadcasting.await();
     cb2.conditionBroadcasting.await();
@@ -282,7 +288,7 @@ public class QuorumZabTest extends TestBase  {
         new ConcurrentHashMap<String, BlockingQueue<Message>>();
     QuorumTestCallback cb1 = new QuorumTestCallback();
     QuorumTestCallback cb2 = new QuorumTestCallback();
-
+    TestStateMachine st = new TestStateMachine();
     /*
      * Case 2
      *
@@ -304,7 +310,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setAckEpoch(0)
                                      .setTransportMap(queueMap);
 
-    QuorumZab zab1 = new QuorumZab(null, cb1, null, state1);
+    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
 
     QuorumZab.TestState state2 = new QuorumZab
                                      .TestState("server2",
@@ -314,7 +320,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setAckEpoch(0)
                                      .setTransportMap(queueMap);
 
-    QuorumZab zab2 = new QuorumZab(null, cb2, null, state2);
+    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
 
     cb1.conditionBroadcasting.await();
     cb2.conditionBroadcasting.await();
@@ -341,7 +347,7 @@ public class QuorumZabTest extends TestBase  {
         new ConcurrentHashMap<String, BlockingQueue<Message>>();
     QuorumTestCallback cb1 = new QuorumTestCallback();
     QuorumTestCallback cb2 = new QuorumTestCallback();
-
+    TestStateMachine st = new TestStateMachine();
     /*
      * Case 3
      *
@@ -363,7 +369,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setAckEpoch(0)
                                      .setTransportMap(queueMap);
 
-    QuorumZab zab1 = new QuorumZab(null, cb1, null, state1);
+    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
 
 
     QuorumZab.TestState state2 = new QuorumZab
@@ -374,7 +380,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setAckEpoch(0)
                                      .setTransportMap(queueMap);
 
-    QuorumZab zab2 = new QuorumZab(null, cb2, null, state2);
+    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
 
     cb1.conditionBroadcasting.await();
     cb2.conditionBroadcasting.await();
@@ -401,7 +407,7 @@ public class QuorumZabTest extends TestBase  {
         new ConcurrentHashMap<String, BlockingQueue<Message>>();
     QuorumTestCallback cb1 = new QuorumTestCallback();
     QuorumTestCallback cb2 = new QuorumTestCallback();
-
+    TestStateMachine st = new TestStateMachine();
     /*
      * Case 4
      *
@@ -428,7 +434,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setAckEpoch(1)
                                      .setTransportMap(queueMap);
 
-    QuorumZab zab1 = new QuorumZab(null, cb1, null, state1);
+    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
 
     QuorumZab.TestState state2 = new QuorumZab
                                      .TestState("server2",
@@ -438,7 +444,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setAckEpoch(2)
                                      .setTransportMap(queueMap);
 
-    QuorumZab zab2 = new QuorumZab(null, cb2, null, state2);
+    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
 
     cb1.conditionBroadcasting.await();
     cb2.conditionBroadcasting.await();
@@ -465,7 +471,7 @@ public class QuorumZabTest extends TestBase  {
         new ConcurrentHashMap<String, BlockingQueue<Message>>();
     QuorumTestCallback cb1 = new QuorumTestCallback();
     QuorumTestCallback cb2 = new QuorumTestCallback();
-
+    TestStateMachine st = new TestStateMachine();
     /*
      * Case 5
      *
@@ -487,7 +493,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setAckEpoch(0)
                                      .setTransportMap(queueMap);
 
-    QuorumZab zab1 = new QuorumZab(null, cb1, null, state1);
+    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
 
     DummyLog log = new DummyLog(1);
     log.append(new Transaction(new Zxid(1, 0),
@@ -501,7 +507,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setAckEpoch(1)
                                      .setTransportMap(queueMap);
 
-    QuorumZab zab2 = new QuorumZab(null, cb2, null, state2);
+    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
 
     cb1.conditionBroadcasting.await();
     cb2.conditionBroadcasting.await();
@@ -528,7 +534,7 @@ public class QuorumZabTest extends TestBase  {
         new ConcurrentHashMap<String, BlockingQueue<Message>>();
     QuorumTestCallback cb1 = new QuorumTestCallback();
     QuorumTestCallback cb2 = new QuorumTestCallback();
-
+    TestStateMachine st = new TestStateMachine();
     /*
      * Case 6
      *
@@ -550,7 +556,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setAckEpoch(1)
                                      .setTransportMap(queueMap);
 
-    QuorumZab zab1 = new QuorumZab(null, cb1, null, state1);
+    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
 
     QuorumZab.TestState state2 = new QuorumZab
                                      .TestState("server2",
@@ -560,7 +566,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setAckEpoch(0)
                                      .setTransportMap(queueMap);
 
-    QuorumZab zab2 = new QuorumZab(null, cb2, null, state2);
+    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
 
     cb1.conditionBroadcasting.await();
     cb2.conditionBroadcasting.await();
@@ -591,6 +597,7 @@ public class QuorumZabTest extends TestBase  {
         new ConcurrentHashMap<String, BlockingQueue<Message>>();
     QuorumTestCallback cb1 = new QuorumTestCallback();
     QuorumTestCallback cb2 = new QuorumTestCallback();
+    TestStateMachine st = new TestStateMachine();
     QuorumZab.TestState state1 = new QuorumZab
                                      .TestState("server1",
                                                 "server1;server2;server3",
@@ -605,8 +612,8 @@ public class QuorumZabTest extends TestBase  {
                                      .setLog(new DummyLog(2))
                                      .setAckEpoch(0)
                                      .setTransportMap(queueMap);
-    QuorumZab zab1 = new QuorumZab(null, cb1, null, state1);
-    QuorumZab zab2 = new QuorumZab(null, cb2, null, state2);
+    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
+    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
     cb1.conditionBroadcasting.await();
     cb2.conditionBroadcasting.await();
     Assert.assertEquals(3, cb1.initialHistory.size());
@@ -627,23 +634,23 @@ public class QuorumZabTest extends TestBase  {
     QuorumTestCallback cb1 = new QuorumTestCallback();
     QuorumTestCallback cb2 = new QuorumTestCallback();
     QuorumTestCallback cb3 = new QuorumTestCallback();
-    // Expecting 4 delivered transactions.
-    TestStateMachine st1 = new TestStateMachine(4);
-    TestStateMachine st2 = new TestStateMachine(4);
-    TestStateMachine st3 = new TestStateMachine(4);
+    // Expecting 5 delivered transactions.
+    TestStateMachine st1 = new TestStateMachine(5);
+    TestStateMachine st2 = new TestStateMachine(5);
+    TestStateMachine st3 = new TestStateMachine(5);
 
     /*
      *  Before broadcasting.
      *
-     *  L : <0, 0> (f.a = 0)
-     *  F : <0, 0> (f.a = 0)
-     *  F : <0, 0> (f.a = 0)
+     *  L : <0, 0>        (f.a = 0)
+     *  F : <0, 0> <0, 1> (f.a = 0)
+     *  F : <0, 0> <0, 1> (f.a = 0)
      *
      *  Will broadcast :
-     *  <1, 0> <1, 1>, <1, 2>
+     *  <2, 0> <2, 1>, <2, 2>
      *
      *  After broadcasting:
-     *  <0, 0> <1, 0> <0, 0> <1, 2>
+     *  <0, 0> <0, 1> <2, 0> <2, 1> <2, 2>
      */
 
     QuorumZab.TestState state1 = new QuorumZab
@@ -661,9 +668,9 @@ public class QuorumZabTest extends TestBase  {
                                      .TestState("server2",
                                                 "server1;server2;server3",
                                                 getDirectory())
-                                     .setProposedEpoch(0)
-                                     .setLog(new DummyLog(1))
-                                     .setAckEpoch(0)
+                                     .setProposedEpoch(1)
+                                     .setLog(new DummyLog(2))
+                                     .setAckEpoch(1)
                                      .setTransportMap(queueMap);
 
     QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2);
@@ -672,9 +679,9 @@ public class QuorumZabTest extends TestBase  {
                                      .TestState("server3",
                                                 "server1;server2;server3",
                                                 getDirectory())
-                                     .setProposedEpoch(0)
-                                     .setLog(new DummyLog(1))
-                                     .setAckEpoch(0)
+                                     .setProposedEpoch(1)
+                                     .setLog(new DummyLog(2))
+                                     .setAckEpoch(1)
                                      .setTransportMap(queueMap);
 
     QuorumZab zab3 = new QuorumZab(st3, cb3, null, state3);
@@ -692,9 +699,490 @@ public class QuorumZabTest extends TestBase  {
     st2.txnsCount.await();
     st3.txnsCount.await();
 
-    Assert.assertEquals(4, st1.deliveredTxns.size());
-    Assert.assertEquals(4, st2.deliveredTxns.size());
-    Assert.assertEquals(4, st3.deliveredTxns.size());
+    Assert.assertEquals(5, st1.deliveredTxns.size());
+    Assert.assertEquals(5, st2.deliveredTxns.size());
+    Assert.assertEquals(5, st3.deliveredTxns.size());
   }
 
+  /**
+   * Test failure case 1.
+   *
+   * @throws InterruptedException if it's interrupted.
+   * @throws IOException in case of IO failure.
+   */
+  @Test(timeout=10000)
+  public void testFailureCase1()
+      throws InterruptedException, IOException {
+    ConcurrentHashMap<String, BlockingQueue<Message>> queueMap =
+        new ConcurrentHashMap<String, BlockingQueue<Message>>();
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    QuorumTestCallback cb3 = new QuorumTestCallback();
+    TestStateMachine st = new TestStateMachine();
+
+    /*
+     *  This test simulates that server1 will be crashed after first round
+     *  of leader election. The remaining two servers will form a quorum and
+     *  finally server1 will join the quorum.
+     *
+     *  server1 : <0, 0>          (f.a = 1)
+     *  server2 : <0, 0>          (f.a = 1)
+     *  server3 : <0, 0>  <0, 1>  (f.a = 0)
+     *
+     *  finally:
+     *  server1 : <0, 0>
+     *  server2 : <0, 0>
+     *  server3 : <0, 0>
+     */
+
+    FailureCaseCallback fb1 = new FailureCaseCallback() {
+      boolean crashed = false;
+      @Override
+      public void leaderDiscovering() {
+        if (!crashed) {
+          crashed = true;
+          try {
+            // Block for 0 ~ 1 seconds
+            Thread.sleep((long)(Math.random() * 1000));
+          } catch (InterruptedException e) {
+            LOG.error("Interrupted!");
+          }
+          throw new SimulatedException("Server1 crashed in discovering phase");
+        }
+      }
+    };
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState("server1",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setProposedEpoch(1)
+                                     .setLog(new DummyLog(1))
+                                     .setAckEpoch(1)
+                                     .setTransportMap(queueMap);
+
+    QuorumZab zab1 = new QuorumZab(st, cb1, fb1, state1);
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState("server2",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setProposedEpoch(1)
+                                     .setLog(new DummyLog(1))
+                                     .setAckEpoch(1)
+                                     .setTransportMap(queueMap);
+
+    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
+
+    QuorumZab.TestState state3 = new QuorumZab
+                                     .TestState("server3",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setProposedEpoch(0)
+                                     .setLog(new DummyLog(2))
+                                     .setAckEpoch(0)
+                                     .setTransportMap(queueMap);
+
+    QuorumZab zab3 = new QuorumZab(st, cb3, null, state3);
+
+    cb1.conditionBroadcasting.await();
+    cb2.conditionBroadcasting.await();
+    cb3.conditionBroadcasting.await();
+
+    Assert.assertEquals(1, cb1.initialHistory.size());
+    Assert.assertEquals(1, cb2.initialHistory.size());
+    Assert.assertEquals(1, cb3.initialHistory.size());
+  }
+
+  /**
+   * Test failure case 2.
+   *
+   * @throws InterruptedException if it's interrupted.
+   * @throws IOException in case of IO failure.
+   */
+  @Test(timeout=10000)
+  public void testFailureCase2()
+      throws InterruptedException, IOException {
+    ConcurrentHashMap<String, BlockingQueue<Message>> queueMap =
+        new ConcurrentHashMap<String, BlockingQueue<Message>>();
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    QuorumTestCallback cb3 = new QuorumTestCallback();
+    TestStateMachine st = new TestStateMachine();
+    /*
+     *  This test simulates that server2 and server3 will be crashed after
+     *  first round of leader election. Finally all servers should find a
+     *  common leader and all of them will get synchronized.
+     *
+     *  server1 : <0, 0>          (f.a = 1)
+     *  server2 : <0, 0>          (f.a = 1)
+     *  server3 : <0, 0>  <0, 1>  (f.a = 0)
+     *
+     *  finally:
+     *  server1 : <0, 0>
+     *  server2 : <0, 0>
+     *  server3 : <0, 0>
+     */
+
+    FailureCaseCallback fb2 = new FailureCaseCallback() {
+      boolean crashed = false;
+      @Override
+      public void followerDiscovering() {
+        if (!crashed) {
+          crashed = true;
+          try {
+            // Block for 0 ~ 1 seconds
+            Thread.sleep((long)(Math.random() * 1000));
+          } catch (InterruptedException e) {
+            LOG.error("Interrupted!");
+          }
+          throw new SimulatedException("Server2 crashed in discovering phase");
+        }
+      }
+    };
+
+    FailureCaseCallback fb3 = new FailureCaseCallback() {
+      boolean crashed = false;
+      @Override
+      public void followerDiscovering() {
+        if (!crashed) {
+          crashed = true;
+          try {
+            // Block for 0 ~ 1 seconds
+            Thread.sleep((long)(Math.random() * 1000));
+          } catch (InterruptedException e) {
+            LOG.error("Interrupted!");
+          }
+          throw new SimulatedException("Server3 crashed in discovering phase");
+        }
+      }
+    };
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState("server1",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setProposedEpoch(1)
+                                     .setLog(new DummyLog(1))
+                                     .setAckEpoch(1)
+                                     .setTransportMap(queueMap);
+
+    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState("server2",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setProposedEpoch(1)
+                                     .setLog(new DummyLog(1))
+                                     .setAckEpoch(1)
+                                     .setTransportMap(queueMap);
+
+    QuorumZab zab2 = new QuorumZab(st, cb2, fb2, state2);
+
+    QuorumZab.TestState state3 = new QuorumZab
+                                     .TestState("server3",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setProposedEpoch(0)
+                                     .setLog(new DummyLog(2))
+                                     .setAckEpoch(0)
+                                     .setTransportMap(queueMap);
+
+    QuorumZab zab3 = new QuorumZab(st, cb3, fb3, state3);
+
+    cb1.conditionBroadcasting.await();
+    cb2.conditionBroadcasting.await();
+    cb3.conditionBroadcasting.await();
+
+    Assert.assertEquals(1, cb1.initialHistory.size());
+    Assert.assertEquals(1, cb2.initialHistory.size());
+    Assert.assertEquals(1, cb3.initialHistory.size());
+  }
+
+  /**
+   * Test failure case 3.
+   *
+   * @throws InterruptedException if it's interrupted.
+   * @throws IOException in case of IO failure.
+   */
+  @Test(timeout=10000)
+  public void testFailureCase3()
+      throws InterruptedException, IOException {
+    ConcurrentHashMap<String, BlockingQueue<Message>> queueMap =
+        new ConcurrentHashMap<String, BlockingQueue<Message>>();
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    QuorumTestCallback cb3 = new QuorumTestCallback();
+    TestStateMachine st = new TestStateMachine();
+    /*
+     *  This test simulates that the first leader will be crashed after the
+     *  new epoch is established.
+     *
+     *  server1 : <0, 0>          (f.a = 1)
+     *  server2 : <0, 0>          (f.a = 1)
+     *  server3 : <0, 0>  <0, 1>  (f.a = 0)
+     *
+     *  finally:
+     *  server1 : <0, 0>
+     *  server2 : <0, 0>
+     *  server3 : <0, 0>
+     */
+
+    FailureCaseCallback fb1 = new FailureCaseCallback() {
+      boolean crashed = false;
+      @Override
+      public void leaderSynchronizing() {
+        if (!crashed) {
+          crashed = true;
+          try {
+            // Block for 0 ~ 1 seconds
+            Thread.sleep((long)(Math.random() * 1000));
+          } catch (InterruptedException e) {
+            LOG.error("Interrupted!");
+          }
+          throw new SimulatedException("Server1 crashed in synchronizing"
+              + " phase");
+        }
+      }
+    };
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState("server1",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setProposedEpoch(1)
+                                     .setLog(new DummyLog(1))
+                                     .setAckEpoch(1)
+                                     .setTransportMap(queueMap);
+
+    QuorumZab zab1 = new QuorumZab(st, cb1, fb1, state1);
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState("server2",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setProposedEpoch(1)
+                                     .setLog(new DummyLog(1))
+                                     .setAckEpoch(1)
+                                     .setTransportMap(queueMap);
+
+    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
+
+    QuorumZab.TestState state3 = new QuorumZab
+                                     .TestState("server3",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setProposedEpoch(0)
+                                     .setLog(new DummyLog(2))
+                                     .setAckEpoch(0)
+                                     .setTransportMap(queueMap);
+
+    QuorumZab zab3 = new QuorumZab(st, cb3, null, state3);
+
+    cb1.conditionBroadcasting.await();
+    cb2.conditionBroadcasting.await();
+    cb3.conditionBroadcasting.await();
+
+    Assert.assertEquals(1, cb1.initialHistory.size());
+    Assert.assertEquals(1, cb2.initialHistory.size());
+    Assert.assertEquals(1, cb3.initialHistory.size());
+  }
+
+  /**
+   * Test failure case 4.
+   *
+   * @throws InterruptedException if it's interrupted.
+   * @throws IOException in case of IO failure.
+   */
+  @Test(timeout=20000)
+  public void testFailureCase4()
+      throws InterruptedException, IOException {
+    ConcurrentHashMap<String, BlockingQueue<Message>> queueMap =
+        new ConcurrentHashMap<String, BlockingQueue<Message>>();
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    QuorumTestCallback cb3 = new QuorumTestCallback();
+    TestStateMachine st = new TestStateMachine();
+    /*
+     *  This test simulates that server2 and server3 will be crashed once they
+     *  first time receive NEW_EPOCH. Finally all servers should find a common
+     *  leader and all of them will get synchronized.
+     *
+     *  server1 : <0, 0>          (f.a = 1)
+     *  server2 : <0, 0>          (f.a = 1)
+     *  server3 : <0, 0>  <0, 1>  (f.a = 0)
+     *
+     *  finally:
+     *  server1 : <0, 0>
+     *  server2 : <0, 0>
+     *  server3 : <0, 0>
+     */
+
+    FailureCaseCallback fb2 = new FailureCaseCallback() {
+      boolean crashed = false;
+      @Override
+      public void followerSynchronizing() {
+        if (!crashed) {
+          crashed = true;
+          try {
+            // Block for 0 ~ 1 seconds
+            Thread.sleep((long)(Math.random() * 1000));
+          } catch (InterruptedException e) {
+            LOG.error("Interrupted!");
+          }
+          throw new SimulatedException("Server2 crashed in synchronizing "
+              + "phase");
+        }
+      }
+    };
+
+    FailureCaseCallback fb3 = new FailureCaseCallback() {
+      boolean crashed = false;
+      @Override
+      public void followerSynchronizing() {
+        if (!crashed) {
+          crashed = true;
+          try {
+            // Block for 0 ~ 1 seconds
+            Thread.sleep((long)(Math.random() * 1000));
+          } catch (InterruptedException e) {
+            LOG.error("Interrupted!");
+          }
+          throw new SimulatedException("Server3 crashed in synchronizing "
+              + "phase");
+        }
+      }
+    };
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState("server1",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setProposedEpoch(1)
+                                     .setLog(new DummyLog(1))
+                                     .setAckEpoch(1)
+                                     .setTransportMap(queueMap);
+
+    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState("server2",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setProposedEpoch(1)
+                                     .setLog(new DummyLog(1))
+                                     .setAckEpoch(1)
+                                     .setTransportMap(queueMap);
+
+    QuorumZab zab2 = new QuorumZab(st, cb2, fb2, state2);
+
+    QuorumZab.TestState state3 = new QuorumZab
+                                     .TestState("server3",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setProposedEpoch(0)
+                                     .setLog(new DummyLog(2))
+                                     .setAckEpoch(0)
+                                     .setTransportMap(queueMap);
+
+    QuorumZab zab3 = new QuorumZab(st, cb3, fb3, state3);
+
+    cb1.conditionBroadcasting.await();
+    cb2.conditionBroadcasting.await();
+    cb3.conditionBroadcasting.await();
+
+    Assert.assertEquals(1, cb1.initialHistory.size());
+    Assert.assertEquals(1, cb2.initialHistory.size());
+    Assert.assertEquals(1, cb3.initialHistory.size());
+  }
+
+  /**
+   * Test failure case 5.
+   *
+   * @throws InterruptedException if it's interrupted.
+   * @throws IOException in case of IO failure.
+   */
+  @Test(timeout=20000)
+  public void testFailureCase5()
+      throws InterruptedException, IOException {
+    ConcurrentHashMap<String, BlockingQueue<Message>> queueMap =
+        new ConcurrentHashMap<String, BlockingQueue<Message>>();
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    QuorumTestCallback cb3 = new QuorumTestCallback();
+    TestStateMachine st = new TestStateMachine();
+    /*
+     *  This test simulates that the first leader will be crashed after the
+     *  synchronization is done.
+     *
+     *  server1 : <0, 0>          (f.a = 1)
+     *  server2 : <0, 0>          (f.a = 1)
+     *  server3 : <0, 0>  <0, 1>  (f.a = 0)
+     *
+     *  finally:
+     *  server1 : <0, 0>
+     *  server2 : <0, 0>
+     *  server3 : <0, 0>
+     */
+
+    FailureCaseCallback fb1 = new FailureCaseCallback() {
+      boolean crashed = false;
+      @Override
+      public void leaderBroadcasting() {
+        if (!crashed) {
+          crashed = true;
+          try {
+            // Block for 0 ~ 1 seconds
+            Thread.sleep((long)(Math.random() * 1000));
+          } catch (InterruptedException e) {
+            LOG.error("Interrupted!");
+          }
+          throw new SimulatedException("Server1 crashed in broadcasting"
+              + " phase");
+        }
+      }
+    };
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState("server1",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setProposedEpoch(1)
+                                     .setLog(new DummyLog(1))
+                                     .setAckEpoch(1)
+                                     .setTransportMap(queueMap);
+
+    QuorumZab zab1 = new QuorumZab(st, cb1, fb1, state1);
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState("server2",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setProposedEpoch(1)
+                                     .setLog(new DummyLog(1))
+                                     .setAckEpoch(1)
+                                     .setTransportMap(queueMap);
+
+    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
+
+    QuorumZab.TestState state3 = new QuorumZab
+                                     .TestState("server3",
+                                                "server1;server2;server3",
+                                                getDirectory())
+                                     .setProposedEpoch(0)
+                                     .setLog(new DummyLog(2))
+                                     .setAckEpoch(0)
+                                     .setTransportMap(queueMap);
+
+    QuorumZab zab3 = new QuorumZab(st, cb3, null, state3);
+
+    cb1.conditionBroadcasting.await();
+    cb2.conditionBroadcasting.await();
+    cb3.conditionBroadcasting.await();
+
+    Assert.assertEquals(1, cb1.initialHistory.size());
+    Assert.assertEquals(1, cb2.initialHistory.size());
+    Assert.assertEquals(1, cb3.initialHistory.size());
+  }
 }

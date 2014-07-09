@@ -24,7 +24,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
-
 import org.apache.zab.proto.ZabMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
