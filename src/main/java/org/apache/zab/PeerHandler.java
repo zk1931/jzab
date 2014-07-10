@@ -25,13 +25,11 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-
 import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.Message.MessageType;
 import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import com.google.protobuf.TextFormat;
 
 /**
@@ -195,7 +193,8 @@ public class PeerHandler implements Callable<Void> {
 
   void shutdown() {
     this.future.cancel(true);
-    LOG.debug("PeerHandler of {} has been canceled.", this.serverId);
+    this.transport.disconnect(this.serverId);
+    LOG.debug("PeerHandler of {} has been shut down.", this.serverId);
   }
 
   @Override

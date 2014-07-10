@@ -46,7 +46,8 @@ import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.NewEpoch;
 import org.apache.zab.proto.ZabMessage.ProposedEpoch;
 import org.apache.zab.proto.ZabMessage.Message.MessageType;
-import org.apache.zab.transport.DummyTransport;
+//import org.apache.zab.transport.DummyTransport;
+import org.apache.zab.transport.NettyTransport;
 import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -125,6 +126,12 @@ public class Participant implements Callable<Void>,
    */
   private ZabState currentState = ZabState.LOOKING;
 
+  /**
+   * Used to store the quorum set.
+   */
+  private Map<String, PeerHandler> quorumSet =
+      new ConcurrentHashMap<String, PeerHandler>();
+
   private static final Logger LOG = LoggerFactory.getLogger(Participant.class);
 
   enum ZabState {
@@ -156,14 +163,15 @@ public class Participant implements Callable<Void>,
 
   public Participant(ZabConfig config,
                      StateMachine stateMachine)
-      throws IOException {
+      throws IOException, InterruptedException {
     this(stateMachine, null, null, new TestState(config));
   }
 
   Participant(StateMachine stateMachine,
               StateChangeCallback cb,
               FailureCaseCallback fcb,
-              TestState initialState) throws IOException {
+              TestState initialState) throws
+              IOException, InterruptedException {
     this.config = new ZabConfig(initialState.prop);
     this.stateMachine = stateMachine;
     this.fAckEpoch = new File(config.getLogDir(), "AckEpoch");
@@ -185,6 +193,8 @@ public class Participant implements Callable<Void>,
 
     this.stateChangeCallback = cb;
     this.failCallback = fcb;
+    this.transport = new NettyTransport(this.config.getServerId(), this);
+    /*
     if (initialState.getTransportMap() == null) {
       this.transport = new DummyTransport(this.config.getServerId(), this);
     } else {
@@ -192,6 +202,7 @@ public class Participant implements Callable<Void>,
                                           this,
                                           initialState.getTransportMap());
     }
+    */
   }
 
   void send(ByteBuffer request) {
@@ -234,6 +245,14 @@ public class Participant implements Callable<Void>,
 
   @Override
   public void onDisconnected(String serverId) {
+    LOG.debug("ONDISCONNECTED from {}", serverId);
+    if (this.currentState == ZabState.LEADING) {
+      PeerHandler ph = this.quorumSet.get(serverId);
+      if (ph != null) {
+        ph.shutdown();
+        this.quorumSet.remove(serverId);
+      }
+    }
   }
 
 
@@ -609,9 +628,6 @@ public class Participant implements Callable<Void>,
    */
   void lead() {
 
-    Map<String, PeerHandler> quorumSet =
-        new ConcurrentHashMap<String, PeerHandler>();
-
     ExecutorService es = Executors
                          .newCachedThreadPool(DaemonThreadFactory.FACTORY);
 
@@ -629,15 +645,15 @@ public class Participant implements Callable<Void>,
         failCallback.leaderDiscovering();
       }
 
-      getPropsedEpochFromQuorum(quorumSet);
-      proposeNewEpoch(quorumSet);
-      waitEpochAckFromQuorum(quorumSet);
+      getPropsedEpochFromQuorum();
+      proposeNewEpoch();
+      waitEpochAckFromQuorum();
 
       LOG.debug("Established new epoch {}!",
                 getProposedEpochFromFile());
 
       // Finds one who has the "best" history.
-      String serverId = selectSyncHistoryOwner(quorumSet);
+      String serverId = selectSyncHistoryOwner();
       LOG.debug("Chooses {} to pull its history.",
                 serverId);
 
@@ -660,11 +676,12 @@ public class Participant implements Callable<Void>,
       }
       // Updates ACK EPOCH of leader.
       setAckEpoch(getProposedEpochFromFile());
-      beginSynchronizing(quorumSet, es);
-      waitNewLeaderAckFromQuorum(quorumSet);
+      beginSynchronizing(es);
+      waitNewLeaderAckFromQuorum();
 
 
       /* -- Broadcasting phase -- */
+      this.currentState = ZabState.LEADING;
       MDC.put("phase", "broadcast");
       LOG.debug("Now it's in broadcasting phase.");
 
@@ -677,15 +694,15 @@ public class Participant implements Callable<Void>,
                                                getAllTxns());
       }
 
-      this.currentState = ZabState.LEADING;
-      beginBroadcasting(quorumSet, es);
+      beginBroadcasting(es);
 
     } catch (InterruptedException | TimeoutException | IOException |
         RuntimeException e) {
       LOG.error("Caught exception", e);
       // Shutdown all the PeerHandlers in quorum set.
-      for (PeerHandler ph : quorumSet.values()) {
+      for (PeerHandler ph : this.quorumSet.values()) {
         ph.shutdown();
+        this.quorumSet.remove(ph.getServerId());
       }
       es.shutdown();
     }
@@ -694,20 +711,19 @@ public class Participant implements Callable<Void>,
   /**
    * Waits until receives the CEPOCH message from the quorum.
    *
-   * @param quorumSet the quorum set.
    * @throws InterruptedException if anything wrong happens.
    * @throws TimeoutException in case of timeout.
    */
-  void getPropsedEpochFromQuorum(Map<String, PeerHandler> quorumSet)
+  void getPropsedEpochFromQuorum()
       throws InterruptedException, TimeoutException {
     // Gets last proposed epoch from other servers (not including leader).
-    while (quorumSet.size() < getQuorumSize() - 1) {
+    while (this.quorumSet.size() < getQuorumSize() - 1) {
       MessageTuple tuple = getExpectedMessage(MessageType.PROPOSED_EPOCH, null);
       Message msg = tuple.getMessage();
       String source = tuple.getSource();
       ProposedEpoch epoch = msg.getProposedEpoch();
 
-      if (quorumSet.containsKey(source)) {
+      if (this.quorumSet.containsKey(source)) {
         throw new RuntimeException("Quorum set has already contained "
             + source + ", probably a bug?");
       }
@@ -717,7 +733,7 @@ public class Participant implements Callable<Void>,
                                        this.config.getTimeout() / 3);
 
       ph.setLastProposedEpoch(epoch.getProposedEpoch());
-      quorumSet.put(source, ph);
+      this.quorumSet.put(source, ph);
     }
     LOG.debug("Got proposed epoch from a quorum.");
   }
@@ -726,17 +742,16 @@ public class Participant implements Callable<Void>,
    * Finds an epoch number which is higher than any proposed epoch in quorum
    * set and propose the epoch to them.
    *
-   * @param quorumSet the quorum set.
    * @throws IOException in case of IO failure.
    */
-  void proposeNewEpoch(Map<String, PeerHandler> quorumSet)
+  void proposeNewEpoch()
       throws IOException {
     List<Integer> epochs = new ArrayList<Integer>();
 
     // Puts leader's last received proposed epoch in list.
     epochs.add(getProposedEpochFromFile());
 
-    for (PeerHandler stat : quorumSet.values()) {
+    for (PeerHandler stat : this.quorumSet.values()) {
       epochs.add(stat.getLastProposedEpoch());
     }
 
@@ -749,29 +764,28 @@ public class Participant implements Callable<Void>,
               newEpoch);
 
     // Sends new epoch message to quorum.
-    broadcast(quorumSet.keySet().iterator(),
+    broadcast(this.quorumSet.keySet().iterator(),
               MessageBuilder.buildNewEpochMessage(newEpoch));
   }
 
   /**
    * Waits until the new epoch is established.
    *
-   * @param quorumSet the quorum set.
    * @throws InterruptedException if anything wrong happens.
    * @throws TimeoutException in case of timeout.
    */
-  void waitEpochAckFromQuorum(Map<String, PeerHandler> quorumSet)
+  void waitEpochAckFromQuorum()
       throws InterruptedException, TimeoutException {
 
     int ackCount = 0;
 
     // Waits the Ack from all other peers in the quorum set.
-    while (ackCount < quorumSet.size()) {
+    while (ackCount < this.quorumSet.size()) {
       MessageTuple tuple = getExpectedMessage(MessageType.ACK_EPOCH, null);
       Message msg = tuple.getMessage();
       String source = tuple.getSource();
 
-      if (!quorumSet.containsKey(source)) {
+      if (!this.quorumSet.containsKey(source)) {
         LOG.warn("The Epoch ACK comes from {} who is not in quorum set, "
                  + "possibly from previous epoch?",
                  source);
@@ -784,24 +798,23 @@ public class Participant implements Callable<Void>,
       ZabMessage.Zxid zxid = ackEpoch.getLastZxid();
 
       // Updates follower's f.a and lastZxid.
-      PeerHandler ph = quorumSet.get(source);
+      PeerHandler ph = this.quorumSet.get(source);
       ph.setLastAckedEpoch(ackEpoch.getAcknowledgedEpoch());
       ph.setLastZxid(MessageBuilder.fromProtoZxid(zxid));
     }
 
     LOG.debug("Received ACKs from the quorum set of size {}.",
-              quorumSet.size() + 1);
+              this.quorumSet.size() + 1);
   }
 
   /**
    * Finds a server who has the largest acknowledged epoch and longest
    * history.
    *
-   * @param quorumSet the quorum set.
    * @return the id of the server
    * @throws IOException
    */
-  String selectSyncHistoryOwner(Map<String, PeerHandler> quorumSet)
+  String selectSyncHistoryOwner()
       throws IOException {
     // L.1.2 Select the history of a follwer f to be the initial history
     // of the new epoch. Follwer f is such that for every f' in the quorum,
@@ -813,7 +826,7 @@ public class Participant implements Callable<Void>,
     String serverId = config.getServerId();
 
     Iterator<Map.Entry<String, PeerHandler>> iter;
-    iter = quorumSet.entrySet().iterator();
+    iter = this.quorumSet.entrySet().iterator();
 
     while (iter.hasNext()) {
       Map.Entry<String, PeerHandler> entry = iter.next();
@@ -864,18 +877,17 @@ public class Participant implements Callable<Void>,
   /**
    * Waits for synchronization to followers complete.
    *
-   * @param quorumSet the followers need to be wait.
    * @throws TimeoutException in case of timeout.
    * @throws InterruptedException in case of interrupt.
    */
-  void waitNewLeaderAckFromQuorum(Map<String, PeerHandler> quorumSet)
+  void waitNewLeaderAckFromQuorum()
       throws TimeoutException, InterruptedException, IOException {
 
     LOG.debug("Waiting for synchronization to followers complete.");
 
     int completeCount = 0;
 
-    while (completeCount < quorumSet.size()) {
+    while (completeCount < this.quorumSet.size()) {
       MessageTuple tuple = getExpectedMessage(MessageType.ACK, null);
       ZabMessage.Ack ack = tuple.getMessage().getAck();
       String source =tuple.getSource();
@@ -889,7 +901,7 @@ public class Participant implements Callable<Void>,
             + "doesn't match last zxid of current leader.");
       }
 
-      if (!quorumSet.containsKey(source)) {
+      if (!this.quorumSet.containsKey(source)) {
         LOG.warn("Quorum set doesn't contain {}, a bug?", source);
         continue;
       }
@@ -900,14 +912,12 @@ public class Participant implements Callable<Void>,
   /**
    * Starts synchronizing peers in background threads.
    *
-   * @param quorumSet the quorum set.
    * @param es the ExecutorService used to running synchronizing tasks.
    * @throws IOException in case of IO failure.
    */
-  void beginSynchronizing(Map<String, PeerHandler> quorumSet,
-                          ExecutorService es) throws IOException {
+  void beginSynchronizing(ExecutorService es) throws IOException {
     // Synchronization is performed in other threads.
-    for (PeerHandler ph : quorumSet.values()) {
+    for (PeerHandler ph : this.quorumSet.values()) {
       ph.setSyncTask(new SyncPeerTask(ph.getServerId(),
                                       ph.getLastZxid()));
       ph.setNewLeaderEpoch(getProposedEpochFromFile());
@@ -919,20 +929,19 @@ public class Participant implements Callable<Void>,
    * Entering broadcasting phase, leader broadcasts proposal to
    * followers.
    *
-   * @param quorumSet the quorum set. Now it includes leader itself.
    * @throws InterruptedException if it's interrupted.
    * @throws TimeoutException in case of timeout.
    * @throws IOException in case of IO failure.
    */
-  void beginBroadcasting(Map<String, PeerHandler> quorumSet,
-                         ExecutorService es)
+  void beginBroadcasting(ExecutorService es)
       throws TimeoutException, InterruptedException, IOException {
     int currentEpoch = getAckEpochFromFile();
     Zxid nextZxid = new Zxid(currentEpoch, 0);
     PreProcessor preproc = new PreProcessor(this.stateMachine,
                                             nextZxid,
-                                            quorumSet);
-    AckProcessor ackProcessor = new AckProcessor(quorumSet, getQuorumSize());
+                                            this.quorumSet);
+    AckProcessor ackProcessor = new AckProcessor(this.quorumSet,
+                                                 getQuorumSize());
     // Adds leader itself to quorum set.
     SyncProposalProcessor syncProcessor =
         new SyncProposalProcessor(this.log,
@@ -950,15 +959,15 @@ public class Participant implements Callable<Void>,
                                      scTransport,
                                      this.config.getTimeout() / 3);
     lh.setFuture(es.submit(lh));
-    quorumSet.put(this.config.getServerId(), lh);
+    this.quorumSet.put(this.config.getServerId(), lh);
     // Sends commit message to commit all the transactions proposed in
     // synchronizing phase.
     Zxid lastZxid = this.log.getLatestZxid();
     Message commit = MessageBuilder.buildCommit(lastZxid);
-    queueAllPeers(commit, quorumSet);
+    queueAllPeers(commit);
 
     try {
-      while (quorumSet.size() >= getQuorumSize()) {
+      while (this.quorumSet.size() >= getQuorumSize()) {
         /*
          * Starts broadcasting loop, the leader will handle 5 kinds of messages
          * in the loop.
@@ -1012,13 +1021,13 @@ public class Participant implements Callable<Void>,
           ph.setLastZxid(zxid);
           ph.setNewLeaderEpoch(currentEpoch);
           ph.setSyncTask(new SyncPeerTask(source, zxid));
-          quorumSet.put(source, ph);
+          this.quorumSet.put(source, ph);
           // Starts background thread for synchronizing.
           ph.setFuture(es.submit(ph));
         } else {
           // In broadcasting phase, the only expected messages come outside
           // the quorum set is PROPOSED_EPOCH and ACK_EPOCH.
-          if (!quorumSet.containsKey(source)) {
+          if (!this.quorumSet.containsKey(source)) {
             LOG.debug("Got message {} from {} outside quorum.",
                       TextFormat.shortDebugString(msg),
                       source);
@@ -1045,9 +1054,9 @@ public class Participant implements Callable<Void>,
                       source);
           }
           // Updates last received message time for this follower.
-          quorumSet.get(source).updateHeartbeatTime();
+          this.quorumSet.get(source).updateHeartbeatTime();
           // Checks if any peers in quorum set are dead.
-          checkFollowerLiveness(quorumSet);
+          checkFollowerLiveness();
         }
       }
 
@@ -1063,29 +1072,28 @@ public class Participant implements Callable<Void>,
         commitProcessor.shutdown();
         syncProcessor.shutdown();
       } catch (ExecutionException e) {
-        LOG.error("Caught exectuion exception.",
-                  e);
+        LOG.error("Caught exectuion exception.", e);
       }
     }
   }
 
-  void queueAllPeers(Message commit, Map<String, PeerHandler> quorumSet) {
-    for (PeerHandler ph : quorumSet.values()) {
+  void queueAllPeers(Message commit) {
+    for (PeerHandler ph : this.quorumSet.values()) {
       ph.queueMessage(commit);
     }
   }
 
-  void checkFollowerLiveness(Map<String, PeerHandler> quorumSet) {
+  void checkFollowerLiveness() {
     long currentTime = System.nanoTime();
     long timeoutNs = this.config.getTimeout() * (long)1000000;
-    for (PeerHandler ph : quorumSet.values()) {
+    for (PeerHandler ph : this.quorumSet.values()) {
       if (ph.getServerId().equals(this.config.getServerId())) {
         continue;
       }
       if (currentTime - ph.getLastHeartbeatTime() >= timeoutNs) {
         // Removes the peer who is likely to be dead.
         ph.shutdown();
-        quorumSet.remove(ph.getServerId());
+        this.quorumSet.remove(ph.getServerId());
         LOG.warn("Peer {} is likely to be dead, remove it from quorum set.",
                  ph.getServerId());
       }
@@ -1138,6 +1146,7 @@ public class Participant implements Callable<Void>,
 
       /* -- Broadcasting phase -- */
       MDC.put("phase", "broadcast");
+      this.currentState = ZabState.FOLLOWING;
       LOG.debug("Now it's in broadcasting phase.");
 
       if (stateChangeCallback != null) {
@@ -1149,11 +1158,11 @@ public class Participant implements Callable<Void>,
         failCallback.followerBroadcasting();
       }
 
-      this.currentState = ZabState.FOLLOWING;
       beginAccepting();
 
     } catch (InterruptedException | TimeoutException | IOException |
         RuntimeException e) {
+      this.transport.disconnect(this.electedLeader);
       LOG.error("Caught exception.", e);
     }
   }
