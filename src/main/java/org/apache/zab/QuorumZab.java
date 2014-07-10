@@ -47,7 +47,7 @@ public class QuorumZab extends Zab {
 
   public QuorumZab(StateMachine stateMachine,
                    Properties prop)
-      throws IOException {
+      throws IOException, InterruptedException {
     super(stateMachine, prop);
 
     this.participant = new Participant(this.config,
@@ -60,7 +60,7 @@ public class QuorumZab extends Zab {
   QuorumZab(StateMachine stateMachine,
             StateChangeCallback cb,
             FailureCaseCallback fcb,
-            TestState initialState) throws IOException {
+            TestState initialState) throws IOException, InterruptedException {
 
     super(stateMachine, initialState.prop);
 
