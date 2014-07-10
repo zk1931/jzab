@@ -55,7 +55,7 @@ public class SimpleLog implements Log {
   private final File logFile;
   private final DataOutputStream logStream;
   private final FileOutputStream fout;
-  private Zxid lastZxidSeen = null;
+  private Zxid lastSeenZxid = null;
 
   /**
    * Creates a transaction log. The logFile can be either
@@ -72,7 +72,7 @@ public class SimpleLog implements Log {
     this.logStream = new DataOutputStream(
                      new BufferedOutputStream(fout));
     // Initializes the last seen zxid to the last zxid in file.
-    this.lastZxidSeen = getLatestZxid();
+    this.lastSeenZxid = getLatestZxid();
   }
 
   /**
@@ -93,9 +93,9 @@ public class SimpleLog implements Log {
    */
   @Override
   public void append(Transaction txn) throws IOException {
-    if(txn.getZxid().compareTo(this.lastZxidSeen) <= 0) {
-      LOG.error("Cannot append {}. lastZxidSeen = {}",
-                txn.getZxid(), this.lastZxidSeen);
+    if(txn.getZxid().compareTo(this.lastSeenZxid) <= 0) {
+      LOG.error("Cannot append {}. lastSeenZxid = {}",
+                txn.getZxid(), this.lastSeenZxid);
       throw new RuntimeException("The id of the transaction is less "
           + "than the id of last seen transaction");
     }
@@ -110,7 +110,7 @@ public class SimpleLog implements Log {
       }
       this.logStream.flush();
       // Update last seen Zxid.
-      this.lastZxidSeen = txn.getZxid();
+      this.lastSeenZxid = txn.getZxid();
     } catch(IOException e) {
       this.logStream.close();
     }
@@ -126,27 +126,24 @@ public class SimpleLog implements Log {
    */
   @Override
   public void truncate(Zxid zxid) throws IOException {
-    SimpleLogIterator iter = new SimpleLogIterator(this.logFile);
-    while(iter.hasNext()) {
-      Transaction txn = iter.next();
-      if (txn.getZxid().compareTo(zxid) == 0) {
-        break;
-      }
+    try (SimpleLogIterator iter = new SimpleLogIterator(this.logFile)) {
+      while (iter.hasNext()) {
+        Transaction txn = iter.next();
+        if (txn.getZxid().compareTo(zxid) == 0) {
+          break;
+        }
 
-      if (txn.getZxid().compareTo(zxid) > 0) {
-        iter.backward();
-        break;
+        if (txn.getZxid().compareTo(zxid) > 0) {
+          iter.backward();
+          break;
+        }
       }
-    }
-    if(iter.hasNext()) {
-      // It means there's something to truncate.
-      RandomAccessFile ra = new RandomAccessFile(this.logFile, "rw");
-      try {
-        // Truncate the file from given position.
-        ra.setLength(iter.getPosition());
-      } finally {
-        ra.close();
-        iter.close();
+      if (iter.hasNext()) {
+        // It means there's something to truncate.
+        try (RandomAccessFile ra = new RandomAccessFile(this.logFile, "rw")) {
+          // Truncate the file from given position.
+          ra.setLength(iter.getPosition());
+        }
       }
     }
   }
@@ -160,18 +157,15 @@ public class SimpleLog implements Log {
    */
   @Override
   public Zxid getLatestZxid() throws IOException {
-    Log.LogIterator iter = new SimpleLogIterator(this.logFile);
     Transaction txn = null;
-    try {
+    try (LogIterator iter = new SimpleLogIterator(this.logFile)) {
       while (iter.hasNext()) {
         txn = iter.next();
       }
-      if(txn == null) {
+      if (txn == null) {
         return Zxid.ZXID_NOT_EXIST;
       }
       return txn.getZxid();
-    } finally {
-      iter.close();
     }
   }
 
