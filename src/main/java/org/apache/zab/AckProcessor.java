@@ -23,6 +23,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -68,6 +69,11 @@ public class AckProcessor implements RequestProcessor,
     try {
       while (true) {
         Request request = ackQueue.take();
+
+        if (request == Request.REQUEST_OF_DEATH) {
+          break;
+        }
+
         String source = request.getServerId();
         ZabMessage.Ack ack = request.getMessage().getAck();
         Zxid zxid = MessageBuilder.fromProtoZxid(ack.getZxid());
@@ -94,11 +100,13 @@ public class AckProcessor implements RequestProcessor,
       LOG.error("Caught exception in AckProcessor!", e);
       throw e;
     }
+    LOG.debug("AckProcesser has been shut down.");
+    return null;
   }
 
   @Override
-  public void shutdown() {
-    this.ft.cancel(true);
-    LOG.debug("AckProcesser has been shut down.");
+  public void shutdown() throws InterruptedException, ExecutionException {
+    this.ackQueue.add(Request.REQUEST_OF_DEATH);
+    this.ft.get();
   }
 }

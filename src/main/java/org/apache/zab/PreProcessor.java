@@ -21,11 +21,11 @@ package org.apache.zab;
 import java.nio.ByteBuffer;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.Map;
-
 import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Message;
 import org.slf4j.Logger;
@@ -75,6 +75,11 @@ public class PreProcessor implements RequestProcessor,
     try {
       while (true) {
         Request request = this.requestQueue.take();
+
+        if (request == Request.REQUEST_OF_DEATH) {
+          break;
+        }
+
         ZabMessage.Request req = request.getMessage().getRequest();
         ByteBuffer bufReq = req.getRequest().asReadOnlyByteBuffer();
         // Invoke the callback to convert the request into transaction.
@@ -94,12 +99,14 @@ public class PreProcessor implements RequestProcessor,
       LOG.error("Caught exception in PreProcessor!", e);
       throw e;
     }
+    LOG.debug("PreProcessor has been shut down.");
+    return null;
   }
 
   @Override
-  public void shutdown() {
-    this.ft.cancel(true);
-    LOG.debug("PreProcessor has been shut down.");
+  public void shutdown() throws InterruptedException, ExecutionException {
+    this.requestQueue.add(Request.REQUEST_OF_DEATH);
+    this.ft.get();
   }
 }
 

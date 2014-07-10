@@ -18,6 +18,8 @@
 
 package org.apache.zab;
 
+import java.util.concurrent.ExecutionException;
+
 /**
  * Interface for request processor. Different processors are chained together
  * to process request in order.
@@ -35,6 +37,8 @@ public interface RequestProcessor {
 
   /**
    * Shutdown the processor.
+   * @throws ExecutionException
+   * @throws InterruptedException
    */
-  void shutdown();
+  void shutdown() throws InterruptedException, ExecutionException;
 }

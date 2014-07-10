@@ -25,11 +25,14 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+
 import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.Message.MessageType;
 import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.protobuf.TextFormat;
 
 /**
  * Handles peer connection.
@@ -92,6 +95,11 @@ public class PeerHandler implements Callable<Void> {
    */
   protected final Transport transport;
 
+  /**
+   * The intervals of sending HEARTBEAT messages.
+   */
+  protected final int heartbeatIntervalMs;
+
   protected Future<Void> future = null;
 
   private static final Logger LOG = LoggerFactory.getLogger(PeerHandler.class);
@@ -101,10 +109,14 @@ public class PeerHandler implements Callable<Void> {
    *
    * @param serverId the server id of the peer.
    * @param transport the transport object used to send messages.
+   * @param heartbeatIntervalMs the interval of sending HEARTBEAT messages.
    */
-  public PeerHandler(String serverId, Transport transport) {
+  public PeerHandler(String serverId,
+                     Transport transport,
+                     int heartbeatIntervalMs) {
     this.serverId = serverId;
     this.transport = transport;
+    this.heartbeatIntervalMs = heartbeatIntervalMs;
     updateHeartbeatTime();
   }
 
@@ -199,16 +211,24 @@ public class PeerHandler implements Callable<Void> {
       sendMessage(nl);
     }
 
+    Message heartbeat = MessageBuilder.buildHeartbeat();
+
     while (true) {
-      Message msg = this.broadcastingQueue.poll(100, TimeUnit.MILLISECONDS);
+
+      Message msg = this.broadcastingQueue.poll(this.heartbeatIntervalMs,
+                                                TimeUnit.MILLISECONDS);
 
       if (msg == null) {
+        // Only send HEARTBEAT message if there hasn't been any other outgoing
+        // messages for a certain duration.
+        sendMessage(heartbeat);
         continue;
       }
 
       if (msg.getType() == MessageType.PROPOSAL) {
         // Got PROPOSAL message, send it to follower.
-        LOG.debug("PeerHandler got PROPOSAL");
+        LOG.debug("PeerHandler got PROPOSAL {}",
+                   TextFormat.shortDebugString(msg));
         // Sends this proposal to follower.
         sendMessage(msg);
       } else if (msg.getType() == MessageType.COMMIT) {

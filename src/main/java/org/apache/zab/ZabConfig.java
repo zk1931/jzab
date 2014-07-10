@@ -92,6 +92,6 @@ public class ZabConfig {
    * @return the timeout in milliseconds
    */
   public int getTimeout() {
-    return Integer.parseInt(this.prop.getProperty("timeout_ms", "3000"));
+    return Integer.parseInt(this.prop.getProperty("timeout_ms", "1000"));
   }
 }
