@@ -1055,7 +1055,7 @@ public class QuorumZabTest extends TestBase  {
             LOG.error("Interrupted!");
           }
           throw new SimulatedException(String.format("%s crashed "
-              + "before synchronizing phase", server1));
+              + "in broadcasting phase", server1));
         }
       }
     };

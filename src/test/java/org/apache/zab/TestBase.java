@@ -50,16 +50,25 @@ public class TestBase {
     protected void starting(Description description) {
       DummyTransport.clearMessageQueue();
       LOG.info("STARTING: {}", description);
+      LOG.debug("Before {} : Number of threads {}",
+                description,
+                Thread.getAllStackTraces().keySet().size());
     }
 
     @Override
     protected void failed(Throwable e, Description description) {
       LOG.error("FAILED: {}", description, e);
+      LOG.debug("After {} : Number of threads {}",
+                description,
+                Thread.getAllStackTraces().keySet().size());
     }
 
     @Override
     protected void succeeded(Description description) {
       LOG.info("SUCCEEDED: {}", description);
+      LOG.debug("After {} : Number of threads {}",
+          description,
+          Thread.getAllStackTraces().keySet().size());
     }
   };
 
