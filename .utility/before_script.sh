@@ -15,6 +15,11 @@
 # oraclejdk8 VM.
 ulimit -u 514029
 ulimit -a
+
+# Set the heap size to 512MB.
+echo $JAVA_OPTS
+export JAVA_OPTS=-Xmx512m
+
 if [ "$TRAVIS_JDK_VERSION" != "oraclejdk8" ]; then
   mvn findbugs:check
 fi
