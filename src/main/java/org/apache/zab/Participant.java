@@ -37,6 +37,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+
 import org.apache.zab.QuorumZab.FailureCaseCallback;
 import org.apache.zab.QuorumZab.StateChangeCallback;
 import org.apache.zab.QuorumZab.TestState;
@@ -52,6 +53,7 @@ import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.TextFormat;
 
@@ -255,7 +257,6 @@ public class Participant implements Callable<Void>,
     }
   }
 
-
   /**
    * Starts main logic of participant.
    */
@@ -285,8 +286,13 @@ public class Participant implements Callable<Void>,
           MDC.put("state", "following");
           follow();
         }
-      } catch (RuntimeException e) {
-        LOG.warn("Caught an exception ", e);
+      } catch (InterruptedException e) {
+        LOG.warn("Caught Interrupted exception, it has been shut down?", e);
+        this.transport.shutdown();
+        return null;
+      } catch (Exception e) {
+        LOG.error("Caught exception :", e);
+        return null;
       }
     }
   }
@@ -625,12 +631,13 @@ public class Participant implements Callable<Void>,
   /**
    * Begins executing leader steps. It returns if any exception is caught,
    * which causes it goes back to election phase.
+   *
+   * @throws InterruptedException in case of interrupted.
    */
-  void lead() {
+  void lead() throws Exception {
 
     ExecutorService es = Executors
                          .newCachedThreadPool(DaemonThreadFactory.FACTORY);
-
     try {
 
       /* -- Discovering phase -- */
@@ -705,6 +712,9 @@ public class Participant implements Callable<Void>,
         this.quorumSet.remove(ph.getServerId());
       }
       es.shutdown();
+      if (e instanceof InterruptedException) {
+        throw (InterruptedException)e;
+      }
     }
   }
 
@@ -905,6 +915,7 @@ public class Participant implements Callable<Void>,
         LOG.warn("Quorum set doesn't contain {}, a bug?", source);
         continue;
       }
+      this.quorumSet.get(source).setLastAckedZxid(zxid);
       completeCount++;
     }
   }
@@ -958,6 +969,7 @@ public class Participant implements Callable<Void>,
     PeerHandler lh = new PeerHandler(this.config.getServerId(),
                                      scTransport,
                                      this.config.getTimeout() / 3);
+    lh.setLastAckedZxid(this.log.getLatestZxid());
     lh.setFuture(es.submit(lh));
     this.quorumSet.put(this.config.getServerId(), lh);
     // Sends commit message to commit all the transactions proposed in
@@ -1105,8 +1117,9 @@ public class Participant implements Callable<Void>,
   /**
    * Begins executing follower steps. It returns if any exception is caught,
    * which causes it goes back to election phase.
+   * @throws InterruptedException
    */
-  void follow() {
+  void follow() throws InterruptedException {
 
     try {
 
@@ -1162,8 +1175,13 @@ public class Participant implements Callable<Void>,
 
     } catch (InterruptedException | TimeoutException | IOException |
         RuntimeException e) {
+
       this.transport.disconnect(this.electedLeader);
       LOG.error("Caught exception.", e);
+
+      if (e instanceof InterruptedException) {
+        throw (InterruptedException)e;
+      }
     }
   }
 

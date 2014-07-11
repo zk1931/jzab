@@ -23,6 +23,7 @@ import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.List;
@@ -53,8 +54,11 @@ public class QuorumZab extends Zab {
     this.participant = new Participant(this.config,
                                        stateMachine);
 
-    this.ft = Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY)
-             .submit(this.participant);
+    ExecutorService es =
+        Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
+
+    this.ft = es.submit(this.participant);
+    es.shutdown();
   }
 
   QuorumZab(StateMachine stateMachine,
@@ -80,6 +84,11 @@ public class QuorumZab extends Zab {
 
   @Override
   public void trimLogTo(Zxid zxid) {
+  }
+
+  public void shutdown() throws InterruptedException {
+    boolean res = this.ft.cancel(true);
+    LOG.debug("Quorum has been shut down ? {}", res);
   }
 
 

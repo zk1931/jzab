@@ -279,4 +279,8 @@ public class DummyTransport extends Transport {
       super(server, null);
     }
   }
+
+  @Override
+  public void shutdown() {
+  }
 }

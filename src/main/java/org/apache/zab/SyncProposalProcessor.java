@@ -22,9 +22,11 @@ import java.nio.ByteBuffer;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+
 import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
@@ -58,8 +60,10 @@ public class SyncProposalProcessor implements RequestProcessor,
   public SyncProposalProcessor(Log log, Transport transport) {
     this.log = log;
     this.transport = transport;
-    // Starts running.
-    ft = Executors.newSingleThreadExecutor().submit(this);
+    ExecutorService es =
+        Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
+    ft = es.submit(this);
+    es.shutdown();
   }
 
   @Override

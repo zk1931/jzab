@@ -68,6 +68,13 @@ public abstract class Transport {
   }
 
   /**
+   * Shutdown the transport.
+   *
+   * @throws InterruptedException if it's interrupted.
+   */
+  public abstract void shutdown() throws InterruptedException;
+
+  /**
    * Interface of receiver class. Transport will notify the receiver of
    * arrived messages.
    */

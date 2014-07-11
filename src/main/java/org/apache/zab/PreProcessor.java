@@ -22,10 +22,12 @@ import java.nio.ByteBuffer;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.Map;
+
 import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Message;
 import org.slf4j.Logger;
@@ -60,8 +62,10 @@ public class PreProcessor implements RequestProcessor,
     this.stateMachine = stateMachine;
     this.nextZxid = nextZxid;
     this.quorumSet = quorumSet;
-    // Starts running.
-    ft = Executors.newSingleThreadExecutor().submit(this);
+    ExecutorService es =
+        Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
+    ft = es.submit(this);
+    es.shutdown();
   }
 
   @Override
