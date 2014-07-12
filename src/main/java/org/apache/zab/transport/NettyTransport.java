@@ -106,6 +106,7 @@ public class NettyTransport extends Transport {
   /**
    * Destroys the transport.
    */
+  @Override
   public void shutdown() throws InterruptedException {
     try {
       channel.close();

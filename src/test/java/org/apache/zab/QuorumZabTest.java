@@ -191,6 +191,10 @@ public class QuorumZabTest extends TestBase  {
 
     // The last ack epoch of the owner of initial history should be 1.
     Assert.assertEquals(cb.syncAckEpoch, 1);
+
+    zab1.shutdown();
+    zab2.shutdown();
+    zab3.shutdown();
   }
 
   /**
@@ -222,6 +226,8 @@ public class QuorumZabTest extends TestBase  {
     Assert.assertEquals(server1, cb.syncFollower);
     Assert.assertTrue(cb.initialHistory.isEmpty());
     Assert.assertEquals(0, cb.syncZxid.compareTo(Zxid.ZXID_NOT_EXIST));
+
+    zab1.shutdown();
   }
 
   /**
@@ -286,6 +292,8 @@ public class QuorumZabTest extends TestBase  {
     Assert.assertTrue(cb2.initialHistory.size() == 1);
     Assert.assertEquals(cb2.initialHistory.get(0).getZxid(), new Zxid(0, 0));
 
+    zab1.shutdown();
+    zab2.shutdown();
   }
 
   /**
@@ -351,6 +359,9 @@ public class QuorumZabTest extends TestBase  {
     Assert.assertTrue(cb2.initialHistory.size() == 2);
     Assert.assertEquals(cb2.initialHistory.get(0).getZxid(), new Zxid(0, 0));
     Assert.assertEquals(cb2.initialHistory.get(1).getZxid(), new Zxid(0, 1));
+
+    zab1.shutdown();
+    zab2.shutdown();
   }
 
   /**
@@ -417,6 +428,9 @@ public class QuorumZabTest extends TestBase  {
     Assert.assertTrue(cb2.initialHistory.size() == 2);
     Assert.assertEquals(cb2.initialHistory.get(0).getZxid(), new Zxid(0, 0));
     Assert.assertEquals(cb2.initialHistory.get(1).getZxid(), new Zxid(0, 1));
+
+    zab1.shutdown();
+    zab2.shutdown();
   }
 
   /**
@@ -487,6 +501,9 @@ public class QuorumZabTest extends TestBase  {
     Assert.assertTrue(cb2.initialHistory.size() == 2);
     Assert.assertEquals(cb2.initialHistory.get(0).getZxid(), new Zxid(0, 0));
     Assert.assertEquals(cb2.initialHistory.get(1).getZxid(), new Zxid(0, 1));
+
+    zab1.shutdown();
+    zab2.shutdown();
   }
 
   /**
@@ -556,6 +573,9 @@ public class QuorumZabTest extends TestBase  {
     Assert.assertTrue(cb2.initialHistory.size() == 2);
     Assert.assertEquals(cb2.initialHistory.get(0).getZxid(), new Zxid(0, 0));
     Assert.assertEquals(cb2.initialHistory.get(1).getZxid(), new Zxid(1, 0));
+
+    zab1.shutdown();
+    zab2.shutdown();
   }
 
   /**
@@ -616,6 +636,9 @@ public class QuorumZabTest extends TestBase  {
 
     Assert.assertEquals(cb1.initialHistory.size(), 0);
     Assert.assertEquals(cb2.initialHistory.size(), 0);
+
+    zab1.shutdown();
+    zab2.shutdown();
   }
 
   /**
@@ -667,6 +690,9 @@ public class QuorumZabTest extends TestBase  {
     cb2.conditionBroadcasting.await();
     Assert.assertEquals(3, cb1.initialHistory.size());
     Assert.assertEquals(3, cb2.initialHistory.size());
+
+    zab1.shutdown();
+    zab2.shutdown();
   }
 
   /**
@@ -757,6 +783,10 @@ public class QuorumZabTest extends TestBase  {
     Assert.assertEquals(5, st1.deliveredTxns.size());
     Assert.assertEquals(5, st2.deliveredTxns.size());
     Assert.assertEquals(5, st3.deliveredTxns.size());
+
+    zab1.shutdown();
+    zab2.shutdown();
+    zab3.shutdown();
   }
 
   /**
@@ -853,6 +883,10 @@ public class QuorumZabTest extends TestBase  {
     Assert.assertEquals(1, cb1.initialHistory.size());
     Assert.assertEquals(1, cb2.initialHistory.size());
     Assert.assertEquals(1, cb3.initialHistory.size());
+
+    zab1.shutdown();
+    zab2.shutdown();
+    zab3.shutdown();
   }
 
   /**
@@ -967,6 +1001,10 @@ public class QuorumZabTest extends TestBase  {
     Assert.assertEquals(1, cb1.initialHistory.size());
     Assert.assertEquals(1, cb2.initialHistory.size());
     Assert.assertEquals(1, cb3.initialHistory.size());
+
+    zab1.shutdown();
+    zab2.shutdown();
+    zab3.shutdown();
   }
 
   /**
@@ -1062,6 +1100,10 @@ public class QuorumZabTest extends TestBase  {
     Assert.assertEquals(1, cb1.initialHistory.size());
     Assert.assertEquals(1, cb2.initialHistory.size());
     Assert.assertEquals(1, cb3.initialHistory.size());
+
+    zab1.shutdown();
+    zab2.shutdown();
+    zab3.shutdown();
   }
 
   /**
@@ -1176,6 +1218,10 @@ public class QuorumZabTest extends TestBase  {
     Assert.assertEquals(1, cb1.initialHistory.size());
     Assert.assertEquals(1, cb2.initialHistory.size());
     Assert.assertEquals(1, cb3.initialHistory.size());
+
+    zab1.shutdown();
+    zab2.shutdown();
+    zab3.shutdown();
   }
 
   /**
@@ -1271,5 +1317,9 @@ public class QuorumZabTest extends TestBase  {
     Assert.assertEquals(1, cb1.initialHistory.size());
     Assert.assertEquals(1, cb2.initialHistory.size());
     Assert.assertEquals(1, cb3.initialHistory.size());
+
+    zab1.shutdown();
+    zab2.shutdown();
+    zab3.shutdown();
   }
 }

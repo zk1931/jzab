@@ -192,7 +192,9 @@ public class PeerHandler implements Callable<Void> {
   }
 
   void shutdown() {
-    this.future.cancel(true);
+    if (this.future != null) {
+      this.future.cancel(true);
+    }
     this.transport.disconnect(this.serverId);
     LOG.debug("PeerHandler of {} has been shut down.", this.serverId);
   }

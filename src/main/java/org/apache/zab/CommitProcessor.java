@@ -21,9 +21,11 @@ package org.apache.zab;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+
 import org.apache.zab.proto.ZabMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,8 +59,10 @@ public class CommitProcessor implements RequestProcessor,
     this.log = log;
     this.stateMachine = stateMachine;
     this.serverId = serverId;
-    // Starts running.
-    ft = Executors.newSingleThreadExecutor().submit(this);
+    ExecutorService es =
+        Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
+    ft = es.submit(this);
+    es.shutdown();
   }
 
   @Override
