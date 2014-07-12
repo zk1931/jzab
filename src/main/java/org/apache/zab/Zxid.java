@@ -90,7 +90,7 @@ public class Zxid implements Comparable<Zxid> {
 
   @Override
   public String toString() {
-    return String.format("Zxid [epoch : %s, xid : %s]", this.epoch, this.xid);
+    return String.format("Zxid [epoch: %s, xid: %s]", this.epoch, this.xid);
   }
 
   @Override

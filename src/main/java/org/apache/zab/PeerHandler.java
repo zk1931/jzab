@@ -228,14 +228,13 @@ public class PeerHandler implements Callable<Void> {
 
       if (msg.getType() == MessageType.PROPOSAL) {
         // Got PROPOSAL message, send it to follower.
-        LOG.debug("PeerHandler got PROPOSAL {}",
+        LOG.debug("Received PROPOSAL {}",
                    TextFormat.shortDebugString(msg));
         // Sends this proposal to follower.
         sendMessage(msg);
       } else if (msg.getType() == MessageType.COMMIT) {
         // Got COMMIT message, send it to follower.
-        LOG.debug("PeerHandler {} got COMMIT {}",
-                  this.serverId,
+        LOG.debug("Received COMMIT {}",
                   MessageBuilder.fromProtoZxid(msg.getCommit().getZxid()));
         // Sends commit to follower.
         sendMessage(msg);
