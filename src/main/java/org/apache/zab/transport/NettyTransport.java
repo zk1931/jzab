@@ -114,7 +114,6 @@ public class NettyTransport extends Transport {
         LOG.debug("Shutting down the sender({})", entry.getKey());
         entry.getValue().shutdown();
       }
-      senders.clear();
       LOG.debug("Shutdown complete");
     } finally {
       workerGroup.shutdownGracefully();
@@ -223,11 +222,19 @@ public class NettyTransport extends Transport {
       String remoteId = ctx.channel().attr(NettyTransport.REMOTE_ID).get();
       ctx.close();
       if (remoteId != null) {
-        Sender sender = senders.remove(remoteId);
-        LOG.debug("Got disconnected. Removing sender to {}", remoteId);
+        LOG.debug("Got disconnected from {}. Removing the sender", remoteId);
         // This must not be null.
+        Sender sender = senders.get(remoteId);
+        assert sender != null;
         sender.shutdown();
+
+        // TODO there is a race condition here. Once onDisconnected is called,
+        // the client assumes that the connection will get re-established on
+        // next send. If the send() method gets called before this sender gets
+        // removed from the map, we lose the message.
         receiver.onDisconnected(remoteId);
+        boolean removed = senders.remove(remoteId, sender);
+        assert removed;
       }
     }
 
@@ -335,7 +342,8 @@ public class NettyTransport extends Transport {
             channel = cfuture.channel();
             channel.writeAndFlush(Unpooled.wrappedBuffer(bb));
           } else {
-            LOG.debug("Failed to connect to {}", destination, cfuture.cause());
+            LOG.debug("Failed to connect to {}: {}", destination,
+                      cfuture.cause().getMessage());
             handshakeFailed();
           }
         }
@@ -370,14 +378,6 @@ public class NettyTransport extends Transport {
       }
     }
 
-    public void close() {
-      try {
-        channel.close().syncUninterruptibly();
-      } finally {
-        workerGroup.shutdownGracefully();
-      }
-    }
-
     @Override
     public Void call() throws Exception {
       LOG.debug("Started the sender: {} => {}", hostPort, destination);
@@ -402,9 +402,14 @@ public class NettyTransport extends Transport {
     }
 
     public void shutdown() {
-      if (future != null) {
-        boolean result = future.cancel(true);
-        LOG.debug("Cancelled the sender? {}", result);
+      LOG.debug("Shutting down the sender: {} => {}", hostPort, destination);
+      try {
+        if (future != null) {
+          future.cancel(true);
+        }
+        channel.close().syncUninterruptibly();
+      } finally {
+        workerGroup.shutdownGracefully();
       }
     }
 
