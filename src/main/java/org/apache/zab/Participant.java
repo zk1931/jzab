@@ -37,7 +37,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-
 import org.apache.zab.QuorumZab.FailureCaseCallback;
 import org.apache.zab.QuorumZab.StateChangeCallback;
 import org.apache.zab.QuorumZab.TestState;
@@ -47,18 +46,122 @@ import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.NewEpoch;
 import org.apache.zab.proto.ZabMessage.ProposedEpoch;
 import org.apache.zab.proto.ZabMessage.Message.MessageType;
-//import org.apache.zab.transport.DummyTransport;
 import org.apache.zab.transport.NettyTransport;
 import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
-
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.TextFormat;
 
 /**
+ *
  * Participant of a Zab ensemble.
+ *
+ * The participant plays either leader role or follower role in the ensemble.
+ *
+ * Each particiant has a message queue. Participant simply put the message in
+ * messsage queue when its onReceived callback is invoked. It's up to the main
+ * thread to take out and process the message. The expected message varies in
+ * different phases of Zab.
+ *
+ * In broadcasting phase, some messages should be processed by specific
+ * processors. Each processor runs on a separate thread.
+ *
+ * Leader will handle message ACK, REQUEST and HEARTBEAT. For ACK message,
+ * leader hands it to AckProcessor, AckProcessor will find out the committed
+ * transactions and broadcast to all the followers. For REQUEST message,
+ * leader will hand it to PreProcessor, PreProcessor will give it application
+ * to convert requests to idempotent transactions and then broadcast to all the
+ * followers. For any message received from follower, leader will update last
+ * replied message time of follower and check the liveness of followers based
+ * on last replied time of followers.
+ *
+ * Below is the model diagram of Leader in broadcasting phase :
+ *
+ * <pre>
+ *                           +--------------+
+ *                           |              |
+ *                           |  onReceived  |
+ *                           |              |
+ *                           +------+-------+
+ *                                  |
+ *                                  | Put in message queue
+ *                                  |
+ *                      +-----------+------------+
+ *                      |     Message Queue      |
+ *                      +-----------+------------+
+ *                                  |
+ *                                  |             In broadcasting, it handles:
+ *                                  |                1. Req
+ *                         +--------+----------+     2. Ack
+ *                         | beginBroadcasting |     3. Heartbeat
+ *                         +--------+----------+     Req and Ack messages are
+ *                                  |                handed to PreProcessor
+ *                     +------------+--------------+ and AckProcessor.
+ *                     |                           |
+ *                     | Req                       | Ack
+ *              +------+-------+            +------+-------+
+ *              | PreProcessor |            | AckProcessor |
+ *              +--+-+---------+            +----------+---+
+ *                 | |                                 |
+ *        Proposal | +----------+----------------------+ Commit
+ *                 |            |                      |
+ *           +-----+-----+ +----+------+           +---+-------+
+ *           |PeerHandler| |PeerHandler|  ......   |PeerHandler|
+ *           | (leader)  | +-----+-----+           +----+------+
+ *           +-----+-----+       |                      |
+ *  Short circuit  |             |                      |
+ *  transport(send |             |Transport             |Transport
+ *  to processors) |             |                      |
+ * +---------------+-----+  +----+-----+           +----+-----+
+ * |   CommitProcessor   |  | Follower |           | Follower |
+ * |SyncProposalProcecssor  +----------+           +----------+
+ * +---------------------+
+ * </pre>
+ *
+ * In the broadcasting phase of follower, followers only need to handle message
+ * HEARTBEAT, PROPOSAL and COMMIT. For HEARTBEAT message, it simply replies to
+ * leader in main thread. For PROPOSAL and COMMIT message, they hand to
+ * SyncProposalProcessor and CommitProcessor respectively.
+ * SyncProposalProcessor will sync the proposals to disk and send ACK back to
+ * leader. CommitProcessor will deliver the committed transactions to
+ * application. Each processor runs in different threads.
+ *
+ * Below is the model diagram of follower in broadcasting phase :
+ * <pre>
+ *                 +--------------+
+ *                 |              |
+ *                 |  onReceived  |
+ *                 |              |
+ *                 +------+-------+
+ *                        |
+ *                        | Put in message queue
+ *                        |
+ *            +-----------+------------+
+ *            |     Message Queue      |
+ *            +-----------+------------+
+ *                        |             In broadcasting, it handles:
+ *                        |             1. Commit
+ *                        |             2. Proposal
+ *               +--------+----------+  3. Heartbeat
+ *               |  beginAccepting   |  Commit and Proposal are
+ *               +--------+----------+  handed to CommitProcessor
+ *                        |             and SyncProposalProcessor.
+ *           +------------+--------------+
+ *           |Proposal                   | Commit and Proposal
+ *           |                           |
+ * +---------+-----------+        +------+--------+
+ * |SyncProposalProcessor|        |CommitProcessor|
+ * +---------+-----------+        +------+-----+--+
+ *           |                           | Deliver
+ *           |Ack                        |
+ *           |Transport           +------+-------+
+ *           |                    | StateMachine |
+ *     +-----+----+               +--------------+
+ *     |  Leader  |
+ *     +----------+
+ * </pre>
  */
 public class Participant implements Callable<Void>,
                                     Transport.Receiver,
