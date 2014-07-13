@@ -83,8 +83,7 @@ public class CommitProcessor implements RequestProcessor,
 
         ZabMessage.Commit commit = request.getMessage().getCommit();
         Zxid zxid = MessageBuilder.fromProtoZxid(commit.getZxid());
-        LOG.debug("{} got commit request {}, last {}.",
-                  this.serverId,
+        LOG.debug("Received a commit request {}, last {}.",
                   zxid,
                   this.lastDeliveredZxid);
 
@@ -114,11 +113,7 @@ public class CommitProcessor implements RequestProcessor,
                 if (txn.getZxid().compareTo(zxid) > 0) {
                   break;
                 }
-
-                LOG.debug("{} delivers transaction : {}.",
-                          this.serverId,
-                          txn.getZxid());
-
+                LOG.debug("Delivering transaction {}.", txn.getZxid());
                 this.stateMachine.deliver(txn.getZxid(), txn.getBody());
               }
             }

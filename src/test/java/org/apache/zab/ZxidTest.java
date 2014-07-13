@@ -67,6 +67,6 @@ public class ZxidTest extends TestBase {
   @Test
   public void toStringTest() {
     Zxid z = new Zxid(10, 3);
-    Assert.assertEquals("Zxid [epoch : 10, xid : 3]", z.toString());
+    Assert.assertEquals("Zxid [epoch: 10, xid: 3]", z.toString());
   }
 }
