@@ -37,7 +37,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-
 import org.apache.zab.QuorumZab.FailureCaseCallback;
 import org.apache.zab.QuorumZab.StateChangeCallback;
 import org.apache.zab.QuorumZab.TestState;
@@ -50,10 +49,10 @@ import org.apache.zab.proto.ZabMessage.Message.MessageType;
 //import org.apache.zab.transport.DummyTransport;
 import org.apache.zab.transport.NettyTransport;
 import org.apache.zab.transport.Transport;
+import org.apache.zab.Zab.ZabState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
-
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.TextFormat;
 
@@ -135,12 +134,6 @@ public class Participant implements Callable<Void>,
       new ConcurrentHashMap<String, PeerHandler>();
 
   private static final Logger LOG = LoggerFactory.getLogger(Participant.class);
-
-  enum ZabState {
-    LOOKING,
-    FOLLOWING,
-    LEADING
-  }
 
   /**
    * A tuple holds both message and its source.
@@ -269,6 +262,7 @@ public class Participant implements Callable<Void>,
     Election electionAlg = new RoundRobinElection();
     while (true) {
       try {
+        this.stateMachine.stateChanged(ZabState.LOOKING);
         MDC.put("state", "looking");
         MDC.put("phase", "electing");
         this.currentState = ZabState.LOOKING;
@@ -703,7 +697,7 @@ public class Participant implements Callable<Void>,
         stateChangeCallback.leaderBroadcasting(getAckEpochFromFile(),
                                                getAllTxns());
       }
-
+      this.stateMachine.stateChanged(ZabState.LEADING);
       beginBroadcasting(es);
 
     } catch (InterruptedException | TimeoutException | IOException |
@@ -1179,7 +1173,7 @@ public class Participant implements Callable<Void>,
       if (failCallback != null) {
         failCallback.followerBroadcasting();
       }
-
+      this.stateMachine.stateChanged(ZabState.FOLLOWING);
       beginAccepting();
 
     } catch (InterruptedException | TimeoutException | IOException |

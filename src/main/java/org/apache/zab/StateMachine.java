@@ -74,4 +74,15 @@ public interface StateMachine {
    * @param is the input stream
    */
   void setState(InputStream is);
+
+  /**
+   * Upcall to notify the state of Zab is changed. The state of Zab
+   * is important to applications. Applications should only send request
+   * to Zab or serve requests from clients when Zab is in LEADING/FOLLOWING
+   * state.
+   *
+   * @param state the current state of Zab, it could be
+   * LOOING/FOLLOWING/LEADING.
+   */
+  void stateChanged(Zab.ZabState state);
 }
