@@ -40,6 +40,12 @@ public class RoundRobinElection implements Election {
       // Reset round to zero once change to a new epoch.
       this.round = 0;
       this.lastEpoch = state.getProposedEpoch();
+    } else {
+      try {
+        Thread.sleep((long)(Math.random() * 500));
+      } catch(InterruptedException e) {
+        LOG.debug("Interrupted exception in RoundRobinElection.");
+      }
     }
     int idx = this.round % state.getEnsembleSize();
     cb.leaderElected(state.getServerList().get(idx));
