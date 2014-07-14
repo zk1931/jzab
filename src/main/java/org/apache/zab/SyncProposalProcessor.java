@@ -26,7 +26,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
-
 import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
@@ -50,6 +49,11 @@ public class SyncProposalProcessor implements RequestProcessor,
 
   private static final Logger LOG =
       LoggerFactory.getLogger(SyncProposalProcessor.class);
+
+  // The maximum count of batched transactions. Once batched transactions are
+  // beyond this size, we force synchronizing them to disk and acknowledging
+  // the leader.
+  private static final int MAX_BATCH_SIZE = 1000;
 
   /**
    * Constructs a SyncProposalProcessor object.
@@ -79,21 +83,41 @@ public class SyncProposalProcessor implements RequestProcessor,
 
   @Override
   public Void call() throws Exception {
-    LOG.debug("SyncRequestProcessor gets started.");
     try {
+      LOG.debug("Batched SyncRequestProcessor gets started.");
+      Request lastReq = null;
+      // Number of transactions batched so far.
+      int batchCount = 0;
+
       while (true) {
-        Request request = this.proposalQueue.take();
-
-        if (request == Request.REQUEST_OF_DEATH) {
-          break;
+        Request request;
+        if (lastReq == null) {
+          request = this.proposalQueue.take();
+          lastReq = request;
+        } else {
+          request = this.proposalQueue.poll();
+          if (request == null || batchCount == MAX_BATCH_SIZE) {
+            // Sync to disk and send ACK to leader.
+            this.log.sync();
+            Zxid zxid = MessageBuilder
+                        .fromProtoZxid(lastReq.getMessage()
+                                              .getProposal()
+                                              .getZxid());
+            sendAck(lastReq.getServerId(), zxid);
+            batchCount = 0;
+          }
+          lastReq = request;
         }
-
-        Transaction txn = MessageBuilder
-                          .fromProposal(request.getMessage().getProposal());
-        LOG.debug("Syncing transaction {} to disk.", txn.getZxid());
-        this.log.append(txn);
-        this.log.sync();
-        sendAck(request.getServerId(), txn.getZxid());
+        if (request != null) {
+          if (request == Request.REQUEST_OF_DEATH) {
+            break;
+          }
+          Transaction txn = MessageBuilder
+                            .fromProposal(request.getMessage().getProposal());
+          LOG.debug("Syncing transaction {} to disk.", txn.getZxid());
+          this.log.append(txn);
+          batchCount++;
+        }
       }
     } catch (Exception e) {
       LOG.error("Caught exception in SyncProposalProcessor!");
