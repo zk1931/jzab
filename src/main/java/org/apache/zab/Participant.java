@@ -37,7 +37,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-
 import org.apache.zab.QuorumZab.FailureCaseCallback;
 import org.apache.zab.QuorumZab.StateChangeCallback;
 import org.apache.zab.QuorumZab.TestState;
@@ -47,13 +46,11 @@ import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.NewEpoch;
 import org.apache.zab.proto.ZabMessage.ProposedEpoch;
 import org.apache.zab.proto.ZabMessage.Message.MessageType;
-//import org.apache.zab.transport.DummyTransport;
 import org.apache.zab.transport.NettyTransport;
 import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
-
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.TextFormat;
 
@@ -133,6 +130,12 @@ public class Participant implements Callable<Void>,
    */
   private Map<String, PeerHandler> quorumSet =
       new ConcurrentHashMap<String, PeerHandler>();
+
+  /**
+   * The last delivered zxid. It's not a persisten variable and gets
+   * initialized to (0, -1) everytime it gets started.
+   */
+  private Zxid lastDeliveredZxid = Zxid.ZXID_NOT_EXIST;
 
   private static final Logger LOG = LoggerFactory.getLogger(Participant.class);
 
@@ -277,7 +280,7 @@ public class Participant implements Callable<Void>,
         }
 
         startLeaderElection(electionAlg);
-        waitLeaderElected();
+        waitForLeaderElected();
 
         LOG.debug("Selected {} as prospective leader.",
                   this.electedLeader);
@@ -487,7 +490,7 @@ public class Participant implements Callable<Void>,
     this.leaderCondition.countDown();
   }
 
-  void waitLeaderElected() throws InterruptedException {
+  void waitForLeaderElected() throws InterruptedException {
     this.leaderCondition.await();
   }
 
@@ -619,12 +622,29 @@ public class Participant implements Callable<Void>,
    */
   List<Transaction> getAllTxns() throws IOException {
     List<Transaction> txns = new ArrayList<Transaction>();
-
     try(Log.LogIterator iter = this.log.getIterator(new Zxid(0, 0))) {
       while(iter.hasNext()) {
         txns.add(iter.next());
       }
       return txns;
+    }
+  }
+
+  /**
+   * Delivers all the transactions in the log after last delivered zxid.
+   *
+   * @throws IOException in case of IO failures.
+   */
+  void deliverUndeliveredTxns() throws IOException {
+    Zxid startZxid = new Zxid(this.lastDeliveredZxid.getEpoch(),
+                              this.lastDeliveredZxid.getXid() + 1);
+    LOG.debug("Begins delivering all txns after {}", this.lastDeliveredZxid);
+    try (Log.LogIterator iter = this.log.getIterator(startZxid)) {
+      while (iter.hasNext()) {
+        Transaction txn = iter.next();
+        this.stateMachine.deliver(txn.getZxid(), txn.getBody());
+        this.lastDeliveredZxid = txn.getZxid();
+      }
     }
   }
 
@@ -689,6 +709,11 @@ public class Participant implements Callable<Void>,
       beginSynchronizing(es);
       waitNewLeaderAckFromQuorum();
 
+      // Broadcasts commit message.
+      Message commit = MessageBuilder.buildCommit(this.log.getLatestZxid());
+      broadcast(this.quorumSet.keySet().iterator(), commit);
+      // Delivers all the txns in log before entering broadcasting phase.
+      deliverUndeliveredTxns();
 
       /* -- Broadcasting phase -- */
       this.currentState = ZabState.LEADING;
@@ -910,16 +935,13 @@ public class Participant implements Callable<Void>,
       MessageTuple tuple = getExpectedMessage(MessageType.ACK, null);
       ZabMessage.Ack ack = tuple.getMessage().getAck();
       String source =tuple.getSource();
-
       Zxid zxid = MessageBuilder.fromProtoZxid(ack.getZxid());
 
       if (zxid.compareTo(this.log.getLatestZxid()) != 0) {
         LOG.error("The follower {} is not correctly synchronized.", source);
-
         throw new RuntimeException("The synchronized follower's last zxid"
             + "doesn't match last zxid of current leader.");
       }
-
       if (!this.quorumSet.containsKey(source)) {
         LOG.warn("Quorum set doesn't contain {}, a bug?", source);
         continue;
@@ -955,6 +977,7 @@ public class Participant implements Callable<Void>,
    */
   void beginBroadcasting(ExecutorService es)
       throws TimeoutException, InterruptedException, IOException {
+    Zxid lastZxid = this.log.getLatestZxid();
     int currentEpoch = getAckEpochFromFile();
     Zxid nextZxid = new Zxid(currentEpoch, 0);
     PreProcessor preproc = new PreProcessor(this.stateMachine,
@@ -969,7 +992,7 @@ public class Participant implements Callable<Void>,
     CommitProcessor commitProcessor =
         new CommitProcessor(this.log,
                             this.stateMachine,
-                            this.config.getServerId());
+                            this.lastDeliveredZxid);
     ShortCircuitTransport scTransport =
         new ShortCircuitTransport(syncProcessor,
                                   commitProcessor,
@@ -978,14 +1001,9 @@ public class Participant implements Callable<Void>,
     PeerHandler lh = new PeerHandler(this.config.getServerId(),
                                      scTransport,
                                      this.config.getTimeout() / 3);
-    lh.setLastAckedZxid(this.log.getLatestZxid());
+    lh.setLastAckedZxid(lastZxid);
     lh.setFuture(es.submit(lh));
     this.quorumSet.put(this.config.getServerId(), lh);
-    // Sends commit message to commit all the transactions proposed in
-    // synchronizing phase.
-    Zxid lastZxid = this.log.getLatestZxid();
-    Message commit = MessageBuilder.buildCommit(lastZxid);
-    queueAllPeers(commit);
 
     try {
       while (this.quorumSet.size() >= getQuorumSize()) {
@@ -1092,6 +1110,9 @@ public class Participant implements Callable<Void>,
         preproc.shutdown();
         commitProcessor.shutdown();
         syncProcessor.shutdown();
+        // Updates last delivered zxid. Avoid delivering delivered transactions
+        // next time even transactions are idempotent.
+        this.lastDeliveredZxid = commitProcessor.getLastDeliveredZxid();
       } catch (ExecutionException e) {
         LOG.error("Caught exectuion exception.", e);
       }
@@ -1162,9 +1183,10 @@ public class Participant implements Callable<Void>,
       }
 
       waitForSync(this.electedLeader);
-
-      waitNewLeaderMesage();
-
+      waitForNewLeaderMesage();
+      waitForCommitMessage();
+      // Delivers all transactions in log before entering broadcasting phase.
+      deliverUndeliveredTxns();
 
       /* -- Broadcasting phase -- */
       MDC.put("phase", "broadcast");
@@ -1258,13 +1280,9 @@ public class Participant implements Callable<Void>,
    * @throws InterruptedException in case of interrupt.
    * @throws IOException in case of IO failure.
    */
-  void waitNewLeaderMesage()
+  void waitForNewLeaderMesage()
       throws TimeoutException, InterruptedException, IOException {
-
-    LOG.debug("{} is waiting for New Leader message from {}.",
-              this.config.getServerId(),
-              this.electedLeader);
-
+    LOG.debug("Waiting for New Leader message from {}.", this.electedLeader);
     MessageTuple tuple = getExpectedMessage(MessageType.NEW_LEADER,
                                             this.electedLeader);
     Message msg = tuple.getMessage();
@@ -1286,6 +1304,30 @@ public class Participant implements Callable<Void>,
   }
 
   /**
+   * Wait for a commit message from the leader.
+   *
+   * @throws TimeoutException in case of timeout.
+   * @throws InterruptedException in case of interruption.
+   * @throws IOException in case of IO failures.
+   */
+  void waitForCommitMessage()
+      throws TimeoutException, InterruptedException, IOException {
+    LOG.debug("Waiting for commit message from {}", this.electedLeader);
+    MessageTuple tuple = getExpectedMessage(MessageType.COMMIT,
+                                            this.electedLeader);
+    Zxid zxid = MessageBuilder.fromProtoZxid(tuple.getMessage()
+                                                  .getCommit()
+                                                  .getZxid());
+    Zxid lastZxid = this.log.getLatestZxid();
+    // If the followers are appropriately synchronized, the Zxid of ACK should
+    // match the last Zxid in followers' log.
+    if (zxid.compareTo(lastZxid) != 0) {
+      LOG.error("The ACK zxid doesn't match last zxid in log!");
+      throw new RuntimeException("The ACK zxid doesn't match last zxid");
+    }
+  }
+
+  /**
    * Entering broadcasting phase.
    *
    * @throws InterruptedException if it's interrupted.
@@ -1294,12 +1336,11 @@ public class Participant implements Callable<Void>,
    */
   void beginAccepting()
       throws TimeoutException, InterruptedException, IOException {
-
     SyncProposalProcessor syncProcessor =
         new SyncProposalProcessor(this.log, this.transport);
 
-    CommitProcessor commitProcessor =
-        new CommitProcessor(log, stateMachine, this.config.getServerId());
+    CommitProcessor commitProcessor
+      = new CommitProcessor(log, stateMachine, this.lastDeliveredZxid);
 
     // The last time of HEARTBEAT message comes from leader.
     long lastHeartbeatTime = System.nanoTime();
@@ -1349,7 +1390,6 @@ public class Participant implements Callable<Void>,
             continue;
           }
         }
-
         if (msg.getType() == MessageType.PROPOSAL) {
           LOG.debug("Got PROPOSAL {}.",
                     MessageBuilder.fromProtoZxid(msg.getProposal().getZxid()));
@@ -1389,6 +1429,9 @@ public class Participant implements Callable<Void>,
       try {
         commitProcessor.shutdown();
         syncProcessor.shutdown();
+        // Updates last delivered zxid. Avoid delivering delivered transactions
+        // next time even transactions are idempotent.
+        this.lastDeliveredZxid = commitProcessor.getLastDeliveredZxid();
       } catch (ExecutionException e) {
         LOG.error("Follower {} caught execution exception.", e);
       }

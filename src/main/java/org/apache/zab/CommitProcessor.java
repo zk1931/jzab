@@ -25,7 +25,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
-
 import org.apache.zab.proto.ZabMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,15 +49,20 @@ public class CommitProcessor implements RequestProcessor,
 
   Future<Void> ft;
 
-  // For debugging purpose.
-  private final String serverId;
-
+  /**
+   * Constructs a CommitProcessor.
+   *
+   * @param log the log.
+   * @param stateMachine the state machine of application.
+   * @param lastDeliveredZxid the last delivered zxid, CommitProcessor won't
+   * deliver any transactions which are smaller or equal than this zxid.
+   */
   public CommitProcessor(Log log,
                          StateMachine stateMachine,
-                         String serverId) {
+                         Zxid lastDeliveredZxid) {
     this.log = log;
     this.stateMachine = stateMachine;
-    this.serverId = serverId;
+    this.lastDeliveredZxid = lastDeliveredZxid;
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
     ft = es.submit(this);
@@ -76,17 +80,14 @@ public class CommitProcessor implements RequestProcessor,
     try {
       while (true) {
         Request request = this.commitQueue.take();
-
         if (request == Request.REQUEST_OF_DEATH) {
           break;
         }
-
         ZabMessage.Commit commit = request.getMessage().getCommit();
         Zxid zxid = MessageBuilder.fromProtoZxid(commit.getZxid());
         LOG.debug("Received a commit request {}, last {}.",
                   zxid,
                   this.lastDeliveredZxid);
-
         if (zxid.compareTo(this.lastDeliveredZxid) == 0) {
           // Since leader may send duplicated committed zxid, we probably want
           // to avoid deliver duplicated transactions even the transactions are
@@ -98,7 +99,6 @@ public class CommitProcessor implements RequestProcessor,
         }
 
         Zxid tZxid = this.lastDeliveredZxid;
-        this.lastDeliveredZxid = zxid;
 
         synchronized(this.log) {
           // It will deliver all the transactions from last committed point.
@@ -115,6 +115,7 @@ public class CommitProcessor implements RequestProcessor,
                 }
                 LOG.debug("Delivering transaction {}.", txn.getZxid());
                 this.stateMachine.deliver(txn.getZxid(), txn.getBody());
+                this.lastDeliveredZxid = txn.getZxid();
               }
             }
           }
@@ -132,5 +133,9 @@ public class CommitProcessor implements RequestProcessor,
   public void shutdown() throws InterruptedException, ExecutionException {
     this.commitQueue.add(Request.REQUEST_OF_DEATH);
     this.ft.get();
+  }
+
+  public Zxid getLastDeliveredZxid() {
+    return this.lastDeliveredZxid;
   }
 }

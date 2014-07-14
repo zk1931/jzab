@@ -95,9 +95,6 @@ public class AckProcessor implements RequestProcessor,
         Collections.sort(zxids);
         Zxid zxidCanCommit = zxids.get(zxids.size() - this.quorumSize);
         LOG.debug("CAN COMMIT : {}", zxidCanCommit);
-        if (zxidCanCommit.compareTo(Zxid.ZXID_NOT_EXIST) == 0) {
-          continue;
-        }
         LOG.debug("Will send commit {} to quorum set.", zxidCanCommit);
         Message commit = MessageBuilder.buildCommit(zxidCanCommit);
         for (PeerHandler ph : quorumSet.values()) {
