@@ -270,8 +270,6 @@ public class NettyTransport extends Transport {
     private Future<Void> future;
     private EventLoopGroup workerGroup = new NioEventLoopGroup();
     final BlockingDeque<ByteBuffer> requests = new LinkedBlockingDeque<>();
-    private int handshakeRetries = 0;
-    private static final int MAX_HANDSHAKE_RETRIES = 3;
 
     public Sender(String destination, Channel channel) {
       this.destination = destination;
@@ -336,16 +334,11 @@ public class NettyTransport extends Transport {
     }
 
     public void handshakeFailed() {
-      handshakeRetries++;
+      LOG.debug("Client handshake failed: {} => {}", hostPort, destination);
       Sender sender = senders.get(destination);
       assert sender == this;
-      if (handshakeRetries < MAX_HANDSHAKE_RETRIES) {
-        LOG.debug("Restarting handshake: {} => {}", hostPort, destination);
-        startHandshake();
-      } else {
-        LOG.debug("Client handshake failed: {} => {}", hostPort, destination);
-        receiver.onDisconnected(destination);
-      }
+      sender.shutdown();
+      receiver.onDisconnected(destination);
     }
 
     @Override
@@ -377,7 +370,9 @@ public class NettyTransport extends Transport {
         if (future != null) {
           future.cancel(true);
         }
-        channel.close().syncUninterruptibly();
+        if (channel != null) {
+          channel.close().syncUninterruptibly();
+        }
       } finally {
         workerGroup.shutdownGracefully();
       }
