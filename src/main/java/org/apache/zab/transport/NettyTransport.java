@@ -148,34 +148,16 @@ public class NettyTransport extends Transport {
         String remoteId = message.getHandshake().getNodeId();
         LOG.debug("{} received handshake from {}", hostPort, remoteId);
         Sender sender = new Sender(remoteId, ctx.channel());
-        Sender currentSender = senders.putIfAbsent(remoteId, sender);
-
-        if (currentSender != null) {
-          if (currentSender.isServerSide) {
-            LOG.debug("Rejecting a duplicate handshake from {}", remoteId);
-            ctx.close();
-            return;
-          } else if (currentSender.future != null) {
-            LOG.debug("{} is already running. Ignore {}", hostPort, remoteId);
-            ctx.close();
-            return;
-          } else if (hostPort.compareTo(remoteId) > 0) {
-            // There is a handshake-pending connection and my id is larger than
-            // the remote id. Break the tie by rejecting the handshake.
-            LOG.debug("Won the tie-breaker: {} > {}", hostPort, remoteId);
-            ctx.close();
-            return;
-          } else {
-            LOG.debug("Lost the tie-breaker: {} < {}", hostPort, remoteId);
-            senders.replace(remoteId, currentSender, sender);
-            while (!currentSender.requests.isEmpty()) {
-              sender.requests.addFirst(currentSender.requests.takeLast());
-            }
-          }
-        }
         // Attach the remote node id to this channel. Subsequent handlers use
         // this information to determine origins of messages.
         ctx.channel().attr(REMOTE_ID).set(remoteId);
+        Sender currentSender = senders.putIfAbsent(remoteId, sender);
+
+        if (currentSender != null) {
+          LOG.debug("Rejecting a handshake from {}", remoteId);
+          ctx.close();
+          return;
+        }
 
         // Send a response and remove the handler from the pipeline.
         LOG.debug("Server-side handshake completed from {} to {}", hostPort,
@@ -287,7 +269,6 @@ public class NettyTransport extends Transport {
     private Channel channel;
     private Future<Void> future;
     private EventLoopGroup workerGroup = new NioEventLoopGroup();
-    boolean isServerSide;
     final BlockingDeque<ByteBuffer> requests = new LinkedBlockingDeque<>();
     private int handshakeRetries = 0;
     private static final int MAX_HANDSHAKE_RETRIES = 3;
@@ -295,11 +276,9 @@ public class NettyTransport extends Transport {
     public Sender(String destination, Channel channel) {
       this.destination = destination;
       this.channel = channel;
-      this.isServerSide = true;
     }
 
     public Sender(final String source, final String destination) {
-      this.isServerSide = false;
       this.destination = destination;
       bootstrap = new Bootstrap();
       bootstrap.group(workerGroup);
@@ -358,18 +337,14 @@ public class NettyTransport extends Transport {
 
     public void handshakeFailed() {
       handshakeRetries++;
+      Sender sender = senders.get(destination);
+      assert sender == this;
       if (handshakeRetries < MAX_HANDSHAKE_RETRIES) {
-        Sender sender = senders.get(destination);
-        if (sender == this) {
-          LOG.debug("Restarting handshake: {} => {}", hostPort, destination);
-          startHandshake();
-        }
-      } else if (senders.remove(destination, this)) {
-        LOG.debug("Removed itself from the senders map: {} => {}",
-                  hostPort, destination);
-        receiver.onDisconnected(destination);
+        LOG.debug("Restarting handshake: {} => {}", hostPort, destination);
+        startHandshake();
       } else {
-        assert senders.containsKey(destination);
+        LOG.debug("Client handshake failed: {} => {}", hostPort, destination);
+        receiver.onDisconnected(destination);
       }
     }
 
