@@ -248,6 +248,9 @@ public class Participant implements Callable<Void>,
   @Override
   public void onDisconnected(String serverId) {
     LOG.debug("ONDISCONNECTED from {}", serverId);
+    // TODO We shouldn't handle disconnected event here. Instead, pass a message
+    // to the thread that's sending messages to this destination.
+    this.transport.clear(serverId);
     if (this.currentState == ZabState.LEADING) {
       PeerHandler ph = this.quorumSet.get(serverId);
       if (ph != null) {
@@ -1176,12 +1179,13 @@ public class Participant implements Callable<Void>,
     } catch (InterruptedException | TimeoutException | IOException |
         RuntimeException e) {
 
-      this.transport.disconnect(this.electedLeader);
       LOG.error("Caught exception.", e);
 
       if (e instanceof InterruptedException) {
         throw (InterruptedException)e;
       }
+    } finally {
+      this.transport.clear(this.electedLeader);
     }
   }
 

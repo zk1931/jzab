@@ -114,6 +114,7 @@ public class NettyTransport extends Transport {
         LOG.debug("Shutting down the sender({})", entry.getKey());
         entry.getValue().shutdown();
       }
+      senders.clear();
       LOG.debug("Shutdown complete");
     } finally {
       workerGroup.shutdownGracefully();
@@ -222,19 +223,13 @@ public class NettyTransport extends Transport {
       String remoteId = ctx.channel().attr(NettyTransport.REMOTE_ID).get();
       ctx.close();
       if (remoteId != null) {
-        LOG.debug("Got disconnected from {}. Removing the sender", remoteId);
+        LOG.debug("Got disconnected from {}.", remoteId);
         // This must not be null.
         Sender sender = senders.get(remoteId);
-        assert sender != null;
-        sender.shutdown();
-
-        // TODO there is a race condition here. Once onDisconnected is called,
-        // the client assumes that the connection will get re-established on
-        // next send. If the send() method gets called before this sender gets
-        // removed from the map, we lose the message.
+        if (sender != null) {
+          sender.shutdown();
+        }
         receiver.onDisconnected(remoteId);
-        boolean removed = senders.remove(remoteId, sender);
-        assert removed;
       }
     }
 
@@ -275,9 +270,9 @@ public class NettyTransport extends Transport {
   }
 
   @Override
-  public void disconnect(String destination) {
+  public void clear(String destination) {
     LOG.debug("Closing the connection to {}", destination);
-    Sender sender = senders.get(destination);
+    Sender sender = senders.remove(destination);
     if (sender != null) {
       sender.shutdown();
     }

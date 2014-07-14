@@ -84,7 +84,7 @@ class ShortCircuitTransport extends Transport {
   }
 
   @Override
-  public void disconnect(String destination) {
+  public void clear(String destination) {
     // Does nothing.
   }
 

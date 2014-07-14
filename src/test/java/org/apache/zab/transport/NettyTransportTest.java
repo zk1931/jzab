@@ -211,7 +211,7 @@ public class NettyTransportTest extends TestBase {
     transportA.shutdown();
     Assert.assertTrue(transportA.senders.isEmpty());
     disconnectedB.await();
-    Assert.assertFalse(transportB.senders.containsKey(peerA));
+    Assert.assertTrue(transportB.senders.containsKey(peerA));
     transportB.shutdown();
   }
 
@@ -248,8 +248,10 @@ public class NettyTransportTest extends TestBase {
     // shutdown B and make sure A removes the channel to B.
     transportB.shutdown();
     Assert.assertTrue(transportB.senders.isEmpty());
-    Assert.assertFalse(transportA.senders.containsKey(peerA));
+
+    // A should get onDisconnected event, but B should still be in the map.
     latchA.await();
+    Assert.assertTrue(transportA.senders.containsKey(peerB));
     transportA.shutdown();
   }
 
@@ -317,15 +319,12 @@ public class NettyTransportTest extends TestBase {
     final String peerB = getUniqueHostPort();
     final int messageCount = 100;
     final CountDownLatch latchB = new CountDownLatch(messageCount);
-    final CountDownLatch disconnectedA = new CountDownLatch(1);
     final CountDownLatch disconnectedB = new CountDownLatch(1);
 
     Transport.Receiver receiverA = new Transport.Receiver() {
       public void onReceived(String source, ByteBuffer message) {
       }
       public void onDisconnected(String source) {
-        LOG.debug("Got disconnected from {}", source);
-        disconnectedA.countDown();
       }
     };
     Transport.Receiver receiverB = new Transport.Receiver() {
@@ -348,9 +347,14 @@ public class NettyTransportTest extends TestBase {
       transportA.send(peerB, createByteBuffer(i));
     }
     latchB.await();
-    transportA.disconnect(peerB);
-    disconnectedA.await();
+
+    // A should remove B from the map after clear() is called.
+    transportA.clear(peerB);
+    Assert.assertFalse(transportA.senders.containsKey(peerB));
+
+    // B should get onDisconnected event, but A should be in the map.
     disconnectedB.await();
+    Assert.assertTrue(transportB.senders.containsKey(peerA));
     transportA.shutdown();
     transportB.shutdown();
   }
@@ -380,8 +384,6 @@ public class NettyTransportTest extends TestBase {
                   latchB.getCount());
       }
       public void onDisconnected(String source) {
-        LOG.debug("Got disconnected from {}", source);
-        disconnectedB.countDown();
       }
     };
 
@@ -392,9 +394,17 @@ public class NettyTransportTest extends TestBase {
       transportA.send(peerB, createByteBuffer(i));
     }
     latchB.await();
-    transportB.disconnect(peerA);
+
+    // B should remove A from the map after clear() is called.
+    transportB.clear(peerA);
+    Assert.assertFalse(transportB.senders.containsKey(peerA));
+
+    // A should get onDisconnected event, but B should be in the map.
     disconnectedA.await();
-    disconnectedB.await();
+    Assert.assertTrue(transportA.senders.containsKey(peerB));
+
+    transportA.shutdown();
+    transportB.shutdown();
   }
 
   @Test(timeout=10000)
