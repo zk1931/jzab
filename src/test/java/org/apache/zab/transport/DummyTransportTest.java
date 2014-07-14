@@ -119,7 +119,7 @@ public class DummyTransportTest extends TestBase {
     DummyTransport dt6 = new DummyTransport("server6", dr6);
     DummyReceiver dr7 = new DummyReceiver(expectedMessages);
     DummyTransport dt7 = new DummyTransport("server7", dr7);
-    dt6.disconnect("server7");
+    dt6.clear("server7");
     // Wait for the disconnect message received.
     expectedMessages.await();
     Assert.assertTrue(dr7.disconnected);

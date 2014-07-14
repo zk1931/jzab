@@ -24,9 +24,12 @@ import java.util.Iterator;
 /**
  * Abstract transport class. Used for communication between different
  * Zab instances. It will handle connections to different peers underneath.
- * The transport will also handle reconnections. Before it reconnects to
- * the disconnected peer, it will first call onDisconnected callback of
- * receiver.
+ * When the transport is disconnected from a destination, it calls
+ * onDisconnected() callback, and it stops sending/receiving messages to/from
+ * the destination. Any subsequent send() call to the destination will simply be
+ * ignored. To tell the transport to reconnect to the destination, the caller
+ * needs to call clear() method. The purpose of the clear() method is for the
+ * caller to explicitly acknowledge the onDisconnected event.
  */
 public abstract class Transport {
 
@@ -48,12 +51,15 @@ public abstract class Transport {
   public abstract void send(String destination, ByteBuffer message);
 
   /**
-   * Closes the connection to the destination. If there is no connection to the
+   * Clears the connection to the destination. If there is no connection to the
    * destination, this method does nothing. This method clears any pending
    * outgoing messages. Transport reestablishes the connection on the next
-   * send().
+   * send(). Note that Receiver.onDisconnected() callback will not be invoked
+   * when the caller clears the connection using this method.
+   *
+   * @param destination the id of the destination
    */
-  public abstract void disconnect(String destination);
+  public abstract void clear(String destination);
 
   /**
    * Broadcasts a message to a set of peers.
@@ -91,9 +97,10 @@ public abstract class Transport {
     void onReceived(String source, ByteBuffer message);
 
     /**
-     * Callback that notifies the the connection to peer is disconnected.
-     * Note that this callback is invoked even when the connection was closed
-     * explicitly by the user via the disconnect() method.
+     * Callback that notifies that the transport has been disconnected from the
+     * destination. Once this callback is invoked, the transport stops sending/
+     * receiving messages to/from the destination. You need to call the clear()
+     * method to tell the transport it's ok to reconnect.
      *
      * @param destination the ID of the peer from which the transport got
      *                    disconnected
