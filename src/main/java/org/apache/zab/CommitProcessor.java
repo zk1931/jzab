@@ -18,6 +18,8 @@
 
 package org.apache.zab;
 
+import java.util.LinkedList;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -26,6 +28,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.zab.proto.ZabMessage;
+import org.apache.zab.proto.ZabMessage.Message;
+import org.apache.zab.proto.ZabMessage.Message.MessageType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,26 +45,26 @@ public class CommitProcessor implements RequestProcessor,
   private static final Logger LOG =
       LoggerFactory.getLogger(CommitProcessor.class);
 
-  private final Log log;
-
   private final StateMachine stateMachine;
 
   private Zxid lastDeliveredZxid = Zxid.ZXID_NOT_EXIST;
 
+  private final List<ZabMessage.Proposal> pendingTxns =
+      new LinkedList<ZabMessage.Proposal>();
+
   Future<Void> ft;
 
   /**
-   * Constructs a CommitProcessor.
+   * Constructs a CommitProcessor. The CommitProcesor accepts both COMMIT and
+   * PROPOSAL message. It puts the PROPOSAL into pendingTxn list and delivers
+   * transactions from this list.
    *
-   * @param log the log.
    * @param stateMachine the state machine of application.
    * @param lastDeliveredZxid the last delivered zxid, CommitProcessor won't
    * deliver any transactions which are smaller or equal than this zxid.
    */
-  public CommitProcessor(Log log,
-                         StateMachine stateMachine,
+  public CommitProcessor(StateMachine stateMachine,
                          Zxid lastDeliveredZxid) {
-    this.log = log;
     this.stateMachine = stateMachine;
     this.lastDeliveredZxid = lastDeliveredZxid;
     ExecutorService es =
@@ -83,42 +87,39 @@ public class CommitProcessor implements RequestProcessor,
         if (request == Request.REQUEST_OF_DEATH) {
           break;
         }
-        ZabMessage.Commit commit = request.getMessage().getCommit();
-        Zxid zxid = MessageBuilder.fromProtoZxid(commit.getZxid());
-        LOG.debug("Received a commit request {}, last {}.",
-                  zxid,
-                  this.lastDeliveredZxid);
-        if (zxid.compareTo(this.lastDeliveredZxid) == 0) {
-          // Since leader may send duplicated committed zxid, we probably want
-          // to avoid deliver duplicated transactions even the transactions are
-          // idempotent.
-          LOG.debug("{} is duplicated COMMIT message with last {}",
+        Message msg = request.getMessage();
+        if (msg.getType() == MessageType.PROPOSAL) {
+          // Puts the proposal in queue.
+          this.pendingTxns.add(msg.getProposal());
+          LOG.debug("Got proposal from request queue!");
+        } else if (msg.getType() == MessageType.COMMIT) {
+          ZabMessage.Commit commit = request.getMessage().getCommit();
+          Zxid zxid = MessageBuilder.fromProtoZxid(commit.getZxid());
+          LOG.debug("Received a commit request {}, last {}.",
                     zxid,
                     this.lastDeliveredZxid);
-          continue;
-        }
-
-        Zxid tZxid = this.lastDeliveredZxid;
-
-        synchronized(this.log) {
-          // It will deliver all the transactions from last committed point.
-          try (Log.LogIterator iter = this.log.getIterator(tZxid)) {
-            if (iter.hasNext()) {
-              if (tZxid != Zxid.ZXID_NOT_EXIST) {
-                // Skip last one.
-                iter.next();
-              }
-              while (iter.hasNext()) {
-                Transaction txn = iter.next();
-                if (txn.getZxid().compareTo(zxid) > 0) {
-                  break;
-                }
-                LOG.debug("Delivering transaction {}.", txn.getZxid());
-                this.stateMachine.deliver(txn.getZxid(), txn.getBody());
-                this.lastDeliveredZxid = txn.getZxid();
-              }
-            }
+          if (zxid.compareTo(this.lastDeliveredZxid) <= 0) {
+            // The leader may send duplicate committed zxids. Avoid delivering
+            //duplicate transactions even though transactions are idempotent.
+            LOG.debug("{} is duplicated COMMIT message with last {}",
+                      zxid,
+                      this.lastDeliveredZxid);
+            continue;
           }
+          int startIdx = 0;
+          int endIdx = startIdx;
+          for (; endIdx < this.pendingTxns.size(); ++endIdx) {
+            Transaction txn = MessageBuilder
+                              .fromProposal(this.pendingTxns.get(endIdx));
+            if(zxid.compareTo(txn.getZxid()) < 0) {
+              break;
+            }
+            LOG.debug("Delivering transaction {}.", txn.getZxid());
+            this.stateMachine.deliver(txn.getZxid(), txn.getBody());
+            this.lastDeliveredZxid = txn.getZxid();
+          }
+          // Removes the delivered transactions.
+          this.pendingTxns.subList(startIdx, endIdx).clear();
         }
       }
     } catch (RuntimeException e) {

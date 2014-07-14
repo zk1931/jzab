@@ -214,10 +214,18 @@ public class Participant implements Callable<Void>,
     if (this.currentState == ZabState.LOOKING) {
       throw new RuntimeException("QuorumZab in LOOKING state can't serve "
           + "request.");
+    } else if (this.currentState == ZabState.LEADING) {
+      Message msg = MessageBuilder.buildRequest(request);
+      MessageTuple tuple = new MessageTuple(this.config.getServerId(), msg);
+      this.messageQueue.add(tuple);
+    } else {
+      // It's FOLLOWING, sends to leader directly.
+      LOG.debug("It's FOLLOWING state. Forwards the request to leader.");
+      Message msg = MessageBuilder.buildRequest(request);
+      MessageTuple tuple = new MessageTuple(this.config.getServerId(), msg);
+      // Forwards REQUEST to the leader.
+      sendMessage(this.electedLeader, msg);
     }
-    Message msg = MessageBuilder.buildRequest(request);
-    MessageTuple tuple = new MessageTuple(this.config.getServerId(), msg);
-    this.messageQueue.add(tuple);
   }
 
   @Override
@@ -990,8 +998,7 @@ public class Participant implements Callable<Void>,
         new SyncProposalProcessor(this.log,
                                   this.transport);
     CommitProcessor commitProcessor =
-        new CommitProcessor(this.log,
-                            this.stateMachine,
+        new CommitProcessor(this.stateMachine,
                             this.lastDeliveredZxid);
     ShortCircuitTransport scTransport =
         new ShortCircuitTransport(syncProcessor,
@@ -1340,7 +1347,7 @@ public class Participant implements Callable<Void>,
         new SyncProposalProcessor(this.log, this.transport);
 
     CommitProcessor commitProcessor
-      = new CommitProcessor(log, stateMachine, this.lastDeliveredZxid);
+      = new CommitProcessor(stateMachine, this.lastDeliveredZxid);
 
     // The last time of HEARTBEAT message comes from leader.
     long lastHeartbeatTime = System.nanoTime();
@@ -1396,8 +1403,10 @@ public class Participant implements Callable<Void>,
           Transaction txn = MessageBuilder.fromProposal(msg.getProposal());
           Zxid zxid = txn.getZxid();
           if (zxid.getEpoch() == getAckEpochFromFile()) {
-            // Dispatch to SyncProposalProcessor.
-            syncProcessor.processRequest(new Request(this.electedLeader, msg));
+            // Dispatch to SyncProposalProcessor and CommitProcessor.
+            Request req = new Request(this.electedLeader, msg);
+            syncProcessor.processRequest(req);
+            commitProcessor.processRequest(req);
           } else {
             LOG.debug("The proposal has the wrong epoch number {}.",
                       zxid.getEpoch());
@@ -1408,11 +1417,6 @@ public class Participant implements Callable<Void>,
                     MessageBuilder.fromProtoZxid(msg.getCommit().getZxid()),
                     source);
           commitProcessor.processRequest(new Request(source, msg));
-        } else if (msg.getType() == MessageType.REQUEST) {
-          LOG.debug("Got REQUEST from {}.",
-                    source);
-          // Forwards REQUEST to the leader.
-          sendMessage(this.electedLeader, msg);
         } else if (msg.getType() == MessageType.HEARTBEAT) {
           LOG.trace("Got HEARTBEAT from {}.",
                     source);

@@ -64,7 +64,9 @@ class ShortCircuitTransport extends Transport {
 
       if (msg.getType() == MessageType.PROPOSAL) {
         // Got PROPOSAL message from itself, accept it locally.
-        syncProcessor.processRequest(new Request(destination, msg));
+        Request req = new Request(destination, msg);
+        syncProcessor.processRequest(req);
+        commitProcessor.processRequest(req);
       } else if (msg.getType() == MessageType.COMMIT) {
         // Got COMMIT message from itself, deliver it locally.
         commitProcessor.processRequest(new Request(destination, msg));
