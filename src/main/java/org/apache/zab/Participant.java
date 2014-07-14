@@ -290,7 +290,7 @@ public class Participant implements Callable<Void>,
           follow();
         }
       } catch (InterruptedException e) {
-        LOG.warn("Caught Interrupted exception, it has been shut down?", e);
+        LOG.debug("Caught Interrupted exception, it has been shut down?");
         this.transport.shutdown();
         return null;
       } catch (Exception e) {
@@ -708,15 +708,21 @@ public class Participant implements Callable<Void>,
 
     } catch (InterruptedException | TimeoutException | IOException |
         RuntimeException e) {
-      LOG.error("Caught exception", e);
       // Shutdown all the PeerHandlers in quorum set.
       for (PeerHandler ph : this.quorumSet.values()) {
         ph.shutdown();
         this.quorumSet.remove(ph.getServerId());
       }
       es.shutdown();
-      if (e instanceof InterruptedException) {
+      if (e instanceof TimeoutException) {
+        LOG.debug("Didn't hear message from peers for {} milliseconds. Going"
+                  + " back to leader election.",
+                  this.config.getTimeout());
+      } else if (e instanceof InterruptedException) {
+        LOG.debug("Participant is canceled by user.");
         throw (InterruptedException)e;
+      } else {
+        LOG.error("Caught exception", e);
       }
     }
   }
@@ -1178,11 +1184,16 @@ public class Participant implements Callable<Void>,
 
     } catch (InterruptedException | TimeoutException | IOException |
         RuntimeException e) {
-
-      LOG.error("Caught exception.", e);
-
-      if (e instanceof InterruptedException) {
+      if (e instanceof TimeoutException) {
+        LOG.debug("Didn't hear message from {} for {} milliseconds. Going"
+                  + " back to leader election.",
+                  this.electedLeader,
+                  this.config.getTimeout());
+      } else if (e instanceof InterruptedException) {
+        LOG.debug("Participant is canceled by user.");
         throw (InterruptedException)e;
+      } else {
+        LOG.error("Caught exception", e);
       }
     } finally {
       this.transport.clear(this.electedLeader);
