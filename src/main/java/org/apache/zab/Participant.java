@@ -217,7 +217,6 @@ public class Participant implements Callable<Void>,
       // It's FOLLOWING, sends to leader directly.
       LOG.debug("It's FOLLOWING state. Forwards the request to leader.");
       Message msg = MessageBuilder.buildRequest(request);
-      MessageTuple tuple = new MessageTuple(this.config.getServerId(), msg);
       // Forwards REQUEST to the leader.
       sendMessage(this.electedLeader, msg);
     }
@@ -934,6 +933,7 @@ public class Participant implements Callable<Void>,
     LOG.debug("Waiting for synchronization to followers complete.");
 
     int completeCount = 0;
+    Zxid lastZxid = this.log.getLatestZxid();
 
     while (completeCount < this.quorumSet.size()) {
       MessageTuple tuple = getExpectedMessage(MessageType.ACK, null);
@@ -941,7 +941,7 @@ public class Participant implements Callable<Void>,
       String source =tuple.getSource();
       Zxid zxid = MessageBuilder.fromProtoZxid(ack.getZxid());
 
-      if (zxid.compareTo(this.log.getLatestZxid()) != 0) {
+      if (zxid.compareTo(lastZxid) != 0) {
         LOG.error("The follower {} is not correctly synchronized.", source);
         throw new RuntimeException("The synchronized follower's last zxid"
             + "doesn't match last zxid of current leader.");
@@ -950,7 +950,9 @@ public class Participant implements Callable<Void>,
         LOG.warn("Quorum set doesn't contain {}, a bug?", source);
         continue;
       }
-      this.quorumSet.get(source).setLastAckedZxid(zxid);
+      PeerHandler ph = this.quorumSet.get(source);
+      ph.setLastAckedZxid(zxid);
+      ph.setLastCommittedZxid(zxid);
       completeCount++;
     }
   }
@@ -1005,6 +1007,7 @@ public class Participant implements Callable<Void>,
                                      scTransport,
                                      this.config.getTimeout() / 3);
     lh.setLastAckedZxid(lastZxid);
+    lh.setLastCommittedZxid(lastZxid);
     lh.setFuture(es.submit(lh));
     this.quorumSet.put(this.config.getServerId(), lh);
 

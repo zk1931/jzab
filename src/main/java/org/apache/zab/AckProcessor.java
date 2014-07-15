@@ -95,10 +95,17 @@ public class AckProcessor implements RequestProcessor,
         Collections.sort(zxids);
         Zxid zxidCanCommit = zxids.get(zxids.size() - this.quorumSize);
         LOG.debug("CAN COMMIT : {}", zxidCanCommit);
-        LOG.debug("Will send commit {} to quorum set.", zxidCanCommit);
         Message commit = MessageBuilder.buildCommit(zxidCanCommit);
         for (PeerHandler ph : quorumSet.values()) {
-          ph.queueMessage(commit);
+          Zxid lastCommittedZxid = ph.getLastCommittedZxid();
+          // Sends the COMMIT message only if the peer has not be sent the same
+          // COMMIT message before.
+          if (lastCommittedZxid == null ||
+              lastCommittedZxid.compareTo(zxidCanCommit) < 0) {
+            LOG.debug("Will send commit {} to {}.", ph.getServerId());
+            ph.queueMessage(commit);
+            ph.setLastCommittedZxid(zxidCanCommit);
+          }
         }
       }
     } catch (Exception e) {
