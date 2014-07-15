@@ -146,6 +146,8 @@ public class Participant implements Callable<Void>,
   static class MessageTuple {
     private final String source;
     private final Message message;
+    // Special tuple forces Participant goes back to leader election.
+    static final MessageTuple GO_BACK = new MessageTuple(null, null);
 
     public MessageTuple(String source, Message message) {
       this.source = source;
@@ -159,6 +161,13 @@ public class Participant implements Callable<Void>,
     Message getMessage() {
       return this.message;
     }
+  }
+
+  /**
+   * This exception is only used to force leader/follower goes back to election
+   * phase.
+   */
+  static class BackToElectionException extends RuntimeException {
   }
 
   public Participant(ZabConfig config,
@@ -240,7 +249,6 @@ public class Participant implements Callable<Void>,
 
       // Puts the message in message queue.
       this.messageQueue.add(new MessageTuple(source, msg));
-
     } catch (InvalidProtocolBufferException e) {
       LOG.error("Exception when parse protocol buffer.", e);
       // Puts an invalid message to queue, it's up to handler to decide what
@@ -262,6 +270,10 @@ public class Participant implements Callable<Void>,
         ph.shutdown();
         this.quorumSet.remove(serverId);
       }
+    } else if (this.currentState == State.FOLLOWING
+        && this.electedLeader.equals(serverId)) {
+      // Force follower to go back to leader election.
+      this.messageQueue.add(MessageTuple.GO_BACK);
     }
   }
 
@@ -289,9 +301,11 @@ public class Participant implements Callable<Void>,
                   this.electedLeader);
 
         if (this.electedLeader.equals(this.config.getServerId())) {
+          this.currentState = State.LEADING;
           MDC.put("state", "leading");
           lead();
         } else {
+          this.currentState = State.FOLLOWING;
           MDC.put("state", "following");
           follow();
         }
@@ -377,6 +391,15 @@ public class Participant implements Callable<Void>,
     // Checks if timeout.
     if (tuple == null) {
       throw new TimeoutException("Timeout while waiting for the message.");
+    } else if (tuple == MessageTuple.GO_BACK) {
+      // Goes back to leader election.
+      throw new BackToElectionException();
+    } else if (tuple.getMessage().getType() == MessageType.PROPOSED_EPOCH &&
+        this.currentState != State.LEADING) {
+      // Explicitly close the connection when gets PROPOSED_EPOCH message in
+      // FOLLOWING state to help the peer selecting the right leader faster.
+      LOG.debug("Got PROPOSED_EPOCH in FOLLOWING state. Close the connection.");
+      this.transport.clear(tuple.getSource());
     }
     return tuple;
   }
@@ -749,9 +772,13 @@ public class Participant implements Callable<Void>,
       } else if (e instanceof InterruptedException) {
         LOG.debug("Participant is canceled by user.");
         throw (InterruptedException)e;
+      } else if (e instanceof BackToElectionException) {
+        LOG.debug("Got GO_BACK message from queue, going back to electing.");
       } else {
         LOG.error("Caught exception", e);
       }
+      // Clear the message queue.
+      this.messageQueue.clear();
     }
   }
 
@@ -1220,10 +1247,14 @@ public class Participant implements Callable<Void>,
       } else if (e instanceof InterruptedException) {
         LOG.debug("Participant is canceled by user.");
         throw (InterruptedException)e;
+      } else if (e instanceof BackToElectionException) {
+        LOG.debug("Got GO_BACK message from queue, going back to electing.");
       } else {
         LOG.error("Caught exception", e);
       }
     } finally {
+      // Clear the message queue.
+      this.messageQueue.clear();
       this.transport.clear(this.electedLeader);
     }
   }
