@@ -49,8 +49,10 @@ public interface StateMachine {
    *
    * @param zxid zxid of the message
    * @param stateUpdate the incremental state update
+   * @param clientId the id of the client who sends the request. The request
+   * delivered in RECOVERING phase has clientId sets to null.
    */
-  void deliver(Zxid zxid, ByteBuffer stateUpdate);
+  void deliver(Zxid zxid, ByteBuffer stateUpdate, String clientId);
 
   /**
    * Upcall to serialize the application state using an
@@ -82,7 +84,7 @@ public interface StateMachine {
    * state.
    *
    * @param state the current state of Zab, it could be
-   * LOOING/FOLLOWING/LEADING.
+   * RECOVERING/FOLLOWING/LEADING.
    */
-  void stateChanged(Zab.ZabState state);
+  void stateChanged(Zab.State state);
 }

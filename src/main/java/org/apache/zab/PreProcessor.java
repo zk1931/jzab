@@ -85,11 +85,13 @@ public class PreProcessor implements RequestProcessor,
         }
 
         ZabMessage.Request req = request.getMessage().getRequest();
+        String clientId = request.getServerId();
         ByteBuffer bufReq = req.getRequest().asReadOnlyByteBuffer();
         // Invoke the callback to convert the request into transaction.
         ByteBuffer update = this.stateMachine.preprocess(this.nextZxid, bufReq);
         Message prop = MessageBuilder
-                       .buildProposal(new Transaction(nextZxid, update));
+                       .buildProposal(new Transaction(nextZxid, update),
+                                      clientId);
 
         for (PeerHandler ph : quorumSet.values()) {
           ph.queueMessage(prop);

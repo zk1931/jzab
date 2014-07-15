@@ -32,7 +32,7 @@ public abstract class Zab {
   /**
    * The state of the Zab.
    */
-  public enum ZabState {
+  public enum State {
     LOOKING,
     LEADING,
     FOLLOWING
