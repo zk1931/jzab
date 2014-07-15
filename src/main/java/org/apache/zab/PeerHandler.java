@@ -98,6 +98,12 @@ public class PeerHandler implements Callable<Void> {
    */
   protected final int heartbeatIntervalMs;
 
+  /**
+   * The last zxid of COMMIT message sent to the peer. Used to avoid sending
+   * duplicated COMMIT messages.
+   */
+  private Zxid lastCommittedZxid = null;
+
   protected Future<Void> future = null;
 
   private static final Logger LOG = LoggerFactory.getLogger(PeerHandler.class);
@@ -172,6 +178,14 @@ public class PeerHandler implements Callable<Void> {
 
   void setNewLeaderEpoch(int epoch) {
     this.newleaderEpoch = epoch;
+  }
+
+  Zxid getLastCommittedZxid() {
+    return this.lastCommittedZxid;
+  }
+
+  void setLastCommittedZxid(Zxid zxid) {
+    this.lastCommittedZxid = zxid;
   }
 
   /**
