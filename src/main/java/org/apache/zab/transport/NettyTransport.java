@@ -336,8 +336,9 @@ public class NettyTransport extends Transport {
     public void handshakeFailed() {
       LOG.debug("Client handshake failed: {} => {}", hostPort, destination);
       Sender sender = senders.get(destination);
-      assert sender == this;
-      sender.shutdown();
+      if (sender != null) {
+        sender.shutdown();
+      }
       receiver.onDisconnected(destination);
     }
 
