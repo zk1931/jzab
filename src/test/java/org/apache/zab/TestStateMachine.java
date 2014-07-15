@@ -23,6 +23,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import org.apache.zab.Zab.ZabState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -74,5 +75,9 @@ class TestStateMachine implements StateMachine {
   public void setState(InputStream is) {
     throw new UnsupportedOperationException("This implementation"
         + "doesn't support setState operation");
+  }
+
+  @Override
+  public void stateChanged(ZabState state) {
   }
 }

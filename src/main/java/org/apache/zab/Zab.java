@@ -30,6 +30,15 @@ public abstract class Zab {
   protected ZabConfig config;
 
   /**
+   * The state of the Zab.
+   */
+  public enum ZabState {
+    LOOKING,
+    LEADING,
+    FOLLOWING
+  }
+
+  /**
    * Constructs an Zab object.
    *
    * @param stateMachine the state machine implementation
