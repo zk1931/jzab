@@ -200,6 +200,26 @@ public final class MessageBuilder {
   }
 
   /**
+   * Creates a PROPOSAL message.
+   *
+   * @param txn the transaction of this proposal.
+   * @param clientId the id of the client who sends the request.
+   * @return a protobuf message.
+   */
+  public static Message buildProposal(Transaction txn, String clientId) {
+    ZabMessage.Zxid zxid = toProtoZxid(txn.getZxid());
+    Proposal prop = Proposal.newBuilder()
+                            .setZxid(zxid)
+                            .setBody(ByteString.copyFrom(txn.getBody()))
+                            .setClientId(clientId)
+                            .build();
+
+    return Message.newBuilder().setType(MessageType.PROPOSAL)
+                               .setProposal(prop)
+                               .build();
+  }
+
+  /**
    * Creates a DIFF message.
    *
    * @param lastZxid the last zxid of the server who initiates the sync.

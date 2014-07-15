@@ -48,7 +48,7 @@ import org.apache.zab.proto.ZabMessage.ProposedEpoch;
 import org.apache.zab.proto.ZabMessage.Message.MessageType;
 import org.apache.zab.transport.NettyTransport;
 import org.apache.zab.transport.Transport;
-import org.apache.zab.Zab.ZabState;
+import org.apache.zab.Zab.State;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -124,7 +124,7 @@ public class Participant implements Callable<Void>,
   /**
    * Current State of QuorumZab.
    */
-  private ZabState currentState = ZabState.LOOKING;
+  private State currentState = State.LOOKING;
 
   /**
    * Used to store the quorum set.
@@ -206,10 +206,10 @@ public class Participant implements Callable<Void>,
   }
 
   void send(ByteBuffer request) {
-    if (this.currentState == ZabState.LOOKING) {
+    if (this.currentState == State.LOOKING) {
       throw new RuntimeException("QuorumZab in LOOKING state can't serve "
           + "request.");
-    } else if (this.currentState == ZabState.LEADING) {
+    } else if (this.currentState == State.LEADING) {
       Message msg = MessageBuilder.buildRequest(request);
       MessageTuple tuple = new MessageTuple(this.config.getServerId(), msg);
       this.messageQueue.add(tuple);
@@ -217,7 +217,6 @@ public class Participant implements Callable<Void>,
       // It's FOLLOWING, sends to leader directly.
       LOG.debug("It's FOLLOWING state. Forwards the request to leader.");
       Message msg = MessageBuilder.buildRequest(request);
-      MessageTuple tuple = new MessageTuple(this.config.getServerId(), msg);
       // Forwards REQUEST to the leader.
       sendMessage(this.electedLeader, msg);
     }
@@ -257,7 +256,7 @@ public class Participant implements Callable<Void>,
     // TODO We shouldn't handle disconnected event here. Instead, pass a message
     // to the thread that's sending messages to this destination.
     this.transport.clear(serverId);
-    if (this.currentState == ZabState.LEADING) {
+    if (this.currentState == State.LEADING) {
       PeerHandler ph = this.quorumSet.get(serverId);
       if (ph != null) {
         ph.shutdown();
@@ -275,10 +274,10 @@ public class Participant implements Callable<Void>,
     Election electionAlg = new RoundRobinElection();
     while (true) {
       try {
-        this.stateMachine.stateChanged(ZabState.LOOKING);
+        this.stateMachine.stateChanged(State.LOOKING);
         MDC.put("state", "looking");
         MDC.put("phase", "electing");
-        this.currentState = ZabState.LOOKING;
+        this.currentState = State.LOOKING;
         if (this.stateChangeCallback != null) {
           this.stateChangeCallback.electing();
         }
@@ -646,7 +645,7 @@ public class Participant implements Callable<Void>,
     try (Log.LogIterator iter = this.log.getIterator(startZxid)) {
       while (iter.hasNext()) {
         Transaction txn = iter.next();
-        this.stateMachine.deliver(txn.getZxid(), txn.getBody());
+        this.stateMachine.deliver(txn.getZxid(), txn.getBody(), null);
         this.lastDeliveredZxid = txn.getZxid();
       }
     }
@@ -720,7 +719,7 @@ public class Participant implements Callable<Void>,
       deliverUndeliveredTxns();
 
       /* -- Broadcasting phase -- */
-      this.currentState = ZabState.LEADING;
+      this.currentState = State.LEADING;
       MDC.put("phase", "broadcast");
       LOG.debug("Now it's in broadcasting phase.");
 
@@ -732,7 +731,7 @@ public class Participant implements Callable<Void>,
         stateChangeCallback.leaderBroadcasting(getAckEpochFromFile(),
                                                getAllTxns());
       }
-      this.stateMachine.stateChanged(ZabState.LEADING);
+      this.stateMachine.stateChanged(State.LEADING);
       beginBroadcasting(es);
 
     } catch (InterruptedException | TimeoutException | IOException |
@@ -1085,7 +1084,7 @@ public class Participant implements Callable<Void>,
             // Got REQUEST from user or other peers.
             LOG.debug("Got REQUEST from {}.",
                       source);
-            preproc.processRequest(new Request(this.config.getServerId(), msg));
+            preproc.processRequest(new Request(source, msg));
           } else if (msg.getType() == MessageType.HEARTBEAT) {
             // Got HEARTBEAT message.
             LOG.trace("Got HEARTBEAT replies from {}",
@@ -1193,7 +1192,7 @@ public class Participant implements Callable<Void>,
 
       /* -- Broadcasting phase -- */
       MDC.put("phase", "broadcast");
-      this.currentState = ZabState.FOLLOWING;
+      this.currentState = State.FOLLOWING;
       LOG.debug("Now it's in broadcasting phase.");
 
       if (stateChangeCallback != null) {
@@ -1204,7 +1203,7 @@ public class Participant implements Callable<Void>,
       if (failCallback != null) {
         failCallback.followerBroadcasting();
       }
-      this.stateMachine.stateChanged(ZabState.FOLLOWING);
+      this.stateMachine.stateChanged(State.FOLLOWING);
       beginAccepting();
 
     } catch (InterruptedException | TimeoutException | IOException |

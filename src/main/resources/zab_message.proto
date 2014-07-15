@@ -78,6 +78,8 @@ message Proposal {
   required Zxid zxid = 1;
   // Transaction body.
   required bytes body = 2;
+  // The id of the client who sends the request.
+  optional string clientId = 3;
 }
 
 message Diff {

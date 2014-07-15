@@ -109,13 +109,14 @@ public class CommitProcessor implements RequestProcessor,
           int startIdx = 0;
           int endIdx = startIdx;
           for (; endIdx < this.pendingTxns.size(); ++endIdx) {
-            Transaction txn = MessageBuilder
-                              .fromProposal(this.pendingTxns.get(endIdx));
+            ZabMessage.Proposal prop = this.pendingTxns.get(endIdx);
+            Transaction txn = MessageBuilder.fromProposal(prop);
+            String clientId = prop.getClientId();
             if(zxid.compareTo(txn.getZxid()) < 0) {
               break;
             }
             LOG.debug("Delivering transaction {}.", txn.getZxid());
-            this.stateMachine.deliver(txn.getZxid(), txn.getBody());
+            this.stateMachine.deliver(txn.getZxid(), txn.getBody(), clientId);
             this.lastDeliveredZxid = txn.getZxid();
           }
           // Removes the delivered transactions.

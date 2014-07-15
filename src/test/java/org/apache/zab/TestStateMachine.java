@@ -23,7 +23,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import org.apache.zab.Zab.ZabState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,9 +54,9 @@ class TestStateMachine implements StateMachine {
   }
 
   @Override
-  public void deliver(Zxid zxid, ByteBuffer stateUpdate) {
+  public void deliver(Zxid zxid, ByteBuffer stateUpdate, String clientId) {
     // Add the delivered message to list.
-    LOG.debug("Delivers txn {}", zxid);
+    LOG.debug("Delivers txn {}. Origin : {}", zxid, clientId);
     this.deliveredTxns.add(new Transaction(zxid, stateUpdate));
 
     if (txnsCount != null) {
@@ -78,6 +77,6 @@ class TestStateMachine implements StateMachine {
   }
 
   @Override
-  public void stateChanged(ZabState state) {
+  public void stateChanged(Zab.State state) {
   }
 }
