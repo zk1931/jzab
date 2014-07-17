@@ -25,6 +25,8 @@ import org.apache.zab.proto.ZabMessage.Ack;
 import org.apache.zab.proto.ZabMessage.AckEpoch;
 import org.apache.zab.proto.ZabMessage.Commit;
 import org.apache.zab.proto.ZabMessage.Diff;
+import org.apache.zab.proto.ZabMessage.FlushPreProcessor;
+import org.apache.zab.proto.ZabMessage.FlushSyncProcessor;
 import org.apache.zab.proto.ZabMessage.Handshake;
 import org.apache.zab.proto.ZabMessage.InvalidMessage;
 import org.apache.zab.proto.ZabMessage.Message;
@@ -346,5 +348,48 @@ public final class MessageBuilder {
    */
   public static Message buildHeartbeat() {
     return Message.newBuilder().setType(MessageType.HEARTBEAT).build();
+  }
+
+  /**
+   * Creates a FLUSH_PREPROCESSOR message.
+   *
+   * @param followerId the ID of new joined follower.
+   * @return a protobuf message.
+   */
+  public static Message buildFlushPreProcessor(String followerId) {
+    FlushPreProcessor flush = FlushPreProcessor.newBuilder()
+                                               .setFollowerId(followerId)
+                                               .build();
+    return Message.newBuilder().setType(MessageType.FLUSH_PREPROCESSOR)
+                               .setFlushPreProcessor(flush)
+                               .build();
+  }
+
+  /**
+   * Creates a FLUSH_SYNCPROCESSOR message.
+   *
+   * @param followerId the ID of new joined follower.
+   * @return a protobuf message.
+   */
+  public static Message buildFlushSyncProcessor(String followerId) {
+    return buildFlushSyncProcessor(followerId, Zxid.ZXID_NOT_EXIST);
+  }
+
+  /**
+   * Creates a FLUSH_SYNCPROCESSOR message.
+   *
+   * @param followerId the ID of new joined follower.
+   * @param zxid the last appended zxid of SyncProposalProcessor.
+   * @return a protobuf message.
+   */
+  public static Message buildFlushSyncProcessor(String followerId, Zxid zxid) {
+    ZabMessage.Zxid pZxid = toProtoZxid(zxid);
+    FlushSyncProcessor flush = FlushSyncProcessor.newBuilder()
+                                                 .setFollowerId(followerId)
+                                                 .setLastAppendedZxid(pZxid)
+                                                 .build();
+    return Message.newBuilder().setType(MessageType.FLUSH_SYNCPROCESSOR)
+                               .setFlushSyncProcessor(flush)
+                               .build();
   }
 }

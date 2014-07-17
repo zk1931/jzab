@@ -25,8 +25,6 @@ import java.util.concurrent.ExecutionException;
  * to process request in order.
  */
 public interface RequestProcessor {
-  int POLL_INTERVAL_MS = 100;
-
   /**
    * This function should be asynchronous normally, the request should be
    * processed in separate thread.

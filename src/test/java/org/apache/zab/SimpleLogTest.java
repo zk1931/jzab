@@ -104,11 +104,11 @@ public class SimpleLogTest extends TestBase {
   public void testTruncateAndAppend() throws IOException {
     SimpleLog log = initLog();
     log.truncate(new Zxid(0, 0));
-    log.append(new Transaction(new Zxid(1, 2),
-                               ByteBuffer.wrap("log record 1 2".getBytes())));
+    log.append(new Transaction(new Zxid(0, 1),
+                               ByteBuffer.wrap("log record 0 1".getBytes())));
     Log.LogIterator iter = log.getIterator(new Zxid(0, 0));
     Assert.assertEquals(iter.next().getZxid(), new Zxid(0, 0));
-    Assert.assertEquals(iter.next().getZxid(), new Zxid(1, 2));
+    Assert.assertEquals(iter.next().getZxid(), new Zxid(0, 1));
   }
 
   @Test
