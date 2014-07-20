@@ -53,7 +53,7 @@ public class SyncProposalProcessor implements RequestProcessor,
   // The maximum count of batched transactions. Once batched transactions are
   // beyond this size, we force synchronizing them to disk and acknowledging
   // the leader.
-  private static final int MAX_BATCH_SIZE = 1000;
+  private final int maxBatchSize;
 
   /**
    * Constructs a SyncProposalProcessor object.
@@ -61,9 +61,10 @@ public class SyncProposalProcessor implements RequestProcessor,
    * @param log the log which the transaction will be synchronized to.
    * @param transport used to send acknowledgment.
    */
-  public SyncProposalProcessor(Log log, Transport transport) {
+  public SyncProposalProcessor(Log log, Transport transport, int maxBatchSize) {
     this.log = log;
     this.transport = transport;
+    this.maxBatchSize = maxBatchSize;
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
     ft = es.submit(this);
@@ -96,7 +97,7 @@ public class SyncProposalProcessor implements RequestProcessor,
           lastReq = request;
         } else {
           request = this.proposalQueue.poll();
-          if (request == null || batchCount == MAX_BATCH_SIZE) {
+          if (request == null || batchCount == maxBatchSize) {
             // Sync to disk and send ACK to leader.
             this.log.sync();
             Zxid zxid = MessageBuilder
@@ -120,7 +121,7 @@ public class SyncProposalProcessor implements RequestProcessor,
         }
       }
     } catch (Exception e) {
-      LOG.error("Caught exception in SyncProposalProcessor!");
+      LOG.error("Caught an exception in SyncProposalProcessor", e);
       throw e;
     }
     LOG.debug("SyncProposalProcessor has been shut down.");
