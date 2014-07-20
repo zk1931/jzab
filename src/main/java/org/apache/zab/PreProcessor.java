@@ -27,9 +27,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.Map;
-
 import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Message;
+import org.apache.zab.proto.ZabMessage.Message.MessageType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,7 +48,10 @@ public class PreProcessor implements RequestProcessor,
 
   private final StateMachine stateMachine;
 
-  private Zxid nextZxid;
+  // Last proposed Zxid from this processor. It starts from <f.a, -1>
+  private Zxid lastProposedZxid;
+
+  private final String leaderId;
 
   private final Map<String, PeerHandler> quorumSet;
 
@@ -56,11 +59,12 @@ public class PreProcessor implements RequestProcessor,
 
 
   public PreProcessor(StateMachine stateMachine,
-                      Zxid nextZxid,
-                      Map<String, PeerHandler> quorumSet) {
-
+                      int currentEpoch,
+                      Map<String, PeerHandler> quorumSet,
+                      String leaderId) {
     this.stateMachine = stateMachine;
-    this.nextZxid = nextZxid;
+    this.lastProposedZxid = new Zxid(currentEpoch, -1);
+    this.leaderId = leaderId;
     this.quorumSet = quorumSet;
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
@@ -79,27 +83,28 @@ public class PreProcessor implements RequestProcessor,
     try {
       while (true) {
         Request request = this.requestQueue.take();
-
         if (request == Request.REQUEST_OF_DEATH) {
           break;
         }
-
+        if (request.getMessage().getType() == MessageType.FLUSH_PREPROCESSOR) {
+          LOG.debug("Got FLUSH_PREPROCESSOR msg.");
+          this.quorumSet.get(this.leaderId).queueMessage(request.getMessage());
+          continue;
+        }
+        lastProposedZxid = new Zxid(lastProposedZxid.getEpoch(),
+                                    lastProposedZxid.getXid() + 1);
         ZabMessage.Request req = request.getMessage().getRequest();
         String clientId = request.getServerId();
         ByteBuffer bufReq = req.getRequest().asReadOnlyByteBuffer();
         // Invoke the callback to convert the request into transaction.
-        ByteBuffer update = this.stateMachine.preprocess(this.nextZxid, bufReq);
+        ByteBuffer update = this.stateMachine.preprocess(lastProposedZxid,
+                                                         bufReq);
         Message prop = MessageBuilder
-                       .buildProposal(new Transaction(nextZxid, update),
+                       .buildProposal(new Transaction(lastProposedZxid, update),
                                       clientId);
-
         for (PeerHandler ph : quorumSet.values()) {
           ph.queueMessage(prop);
         }
-
-        // Bump the next zxid.
-        this.nextZxid = new Zxid(this.nextZxid.getEpoch(),
-                                 this.nextZxid.getXid() + 1);
       }
     } catch (Exception e) {
       LOG.error("Caught exception in PreProcessor!", e);

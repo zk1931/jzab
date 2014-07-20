@@ -26,7 +26,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Message;
+import org.apache.zab.proto.ZabMessage.Message.MessageType;
 import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -86,18 +88,21 @@ public class SyncProposalProcessor implements RequestProcessor,
   public Void call() throws Exception {
     try {
       LOG.debug("Batched SyncRequestProcessor gets started.");
+      Zxid lastAppendedZxid = this.log.getLatestZxid();
       Request lastReq = null;
       // Number of transactions batched so far.
       int batchCount = 0;
 
       while (true) {
-        Request request;
+        Request req;
         if (lastReq == null) {
-          request = this.proposalQueue.take();
-          lastReq = request;
+          req = this.proposalQueue.take();
         } else {
-          request = this.proposalQueue.poll();
-          if (request == null || batchCount == maxBatchSize) {
+          req = this.proposalQueue.poll();
+          if (req == null ||
+              batchCount == maxBatchSize ||
+              req == Request.REQUEST_OF_DEATH ||
+              req.getMessage().getType() == MessageType.FLUSH_SYNCPROCESSOR) {
             // Sync to disk and send ACK to leader.
             this.log.sync();
             Zxid zxid = MessageBuilder
@@ -107,17 +112,37 @@ public class SyncProposalProcessor implements RequestProcessor,
             sendAck(lastReq.getServerId(), zxid);
             batchCount = 0;
           }
-          lastReq = request;
         }
-        if (request != null) {
-          if (request == Request.REQUEST_OF_DEATH) {
-            break;
-          }
+        if (req == Request.REQUEST_OF_DEATH) {
+          break;
+        }
+        if (req == null) {
+          lastReq = null;
+          continue;
+        }
+        if (req.getMessage().getType() == MessageType.FLUSH_SYNCPROCESSOR) {
+          // It's FLUSH_SYNCPROCESSOR message.
+          ZabMessage.FlushSyncProcessor flush =
+            req.getMessage().getFlushSyncProcessor();
+
+          String followerId = flush.getFollowerId();
+
+          Message flushSync = MessageBuilder
+                              .buildFlushSyncProcessor(followerId,
+                                                       lastAppendedZxid);
+
+          ByteBuffer buffer = ByteBuffer.wrap(flushSync.toByteArray());
+          this.transport.send(req.getServerId(), buffer);
+          lastReq = null;
+        } else if (req.getMessage().getType() == MessageType.PROPOSAL) {
+          // It's PROPOSAL, sync to disk.
           Transaction txn = MessageBuilder
-                            .fromProposal(request.getMessage().getProposal());
+                            .fromProposal(req.getMessage().getProposal());
           LOG.debug("Syncing transaction {} to disk.", txn.getZxid());
           this.log.append(txn);
+          lastAppendedZxid = txn.getZxid();
           batchCount++;
+          lastReq = req;
         }
       }
     } catch (Exception e) {

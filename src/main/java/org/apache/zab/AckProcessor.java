@@ -28,7 +28,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
-
 import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Message;
 import org.slf4j.Logger;
@@ -53,10 +52,18 @@ public class AckProcessor implements RequestProcessor,
 
   Future<Void> ft;
 
+  /**
+   * Last committed zxid sent by AckProcessor. Used to avoid sending duplicated
+   * COMMIT message.
+   */
+  private Zxid lastCommittedZxid;
+
   public AckProcessor(Map<String, PeerHandler> quorumSet,
-                         int quorumSize) {
+                         int quorumSize,
+                         Zxid lastCommittedZxid) {
     this.quorumSet = quorumSet;
     this.quorumSize = quorumSize;
+    this.lastCommittedZxid = lastCommittedZxid;
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
     ft = es.submit(this);
@@ -78,7 +85,6 @@ public class AckProcessor implements RequestProcessor,
         if (request == Request.REQUEST_OF_DEATH) {
           break;
         }
-
         String source = request.getServerId();
         ZabMessage.Ack ack = request.getMessage().getAck();
         Zxid zxid = MessageBuilder.fromProtoZxid(ack.getZxid());
@@ -88,27 +94,34 @@ public class AckProcessor implements RequestProcessor,
           LOG.debug("Last zxid of {} is {}",
                     ph.getServerId(),
                     ph.getLastAckedZxid());
-          zxids.add(ph.getLastAckedZxid());
+          Zxid ackZxid = ph.getLastAckedZxid();
+          if (ackZxid != null) {
+            // Add acknowledged zxid to zxids only.
+            zxids.add(ph.getLastAckedZxid());
+          }
         }
+
+        if (zxids.size() < this.quorumSize) {
+          continue;
+        }
+
         // Sorts the last ACK zxid of each peer to find one transaction which
         // can be committed safely.
         Collections.sort(zxids);
         Zxid zxidCanCommit = zxids.get(zxids.size() - this.quorumSize);
         LOG.debug("CAN COMMIT : {}", zxidCanCommit);
-        Message commit = MessageBuilder.buildCommit(zxidCanCommit);
-        for (PeerHandler ph : quorumSet.values()) {
-          Zxid lastCommittedZxid = ph.getLastCommittedZxid();
-          // Sends the COMMIT message only if the peer has not be sent the same
-          // COMMIT message before.
-          if (lastCommittedZxid == null ||
-              lastCommittedZxid.compareTo(zxidCanCommit) < 0) {
-            LOG.debug("Will send commit {} to {}.", ph.getServerId());
+
+        if (zxidCanCommit.compareTo(this.lastCommittedZxid) > 0) {
+          // Avoid sending duplicated COMMIT message.
+          LOG.debug("Will send commit {} to quorumSet.", zxidCanCommit);
+          Message commit = MessageBuilder.buildCommit(zxidCanCommit);
+          for (PeerHandler ph : quorumSet.values()) {
             ph.queueMessage(commit);
-            ph.setLastCommittedZxid(zxidCanCommit);
           }
+          this.lastCommittedZxid = zxidCanCommit;
         }
       }
-    } catch (Exception e) {
+    } catch (RuntimeException e) {
       LOG.error("Caught exception in AckProcessor!", e);
       throw e;
     }

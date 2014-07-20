@@ -73,6 +73,8 @@ public class SimpleLog implements Log {
                      new BufferedOutputStream(fout));
     // Initializes the last seen zxid to the last zxid in file.
     this.lastSeenZxid = getLatestZxid();
+    LOG.debug("SimpleLog constructed. The lastSeenZxid is {}.",
+              this.lastSeenZxid);
   }
 
   /**
@@ -126,10 +128,12 @@ public class SimpleLog implements Log {
    */
   @Override
   public void truncate(Zxid zxid) throws IOException {
+    this.lastSeenZxid = Zxid.ZXID_NOT_EXIST;
     try (SimpleLogIterator iter = new SimpleLogIterator(this.logFile)) {
       while (iter.hasNext()) {
         Transaction txn = iter.next();
         if (txn.getZxid().compareTo(zxid) == 0) {
+          this.lastSeenZxid = txn.getZxid();
           break;
         }
 
@@ -137,6 +141,7 @@ public class SimpleLog implements Log {
           iter.backward();
           break;
         }
+        this.lastSeenZxid = txn.getZxid();
       }
       if (iter.hasNext()) {
         // It means there's something to truncate.

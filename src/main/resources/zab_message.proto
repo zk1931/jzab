@@ -23,6 +23,8 @@ message Message {
     SNAPSHOT = 14;
     REQUEST = 15;
     HANDSHAKE = 16;
+    FLUSH_PREPROCESSOR = 18;
+    FLUSH_SYNCPROCESSOR = 19;
     INVALID_MESSAGE = 30;
   }
 
@@ -44,6 +46,8 @@ message Message {
   optional Request request = 12;
   optional Commit commit = 13;
   optional Handshake handshake = 14;
+  optional FlushPreProcessor flush_pre_processor = 16;
+  optional FlushSyncProcessor flush_sync_processor = 17;
   optional InvalidMessage invalid = 30;
 }
 
@@ -122,4 +126,14 @@ message Request {
 // message, it sends back a Handshake message with its node ID.
 message Handshake {
   required string node_id = 1;
+}
+
+// Used to flush PreProcessor.
+message FlushPreProcessor {
+  required string followerId = 1;
+}
+
+message FlushSyncProcessor {
+  required string followerId = 1;
+  optional Zxid lastAppendedZxid = 2;
 }

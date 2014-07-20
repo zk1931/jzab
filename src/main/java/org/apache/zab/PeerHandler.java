@@ -18,10 +18,13 @@
 
 package org.apache.zab;
 
+import com.google.protobuf.TextFormat;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -30,12 +33,11 @@ import org.apache.zab.proto.ZabMessage.Message.MessageType;
 import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.google.protobuf.TextFormat;
 
 /**
  * Handles peer connection.
  */
-public class PeerHandler implements Callable<Void> {
+public class PeerHandler {
 
   /**
    * Last proposed epoch of the follower, it helps leader decides new
@@ -64,7 +66,7 @@ public class PeerHandler implements Callable<Void> {
    * The last acknowledged transaction id from this peer. It's used by
    * CommitProcessor to find out the transaction which will be committed.
    */
-  protected Zxid lastAckedZxid = Zxid.ZXID_NOT_EXIST;
+  protected Zxid lastAckedZxid = null;
 
   /**
    * The server id of the peer.
@@ -99,12 +101,12 @@ public class PeerHandler implements Callable<Void> {
   protected final int heartbeatIntervalMs;
 
   /**
-   * The last zxid of COMMIT message sent to the peer. Used to avoid sending
-   * duplicated COMMIT messages.
+   * It's used to run synchronization task and broadcasting task.
    */
-  private Zxid lastCommittedZxid = null;
+  private ExecutorService es = null;
 
-  protected Future<Void> future = null;
+  protected Future<Void> ftSync = null;
+  protected Future<Void> ftBroad = null;
 
   private static final Logger LOG = LoggerFactory.getLogger(PeerHandler.class);
 
@@ -121,19 +123,12 @@ public class PeerHandler implements Callable<Void> {
     this.serverId = serverId;
     this.transport = transport;
     this.heartbeatIntervalMs = heartbeatIntervalMs;
+    this.es = Executors.newSingleThreadExecutor();
     updateHeartbeatTime();
   }
 
   String getServerId() {
     return this.serverId;
-  }
-
-  void setFuture(Future<Void> ft) {
-    this.future = ft;
-  }
-
-  Future<Void> getFuture() {
-    return this.future;
   }
 
   long getLastHeartbeatTime() {
@@ -176,18 +171,6 @@ public class PeerHandler implements Callable<Void> {
     return this.lastAckedZxid;
   }
 
-  void setNewLeaderEpoch(int epoch) {
-    this.newleaderEpoch = epoch;
-  }
-
-  Zxid getLastCommittedZxid() {
-    return this.lastCommittedZxid;
-  }
-
-  void setLastCommittedZxid(Zxid zxid) {
-    this.lastCommittedZxid = zxid;
-  }
-
   /**
    * Puts message in queue.
    *
@@ -197,8 +180,9 @@ public class PeerHandler implements Callable<Void> {
     this.broadcastingQueue.add(msg);
   }
 
-  void setSyncTask(Participant.SyncPeerTask task) {
+  void setSyncTask(Participant.SyncPeerTask task, int newLeaderEpoch) {
     this.syncTask = task;
+    this.newleaderEpoch = newLeaderEpoch;
   }
 
   void sendMessage(Message msg) {
@@ -206,52 +190,97 @@ public class PeerHandler implements Callable<Void> {
   }
 
   void shutdown() {
-    if (this.future != null) {
-      this.future.cancel(true);
+    if (this.ftSync != null) {
+      this.ftSync.cancel(true);
+    }
+    if (this.ftBroad != null) {
+      this.ftBroad.cancel(true);
     }
     this.transport.clear(this.serverId);
     LOG.debug("PeerHandler of {} has been shut down.", this.serverId);
   }
 
-  @Override
-  public Void call() throws IOException, InterruptedException {
-
-    // The PeerHandler of leader itself won't do the synchronization task.
-    if (this.syncTask != null) {
-      LOG.debug("Begin synchronizing to {}", this.serverId);
-      // First synchronize the follower state.
-      this.syncTask.run();
-      // Send NEW_LEADER message to the follower.
-      Message nl = MessageBuilder.buildNewLeader(this.newleaderEpoch);
-      sendMessage(nl);
+  void startSynchronizingTask() {
+    if (this.syncTask == null) {
+      throw new RuntimeException("SyncTask is null!");
     }
+    if (this.ftSync != null) {
+      throw new RuntimeException("SyncTask can be only started once!");
+    }
+    if (this.ftBroad != null) {
+      throw new RuntimeException("SyncTask must be started before "
+          + "broadcasting task");
+    }
+    this.ftSync = this.es.submit(new SyncFollower());
+  }
 
-    Message heartbeat = MessageBuilder.buildHeartbeat();
+  void startBroadcastingTask() {
+    if (this.ftBroad != null) {
+      throw new RuntimeException("Broadcast task can be only started once!");
+    }
+    this.ftBroad = this.es.submit(new BroadcastingFollower());
+  }
 
-    while (true) {
+  class SyncFollower implements Callable<Void> {
+    @Override
+    public Void call() throws IOException {
+      LOG.debug("SyncFollower task to {} task gets started.", serverId);
+      // First synchronize the follower state.
+      syncTask.run();
+      // Send NEW_LEADER message to the follower.
+      Message nl = MessageBuilder.buildNewLeader(newleaderEpoch);
+      sendMessage(nl);
+      return null;
+    }
+  }
 
-      Message msg = this.broadcastingQueue.poll(this.heartbeatIntervalMs,
-                                                TimeUnit.MILLISECONDS);
-
-      if (msg == null) {
-        // Only send HEARTBEAT message if there hasn't been any other outgoing
-        // messages for a certain duration.
-        sendMessage(heartbeat);
-        continue;
+  class BroadcastingFollower implements Callable<Void> {
+    @Override
+    public Void call() throws InterruptedException {
+      LOG.debug("BroadcastingFollower to {} task gets started.", serverId);
+      Message heartbeat = MessageBuilder.buildHeartbeat();
+      Zxid lastSyncZxid = Zxid.ZXID_NOT_EXIST;
+      if (syncTask != null) {
+        lastSyncZxid = syncTask.getLastSyncZxid();
       }
-
-      if (msg.getType() == MessageType.PROPOSAL) {
-        // Got PROPOSAL message, send it to follower.
-        LOG.debug("Received PROPOSAL {}",
-                   TextFormat.shortDebugString(msg));
-        // Sends this proposal to follower.
-        sendMessage(msg);
-      } else if (msg.getType() == MessageType.COMMIT) {
-        // Got COMMIT message, send it to follower.
-        LOG.debug("Received COMMIT {}",
-                  MessageBuilder.fromProtoZxid(msg.getCommit().getZxid()));
-        // Sends commit to follower.
-        sendMessage(msg);
+      while (true) {
+        Message msg = broadcastingQueue.poll(heartbeatIntervalMs,
+                                             TimeUnit.MILLISECONDS);
+        if (msg == null) {
+          // Only send HEARTBEAT message if there hasn't been any other outgoing
+          // messages for a certain duration.
+          sendMessage(heartbeat);
+          continue;
+        }
+        if (msg.getType() == MessageType.PROPOSAL) {
+          // Got PROPOSAL message, send it to follower.
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Received PROPOSAL {}",
+                      TextFormat.shortDebugString(msg));
+          }
+          Zxid zxid = MessageBuilder.fromProtoZxid(msg.getProposal().getZxid());
+          if (zxid.compareTo(lastSyncZxid) > 0) {
+            // Sends this PROPOSAL if it's not the duplicate.
+            sendMessage(msg);
+          }
+        } else if (msg.getType() == MessageType.COMMIT) {
+          // Got COMMIT message, send it to follower.
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Received COMMIT {}",
+                      TextFormat.shortDebugString(msg));
+          }
+          Zxid zxid = MessageBuilder.fromProtoZxid(msg.getCommit().getZxid());
+          if (zxid.compareTo(lastSyncZxid) >= 0) {
+            // Sends this COMMIT if it's not the duplicate.
+            sendMessage(msg);
+          }
+        } else {
+          // Got FLUSH message.
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Received msg {}", TextFormat.shortDebugString(msg));
+          }
+          sendMessage(msg);
+        }
       }
     }
   }
