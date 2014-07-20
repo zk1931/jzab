@@ -97,6 +97,13 @@ public class Participant implements Callable<Void>,
   protected final ZabConfig config;
 
   /**
+   * Maximum batch size for SyncRequestProcessor.
+   *
+   * TODO We might want to expose this setting to the user.
+   */
+  protected static final int SYNC_MAX_BATCH_SIZE = 1000;
+
+  /**
    * The file to store the last acknowledged epoch.
    */
   private final File fAckEpoch;
@@ -1021,7 +1028,8 @@ public class Participant implements Callable<Void>,
     // Adds leader itself to quorum set.
     SyncProposalProcessor syncProcessor =
         new SyncProposalProcessor(this.log,
-                                  this.transport);
+                                  this.transport,
+                                  SYNC_MAX_BATCH_SIZE);
     CommitProcessor commitProcessor =
         new CommitProcessor(this.stateMachine,
                             this.lastDeliveredZxid);
@@ -1374,7 +1382,8 @@ public class Participant implements Callable<Void>,
   void beginAccepting()
       throws TimeoutException, InterruptedException, IOException {
     SyncProposalProcessor syncProcessor =
-        new SyncProposalProcessor(this.log, this.transport);
+        new SyncProposalProcessor(this.log, this.transport,
+                                  SYNC_MAX_BATCH_SIZE);
 
     CommitProcessor commitProcessor
       = new CommitProcessor(stateMachine, this.lastDeliveredZxid);
