@@ -33,8 +33,6 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -696,9 +694,6 @@ public class Participant implements Callable<Void>,
    * @throws InterruptedException in case of interrupted.
    */
   void lead() throws Exception {
-
-    ExecutorService es = Executors
-                         .newCachedThreadPool(DaemonThreadFactory.FACTORY);
     try {
 
       /* -- Discovering phase -- */
@@ -769,7 +764,7 @@ public class Participant implements Callable<Void>,
         ph.startBroadcastingTask();
       }
       this.stateMachine.stateChanged(State.LEADING);
-      beginBroadcasting(es);
+      beginBroadcasting();
 
     } catch (InterruptedException | TimeoutException | IOException |
         RuntimeException e) {
@@ -778,7 +773,6 @@ public class Participant implements Callable<Void>,
         ph.shutdown();
         this.quorumSet.remove(ph.getServerId());
       }
-      es.shutdown();
       if (e instanceof TimeoutException) {
         LOG.debug("Didn't hear message from peers for {} milliseconds. Going"
                   + " back to leader election.",
@@ -1025,7 +1019,7 @@ public class Participant implements Callable<Void>,
    * @throws IOException in case of IO failure.
    * @throws ExecutionException
    */
-  void beginBroadcasting(ExecutorService es)
+  void beginBroadcasting()
       throws TimeoutException, InterruptedException, IOException {
     Zxid lastZxid = this.log.getLatestZxid();
     // Last committed zxid main thread has received.
@@ -1454,11 +1448,11 @@ public class Participant implements Callable<Void>,
     Zxid lastZxid = this.log.getLatestZxid();
     // If the followers are appropriately synchronized, the Zxid of ACK should
     // match the last Zxid in followers' log.
-    if (zxid.compareTo(lastZxid) < 0) {
-      LOG.error("The ACK zxid {} is less than last zxid {} in log!",
+    if (zxid.compareTo(lastZxid) != 0) {
+      LOG.error("The ACK zxid {} doesn't match last zxid {} in log!",
                 zxid,
                 lastZxid);
-      throw new RuntimeException("The ACK zxid is less than last zxid");
+      throw new RuntimeException("The ACK zxid doesn't match last zxid");
     }
   }
 
