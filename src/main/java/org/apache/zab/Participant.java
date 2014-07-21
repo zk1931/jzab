@@ -144,6 +144,11 @@ public class Participant implements Callable<Void>,
    */
   private Zxid lastDeliveredZxid = Zxid.ZXID_NOT_EXIST;
 
+  /**
+   * If it's in broadcasting phase.
+   */
+  private Boolean isBroadcasting = false;
+
   private static final Logger LOG = LoggerFactory.getLogger(Participant.class);
 
   /**
@@ -264,20 +269,9 @@ public class Participant implements Callable<Void>,
   @Override
   public void onDisconnected(String serverId) {
     LOG.debug("ONDISCONNECTED from {}", serverId);
-    // TODO We shouldn't handle disconnected event here. Instead, pass a message
-    // to the thread that's sending messages to this destination.
-    this.transport.clear(serverId);
-    if (this.currentState == State.LEADING) {
-      PeerHandler ph = this.quorumSet.get(serverId);
-      if (ph != null) {
-        ph.shutdown();
-        this.quorumSet.remove(serverId);
-      }
-    } else if (this.currentState == State.FOLLOWING
-        && this.electedLeader.equals(serverId)) {
-      // Force follower to go back to leader election.
-      this.messageQueue.add(MessageTuple.GO_BACK);
-    }
+    Message disconnected = MessageBuilder.buildDisconnected(serverId);
+    this.messageQueue.add(new MessageTuple(this.config.getServerId(),
+                                          disconnected));
   }
 
   /**
@@ -289,10 +283,11 @@ public class Participant implements Callable<Void>,
     Election electionAlg = new RoundRobinElection();
     while (true) {
       try {
+        this.isBroadcasting = false;
         this.stateMachine.stateChanged(State.LOOKING);
+        this.currentState = State.LOOKING;
         MDC.put("state", "looking");
         MDC.put("phase", "electing");
-        this.currentState = State.LOOKING;
         if (this.stateChangeCallback != null) {
           this.stateChangeCallback.electing();
         }
@@ -403,6 +398,50 @@ public class Participant implements Callable<Void>,
       // FOLLOWING state to help the peer selecting the right leader faster.
       LOG.debug("Got PROPOSED_EPOCH in FOLLOWING state. Close the connection.");
       this.transport.clear(tuple.getSource());
+    } else if (tuple.getMessage().getType() == MessageType.DISCONNECTED) {
+      // Got DISCONNECTED message enqueued by onDisconnected callback.
+      Message msg = tuple.getMessage();
+      String serverId = msg.getDisconnected().getServerId();
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Got DISCONNECTED in getMessage().",
+                  TextFormat.shortDebugString(msg));
+      }
+      if (this.currentState == State.LEADING) {
+        // It's in LEADING state.
+        if (this.quorumSet.containsKey(serverId)) {
+          if (!this.isBroadcasting) {
+            // If you lost someone who is in your quorumSet before broadcasting
+            // phase, you are for sure not have a quorum of followers, just go
+            // back to leader election. The clearance of the transport happens
+            // in the exception handlers of lead function.
+            LOG.debug("Lost follower {} in the quorumSet.", serverId);
+            throw new BackToElectionException();
+          } else {
+            // Lost someone who is in the quorumSet in broadcasting phase,
+            // return this message to caller and let it handles the
+            // disconnection.
+            LOG.debug("Lost follower {} in the quorumSet.", serverId);
+          }
+        } else {
+          // Just lost someone you don't care, clear the transport so it can
+          // join in in later time.
+          LOG.debug("Lost follower {} outside quorumSet.", serverId);
+          this.transport.clear(serverId);
+        }
+      } else {
+        // FOLLOWING state.
+        if (serverId.equals(this.electedLeader)) {
+          // Disconnection from elected leader, going back to leader election,
+          // the clearance of transport will happen in exception handlers of
+          // follow function.
+          LOG.debug("Lost elected leader {}.", this.electedLeader);
+          throw new BackToElectionException();
+        } else {
+          // Lost connection to someone you don't care, clear transport.
+          LOG.debug("Lost peer {}.", serverId);
+          this.transport.clear(serverId);
+        }
+      }
     }
     return tuple;
   }
@@ -748,7 +787,7 @@ public class Participant implements Callable<Void>,
       deliverUndeliveredTxns();
 
       /* -- Broadcasting phase -- */
-      this.currentState = State.LEADING;
+      this.isBroadcasting = true;
       MDC.put("phase", "broadcast");
       LOG.debug("Now it's in broadcasting phase.");
 
@@ -785,8 +824,6 @@ public class Participant implements Callable<Void>,
       } else {
         LOG.error("Caught exception", e);
       }
-      // Clear the message queue.
-      this.messageQueue.clear();
     }
   }
 
@@ -1025,6 +1062,14 @@ public class Participant implements Callable<Void>,
     // Last committed zxid main thread has received.
     Zxid lastCommittedZxid = lastZxid;
     int currentEpoch = getAckEpochFromFile();
+    // Add leader itself to quorumSet.
+    PeerHandler lh = new PeerHandler(this.config.getServerId(),
+                                     this.transport,
+                                     this.config.getTimeout() / 3);
+    lh.setLastAckedZxid(lastZxid);
+    lh.startBroadcastingTask();
+    this.quorumSet.put(this.config.getServerId(), lh);
+    // Constructs all the processors.
     PreProcessor preProcessor= new PreProcessor(this.stateMachine,
                                                 currentEpoch,
                                                 this.quorumSet,
@@ -1040,12 +1085,6 @@ public class Participant implements Callable<Void>,
     CommitProcessor commitProcessor =
         new CommitProcessor(this.stateMachine,
                             this.lastDeliveredZxid);
-    PeerHandler lh = new PeerHandler(this.config.getServerId(),
-                                     this.transport,
-                                     this.config.getTimeout() / 3);
-    lh.setLastAckedZxid(lastZxid);
-    lh.startBroadcastingTask();
-    this.quorumSet.put(this.config.getServerId(), lh);
     // The followers who joins in broadcasting phase and wait for their first
     // COMMIT message.
     Map<String, PeerHandler> pendingPeers = new HashMap<String, PeerHandler>();
@@ -1104,7 +1143,7 @@ public class Participant implements Callable<Void>,
               LOG.debug("Got FLUSH_SYNCPROCESSOR message {}",
                        TextFormat.shortDebugString(msg));
             }
-            onLeaderFlushSyncProcessor(source, msg, pendingPeers);
+            onLeaderFlushSyncProcessor(source, msg, pendingPeers, ackProcessor);
           } else if (msg.getType() == MessageType.PROPOSAL) {
             if (LOG.isDebugEnabled()) {
               LOG.debug("Got PROPOSAL message {}",
@@ -1121,6 +1160,16 @@ public class Participant implements Callable<Void>,
             lastCommittedZxid = MessageBuilder
                                 .fromProtoZxid(msg.getCommit().getZxid());
             onLeaderCommit(source, msg, commitProcessor, pendingPeers);
+          } else if (msg.getType() == MessageType.DISCONNECTED) {
+            if (LOG.isDebugEnabled()) {
+              LOG.debug("Got DISCONNECTED message {}",
+                        TextFormat.shortDebugString(msg));
+            }
+            onLeaderDisconnected(source,
+                                 msg,
+                                 pendingPeers,
+                                 preProcessor,
+                                 ackProcessor);
           } else {
             if (LOG.isWarnEnabled()) {
               LOG.warn("Unexpected messgae : {} from {}",
@@ -1159,13 +1208,17 @@ public class Participant implements Callable<Void>,
     AckEpoch ackEpoch = msg.getAckEpoch();
     Zxid lastPeerZxid = MessageBuilder
                         .fromProtoZxid(ackEpoch.getLastZxid());
-    Message flush = MessageBuilder.buildFlushPreProcessor(source);
-    preProcessor.processRequest(new Request(null, flush));
     PeerHandler ph = new PeerHandler(source,
                                      this.transport,
                                      this.config.getTimeout() / 3);
     ph.setLastZxid(lastPeerZxid);
     this.quorumSet.put(source, ph);
+    Message flush = MessageBuilder.buildFlushPreProcessor(source);
+    Message add = MessageBuilder.buildAddFollower(source);
+    // Flush the pipeline before start synchronization.
+    preProcessor.processRequest(new Request(null, flush));
+    // Add new joined follower to PreProcessor.
+    preProcessor.processRequest(new Request(null, add));
   }
 
   void onLeaderAck(String source,
@@ -1200,11 +1253,16 @@ public class Participant implements Callable<Void>,
 
   void onLeaderFlushSyncProcessor(String source,
                                   Message msg,
-                                  Map<String, PeerHandler> pendingPeers) throws
+                                  Map<String, PeerHandler> pendingPeers,
+                                  AckProcessor ackProcessor) throws
                                   IOException {
     // Starts synchronizing new joined follower once got FLUSH message.
     ZabMessage.FlushSyncProcessor flush = msg.getFlushSyncProcessor();
     String followerId = flush.getFollowerId();
+    Message add = MessageBuilder.buildAddFollower(followerId);
+    // Add new joined follower to AckProcessor.
+    ackProcessor.processRequest(new Request(null, add));
+
     // Got last proposed zxid.
     Zxid lastSyncZxid = MessageBuilder
                         .fromProtoZxid(flush.getLastAppendedZxid());
@@ -1246,6 +1304,32 @@ public class Participant implements Callable<Void>,
     commitProcessor.processRequest(new Request(source, msg));
   }
 
+  void onLeaderDisconnected(String source,
+                            Message msg,
+                            Map<String, PeerHandler> pendingPeers,
+                            PreProcessor preProcessor,
+                            AckProcessor ackProcessor) {
+    String followerId = msg.getDisconnected().getServerId();
+    // Remove if it's in pendingPeers.
+    pendingPeers.remove(followerId);
+    PeerHandler ph = this.quorumSet.get(followerId);
+    // Before calling shutdown, we need to disable PeerHandler first to prevent
+    // sending obsolete messages in AckProcessor and preProcessor. Because once
+    // we call shutdown(), the new connection from the peer is allowed, and
+    // AckProcessor and PreProcessor should not send obsolete messages in new
+    // connection.
+    ph.disableSending();
+    // Stop PeerHandler thread and clear tranport.
+    ph.shutdown();
+    this.quorumSet.remove(followerId);
+    Message remove = MessageBuilder.buildRemoveFollower(followerId);
+    Request req = new Request(null, remove);
+    // Ask PreProcessor to remove this follower.
+    preProcessor.processRequest(req);
+    // Ask AckProcessor to remove this follower.
+    ackProcessor.processRequest(req);
+  }
+
   void checkFollowerLiveness() {
     long currentTime = System.nanoTime();
     long timeoutNs = this.config.getTimeout() * (long)1000000;
@@ -1255,10 +1339,13 @@ public class Participant implements Callable<Void>,
       }
       if (currentTime - ph.getLastHeartbeatTime() >= timeoutNs) {
         // Removes the peer who is likely to be dead.
-        ph.shutdown();
-        this.quorumSet.remove(ph.getServerId());
-        LOG.warn("Peer {} is likely to be dead, remove it from quorum set.",
-                 ph.getServerId());
+        String serverId = ph.getServerId();
+        LOG.warn("{} is likely to be dead, enqueue a DISCONNECTED message.",
+                 serverId);
+        // Enqueue a DISCONNECTED message.
+        Message disconnected = MessageBuilder.buildDisconnected(serverId);
+        this.messageQueue.add(new MessageTuple(this.config.getServerId(),
+                                               disconnected));
       }
     }
   }
@@ -1310,8 +1397,8 @@ public class Participant implements Callable<Void>,
       deliverUndeliveredTxns();
 
       /* -- Broadcasting phase -- */
+      this.isBroadcasting = true;
       MDC.put("phase", "broadcast");
-      this.currentState = State.FOLLOWING;
       LOG.debug("Now it's in broadcasting phase.");
 
       if (stateChangeCallback != null) {
@@ -1341,8 +1428,6 @@ public class Participant implements Callable<Void>,
         LOG.error("Caught exception", e);
       }
     } finally {
-      // Clear the message queue.
-      this.messageQueue.clear();
       this.transport.clear(this.electedLeader);
     }
   }
@@ -1543,6 +1628,8 @@ public class Participant implements Callable<Void>,
           // Replies HEARTBEAT message to leader.
           Message heartbeatReply = MessageBuilder.buildHeartbeat();
           sendMessage(source, heartbeatReply);
+        } else if (msg.getType() == MessageType.DISCONNECTED) {
+          LOG.debug("Ignores DISCONNECTED message in FOLLOWING state.");
         } else {
           if (LOG.isWarnEnabled()) {
             LOG.warn("Unexpected messgae : {} from {}",
