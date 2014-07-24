@@ -23,11 +23,13 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -113,6 +115,16 @@ public class Participant implements Callable<Void>,
   private final File fProposedEpoch;
 
   /**
+   * The file to store the last proposed configuration.
+   */
+  private final File fProposedConfig;
+
+  /**
+   * The file to store the last acknowledged config.
+   */
+  private final File fAckConfig;
+
+  /**
    * State Machine callbacks.
    */
   protected StateMachine stateMachine = null;
@@ -181,6 +193,57 @@ public class Participant implements Callable<Void>,
   static class BackToElectionException extends RuntimeException {
   }
 
+  static class Configuration {
+    private final Zxid version;
+    private final List<String> peers;
+    private final String serverId;
+
+    public Configuration(Zxid version, List<String> peers, String serverId) {
+      this.version = version;
+      this.peers = peers;
+      this.serverId = serverId;
+    };
+
+    public Zxid getVersion() {
+      return this.version;
+    }
+
+    public List<String> getPeers() {
+      return this.peers;
+    }
+
+    public String getServerId() {
+      return this.serverId;
+    }
+
+    public Properties toProperties() {
+      Properties prop = new Properties();
+      StringBuilder strBuilder = new StringBuilder();
+      String strVersion = this.version.getEpoch() + " " + this.version.getXid();
+      for (String peer : this.peers) {
+        strBuilder.append(peer + ";");
+      }
+      prop.setProperty("peers", strBuilder.toString());
+      prop.setProperty("version", strVersion);
+      prop.setProperty("serverId", this.serverId);
+      return prop;
+    }
+
+    public static Configuration fromProperties(Properties prop) {
+      String strPeers = prop.getProperty("peers");
+      String[] strVersion = prop.getProperty("version").split(" ");
+      String serverId = prop.getProperty("serverId");
+      List<String> peerList = Arrays.asList(strPeers.split(";"));
+      if (strVersion.length != 2) {
+        LOG.error("Configuration file has wrong format of version!");
+        throw new RuntimeException("Configuration has wrong format of version");
+      }
+      Zxid version = new Zxid(Integer.parseInt(strVersion[0]),
+                              Integer.parseInt(strVersion[1]));
+      return new Configuration(version, peerList, serverId);
+    }
+  }
+
   public Participant(ZabConfig config,
                      StateMachine stateMachine)
       throws IOException, InterruptedException {
@@ -196,6 +259,8 @@ public class Participant implements Callable<Void>,
     this.stateMachine = stateMachine;
     this.fAckEpoch = new File(config.getLogDir(), "AckEpoch");
     this.fProposedEpoch = new File(config.getLogDir(), "ProposedEpoch");
+    this.fAckConfig = new File(config.getLogDir(), "AckConfig");
+    this.fProposedConfig = new File(config.getLogDir(), "ProposedConfig");
 
     MDC.put("serverId", this.config.getServerId());
     MDC.put("state", "looking");
@@ -374,6 +439,48 @@ public class Participant implements Callable<Void>,
    */
   void setProposedEpoch(int pEpoch) throws IOException {
     FileUtils.writeIntToFile(pEpoch, this.fProposedEpoch);
+  }
+
+  /**
+   * Gets current configuration.
+   *
+   * @return the current configuration.
+   * @throws IOException in case of IO failure.
+   */
+  Configuration getAckConfigFromFile() throws IOException {
+    Properties prop = FileUtils.readPropertiesFromFile(this.fAckConfig);
+    return Configuration.fromProperties(prop);
+  }
+
+  /**
+   * Updates the current configuration.
+   *
+   * @param conf the updated current configuration.
+   * @throws IOException in case of IO failure.
+   */
+  void setAckConfig(Configuration conf) throws IOException {
+    FileUtils.writePropertiesToFile(conf.toProperties(), this.fAckConfig);
+  }
+
+  /**
+   * Gets last proposed configuration.
+   *
+   * @return the last proposed configuration.
+   * @throws IOException in case of IO failure.
+   */
+  Configuration getProposedConfigFromFile() throws IOException {
+    Properties prop = FileUtils.readPropertiesFromFile(this.fProposedConfig);
+    return Configuration.fromProperties(prop);
+  }
+
+  /**
+   * Updates the last proposed configuration.
+   *
+   * @param conf the updated last proposed configuration.
+   * @throws IOException in case of IO failure.
+   */
+  void setProposedConfig(Configuration conf) throws IOException {
+    FileUtils.writePropertiesToFile(conf.toProperties(), this.fProposedConfig);
   }
 
   /**

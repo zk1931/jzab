@@ -163,3 +163,8 @@ message Disconnected {
 message RemoveFollower {
   required string followerId = 1;
 }
+
+message Configuration {
+  repeated string servers = 1;
+  required Zxid version = 2;
+}

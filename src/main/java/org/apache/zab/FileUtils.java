@@ -25,6 +25,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.Properties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -79,6 +80,48 @@ public final class FileUtils {
         DataInputStream dis = new DataInputStream(fis)) {
       int value = dis.readInt();
       return value;
+    }
+  }
+
+  /**
+   * Atomically writes properties to a file.
+   *
+   * This method writes properties to a file by first writing it to a
+   * temporary file and then atomically moving it to the destination,
+   * overwriting the destination file if it already exists.
+   *
+   * @param prop a Properties object to write.
+   * @param file file to write the value to.
+   * @throws IOException if an I/O error occurs.
+   */
+  public static void writePropertiesToFile(Properties prop, File file)
+      throws IOException {
+    // Create a temp file in the same directory as the file parameter.
+    File temp = File.createTempFile(file.getName(), null,
+                                    file.getAbsoluteFile().getParentFile());
+    try (FileOutputStream fos = new FileOutputStream(temp)) {
+      prop.save(fos, "");
+      fos.getChannel().force(true);
+    }
+    Files.move(temp.toPath(), file.toPath(), ATOMIC_MOVE);
+    LOG.debug("Atomically moved {} to {}", temp, file);
+  }
+
+  /**
+   * Reads the Properties from a file that was created by the
+   * {@link #writePropertiesToFile(Properties, File) writePropertiesToFile}
+   * method.
+   *
+   * @param file file to read the Properties object from.
+   * @return the Properties object in the file
+   * @throws IOException if an I/O error occurs.
+   */
+  public static Properties readPropertiesFromFile(File file)
+      throws IOException {
+    try (FileInputStream fis = new FileInputStream(file)) {
+      Properties prop = new Properties();
+      prop.load(fis);
+      return prop;
     }
   }
 }
