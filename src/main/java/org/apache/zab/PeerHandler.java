@@ -105,7 +105,19 @@ public class PeerHandler {
    */
   private ExecutorService es = null;
 
+  /**
+   * Whether the PeerHandler is allowed to send out message.
+   */
+  volatile boolean disableSending = false;
+
+  /**
+   * The future of synchronizing task.
+   */
   protected Future<Void> ftSync = null;
+
+  /**
+   * The future of broadcasting task.
+   */
   protected Future<Void> ftBroad = null;
 
   private static final Logger LOG = LoggerFactory.getLogger(PeerHandler.class);
@@ -171,6 +183,10 @@ public class PeerHandler {
     return this.lastAckedZxid;
   }
 
+  synchronized void disableSending() {
+    this.disableSending = true;
+  }
+
   /**
    * Puts message in queue.
    *
@@ -185,8 +201,10 @@ public class PeerHandler {
     this.newleaderEpoch = newLeaderEpoch;
   }
 
-  void sendMessage(Message msg) {
-    this.transport.send(this.serverId, ByteBuffer.wrap(msg.toByteArray()));
+  synchronized void sendMessage(Message msg) {
+    if (!this.disableSending) {
+      this.transport.send(this.serverId, ByteBuffer.wrap(msg.toByteArray()));
+    }
   }
 
   void shutdown() {
@@ -239,10 +257,6 @@ public class PeerHandler {
     public Void call() throws InterruptedException {
       LOG.debug("BroadcastingFollower to {} task gets started.", serverId);
       Message heartbeat = MessageBuilder.buildHeartbeat();
-      Zxid lastSyncZxid = Zxid.ZXID_NOT_EXIST;
-      if (syncTask != null) {
-        lastSyncZxid = syncTask.getLastSyncZxid();
-      }
       while (true) {
         Message msg = broadcastingQueue.poll(heartbeatIntervalMs,
                                              TimeUnit.MILLISECONDS);
@@ -258,22 +272,16 @@ public class PeerHandler {
             LOG.debug("Received PROPOSAL {}",
                       TextFormat.shortDebugString(msg));
           }
-          Zxid zxid = MessageBuilder.fromProtoZxid(msg.getProposal().getZxid());
-          if (zxid.compareTo(lastSyncZxid) > 0) {
-            // Sends this PROPOSAL if it's not the duplicate.
-            sendMessage(msg);
-          }
+          // Sends this PROPOSAL if it's not the duplicate.
+          sendMessage(msg);
         } else if (msg.getType() == MessageType.COMMIT) {
           // Got COMMIT message, send it to follower.
           if (LOG.isDebugEnabled()) {
             LOG.debug("Received COMMIT {}",
                       TextFormat.shortDebugString(msg));
           }
-          Zxid zxid = MessageBuilder.fromProtoZxid(msg.getCommit().getZxid());
-          if (zxid.compareTo(lastSyncZxid) >= 0) {
-            // Sends this COMMIT if it's not the duplicate.
-            sendMessage(msg);
-          }
+          // Sends this COMMIT if it's not the duplicate.
+          sendMessage(msg);
         } else {
           // Got FLUSH message.
           if (LOG.isDebugEnabled()) {

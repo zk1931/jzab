@@ -20,6 +20,7 @@ package org.apache.zab;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
@@ -30,6 +31,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Message;
+import org.apache.zab.proto.ZabMessage.Message.MessageType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,6 +44,8 @@ public class AckProcessor implements RequestProcessor,
 
   private final BlockingQueue<Request> ackQueue =
       new LinkedBlockingQueue<Request>();
+
+  private final Map<String, PeerHandler> quorumSetOriginal;
 
   private final Map<String, PeerHandler> quorumSet;
 
@@ -61,7 +65,8 @@ public class AckProcessor implements RequestProcessor,
   public AckProcessor(Map<String, PeerHandler> quorumSet,
                          int quorumSize,
                          Zxid lastCommittedZxid) {
-    this.quorumSet = quorumSet;
+    this.quorumSetOriginal = quorumSet;
+    this.quorumSet = new HashMap<String, PeerHandler>(quorumSet);
     this.quorumSize = quorumSize;
     this.lastCommittedZxid = lastCommittedZxid;
     ExecutorService es =
@@ -81,44 +86,57 @@ public class AckProcessor implements RequestProcessor,
     try {
       while (true) {
         Request request = ackQueue.take();
-
         if (request == Request.REQUEST_OF_DEATH) {
           break;
         }
-        String source = request.getServerId();
-        ZabMessage.Ack ack = request.getMessage().getAck();
-        Zxid zxid = MessageBuilder.fromProtoZxid(ack.getZxid());
-        this.quorumSet.get(source).setLastAckedZxid(zxid);
-        ArrayList<Zxid> zxids = new ArrayList<Zxid>();
-        for (PeerHandler ph : quorumSet.values()) {
-          LOG.debug("Last zxid of {} is {}",
-                    ph.getServerId(),
-                    ph.getLastAckedZxid());
-          Zxid ackZxid = ph.getLastAckedZxid();
-          if (ackZxid != null) {
-            // Add acknowledged zxid to zxids only.
-            zxids.add(ph.getLastAckedZxid());
-          }
-        }
-
-        if (zxids.size() < this.quorumSize) {
-          continue;
-        }
-
-        // Sorts the last ACK zxid of each peer to find one transaction which
-        // can be committed safely.
-        Collections.sort(zxids);
-        Zxid zxidCanCommit = zxids.get(zxids.size() - this.quorumSize);
-        LOG.debug("CAN COMMIT : {}", zxidCanCommit);
-
-        if (zxidCanCommit.compareTo(this.lastCommittedZxid) > 0) {
-          // Avoid sending duplicated COMMIT message.
-          LOG.debug("Will send commit {} to quorumSet.", zxidCanCommit);
-          Message commit = MessageBuilder.buildCommit(zxidCanCommit);
+        Message msg = request.getMessage();
+        if (msg.getType() == MessageType.ACK) {
+          String source = request.getServerId();
+          ZabMessage.Ack ack = request.getMessage().getAck();
+          Zxid zxid = MessageBuilder.fromProtoZxid(ack.getZxid());
+          this.quorumSet.get(source).setLastAckedZxid(zxid);
+          ArrayList<Zxid> zxids = new ArrayList<Zxid>();
           for (PeerHandler ph : quorumSet.values()) {
-            ph.queueMessage(commit);
+            LOG.debug("Last zxid of {} is {}",
+                      ph.getServerId(),
+                      ph.getLastAckedZxid());
+            Zxid ackZxid = ph.getLastAckedZxid();
+            if (ackZxid != null) {
+              // Add acknowledged zxid to zxids only.
+              zxids.add(ph.getLastAckedZxid());
+            }
           }
-          this.lastCommittedZxid = zxidCanCommit;
+          if (zxids.size() < this.quorumSize) {
+            continue;
+          }
+          // Sorts the last ACK zxid of each peer to find one transaction which
+          // can be committed safely.
+          Collections.sort(zxids);
+          Zxid zxidCanCommit = zxids.get(zxids.size() - this.quorumSize);
+          LOG.debug("CAN COMMIT : {}", zxidCanCommit);
+
+          if (zxidCanCommit.compareTo(this.lastCommittedZxid) > 0) {
+            // Avoid sending duplicated COMMIT message.
+            LOG.debug("Will send commit {} to quorumSet.", zxidCanCommit);
+            Message commit = MessageBuilder.buildCommit(zxidCanCommit);
+            for (PeerHandler ph : quorumSet.values()) {
+              ph.queueMessage(commit);
+            }
+            this.lastCommittedZxid = zxidCanCommit;
+          }
+        } else if (msg.getType() == MessageType.ADD_FOLLOWER) {
+          String followerId = msg.getAddFollower().getFollowerId();
+          LOG.debug("Got ADD_FOLLOWER for {}.", followerId);
+          PeerHandler ph = this.quorumSetOriginal.get(followerId);
+          if (ph != null) {
+            this.quorumSet.put(followerId, ph);
+          }
+        } else if (msg.getType() == MessageType.REMOVE_FOLLOWER) {
+          String followerId = msg.getRemoveFollower().getFollowerId();
+          LOG.debug("Got REMOVE_FOLLOWER for {}.", followerId);
+          this.quorumSet.remove(followerId);
+        } else {
+          LOG.warn("Got unexpected message.");
         }
       }
     } catch (RuntimeException e) {

@@ -26,6 +26,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.HashMap;
 import java.util.Map;
 import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Message;
@@ -48,10 +49,11 @@ public class PreProcessor implements RequestProcessor,
 
   private final StateMachine stateMachine;
 
-  // Last proposed Zxid from this processor. It starts from <f.a, -1>
-  private Zxid lastProposedZxid;
+  private Zxid nextZxid;
 
   private final String leaderId;
+
+  private final Map<String, PeerHandler> quorumSetOriginal;
 
   private final Map<String, PeerHandler> quorumSet;
 
@@ -63,9 +65,10 @@ public class PreProcessor implements RequestProcessor,
                       Map<String, PeerHandler> quorumSet,
                       String leaderId) {
     this.stateMachine = stateMachine;
-    this.lastProposedZxid = new Zxid(currentEpoch, -1);
+    this.nextZxid = new Zxid(currentEpoch, 0);
     this.leaderId = leaderId;
-    this.quorumSet = quorumSet;
+    this.quorumSetOriginal = quorumSet;
+    this.quorumSet = new HashMap<String, PeerHandler>(quorumSet);
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
     ft = es.submit(this);
@@ -86,27 +89,40 @@ public class PreProcessor implements RequestProcessor,
         if (request == Request.REQUEST_OF_DEATH) {
           break;
         }
-        if (request.getMessage().getType() == MessageType.FLUSH_PREPROCESSOR) {
+        Message msg = request.getMessage();
+        if (msg.getType() == MessageType.FLUSH_PREPROCESSOR) {
           LOG.debug("Got FLUSH_PREPROCESSOR msg.");
           this.quorumSet.get(this.leaderId).queueMessage(request.getMessage());
-          continue;
-        }
-        lastProposedZxid = new Zxid(lastProposedZxid.getEpoch(),
-                                    lastProposedZxid.getXid() + 1);
-        ZabMessage.Request req = request.getMessage().getRequest();
-        String clientId = request.getServerId();
-        ByteBuffer bufReq = req.getRequest().asReadOnlyByteBuffer();
-        // Invoke the callback to convert the request into transaction.
-        ByteBuffer update = this.stateMachine.preprocess(lastProposedZxid,
-                                                         bufReq);
-        Message prop = MessageBuilder
-                       .buildProposal(new Transaction(lastProposedZxid, update),
-                                      clientId);
-        for (PeerHandler ph : quorumSet.values()) {
-          ph.queueMessage(prop);
+        } else if (msg.getType() == MessageType.REQUEST) {
+          ZabMessage.Request req = request.getMessage().getRequest();
+          String clientId = request.getServerId();
+          ByteBuffer bufReq = req.getRequest().asReadOnlyByteBuffer();
+          // Invoke the callback to convert the request into transaction.
+          ByteBuffer update = this.stateMachine.preprocess(nextZxid,
+                                                           bufReq);
+          Transaction txn = new Transaction(nextZxid, update);
+          Message prop = MessageBuilder.buildProposal(txn, clientId);
+          for (PeerHandler ph : quorumSet.values()) {
+            ph.queueMessage(prop);
+          }
+          // Bump nextZxid.
+          nextZxid = new Zxid(nextZxid.getEpoch(), nextZxid.getXid() + 1);
+        } else if (msg.getType() == MessageType.ADD_FOLLOWER) {
+          String followerId = msg.getAddFollower().getFollowerId();
+          LOG.debug("Got ADD_FOLLOWER for {}.", followerId);
+          PeerHandler ph = this.quorumSetOriginal.get(followerId);
+          if (ph != null) {
+            this.quorumSet.put(followerId, ph);
+          }
+        } else if (msg.getType() == MessageType.REMOVE_FOLLOWER) {
+          String followerId = msg.getRemoveFollower().getFollowerId();
+          LOG.debug("Got REMOVE_FOLLOWER for {}.", followerId);
+          this.quorumSet.remove(followerId);
+        } else {
+          LOG.warn("Got unexpected Message.");
         }
       }
-    } catch (Exception e) {
+    } catch (RuntimeException e) {
       LOG.error("Caught exception in PreProcessor!", e);
       throw e;
     }

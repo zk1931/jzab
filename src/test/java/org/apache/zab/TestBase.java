@@ -37,7 +37,7 @@ public class TestBase {
   private static final Logger LOG = LoggerFactory.getLogger(TestBase.class);
 
   // Used to generate unique port number for unit tests.
-  private static AtomicInteger portGenerator = new AtomicInteger(50000);
+  private static AtomicInteger portGenerator = new AtomicInteger(60000);
 
   @Rule public TestName testName = new TestName();
 

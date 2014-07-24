@@ -23,8 +23,10 @@ import com.google.protobuf.ByteString;
 import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Ack;
 import org.apache.zab.proto.ZabMessage.AckEpoch;
+import org.apache.zab.proto.ZabMessage.AddFollower;
 import org.apache.zab.proto.ZabMessage.Commit;
 import org.apache.zab.proto.ZabMessage.Diff;
+import org.apache.zab.proto.ZabMessage.Disconnected;
 import org.apache.zab.proto.ZabMessage.FlushPreProcessor;
 import org.apache.zab.proto.ZabMessage.FlushSyncProcessor;
 import org.apache.zab.proto.ZabMessage.Handshake;
@@ -35,6 +37,7 @@ import org.apache.zab.proto.ZabMessage.NewLeader;
 import org.apache.zab.proto.ZabMessage.Proposal;
 import org.apache.zab.proto.ZabMessage.ProposedEpoch;
 import org.apache.zab.proto.ZabMessage.PullTxnReq;
+import org.apache.zab.proto.ZabMessage.RemoveFollower;
 import org.apache.zab.proto.ZabMessage.Request;
 import org.apache.zab.proto.ZabMessage.Snapshot;
 import org.apache.zab.proto.ZabMessage.Truncate;
@@ -390,6 +393,51 @@ public final class MessageBuilder {
                                                  .build();
     return Message.newBuilder().setType(MessageType.FLUSH_SYNCPROCESSOR)
                                .setFlushSyncProcessor(flush)
+                               .build();
+  }
+
+  /**
+   * Creates a ADD_FOLLOWER message.
+   *
+   * @param followerId the ID of new joined follower.
+   * @return a protobuf message.
+   */
+  public static Message buildAddFollower(String followerId) {
+    AddFollower addFollower = AddFollower.newBuilder()
+                                         .setFollowerId(followerId)
+                                         .build();
+    return Message.newBuilder().setType(MessageType.ADD_FOLLOWER)
+                               .setAddFollower(addFollower)
+                               .build();
+  }
+
+  /**
+   * Creates a DISCONNECTED message.
+   *
+   * @param serverId the ID of the disconnected peer.
+   * @return a protobuf message.
+   */
+  public static Message buildDisconnected(String serverId) {
+    Disconnected dis = Disconnected.newBuilder()
+                                   .setServerId(serverId)
+                                   .build();
+    return Message.newBuilder().setType(MessageType.DISCONNECTED)
+                               .setDisconnected(dis)
+                               .build();
+  }
+
+  /**
+   * Creates a REMOVE_FOLLOWER message.
+   *
+   * @param followerId the ID of disconnected follower.
+   * @return a protobuf message.
+   */
+  public static Message buildRemoveFollower(String followerId) {
+    RemoveFollower removeFollower = RemoveFollower.newBuilder()
+                                                  .setFollowerId(followerId)
+                                                  .build();
+    return Message.newBuilder().setType(MessageType.REMOVE_FOLLOWER)
+                               .setRemoveFollower(removeFollower)
                                .build();
   }
 }
