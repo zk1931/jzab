@@ -115,14 +115,9 @@ public class Participant implements Callable<Void>,
   private final File fProposedEpoch;
 
   /**
-   * The file to store the last proposed configuration.
-   */
-  private final File fProposedConfig;
-
-  /**
    * The file to store the last acknowledged config.
    */
-  private final File fAckConfig;
+  private final File fLastSeenConfig;
 
   /**
    * State Machine callbacks.
@@ -259,8 +254,7 @@ public class Participant implements Callable<Void>,
     this.stateMachine = stateMachine;
     this.fAckEpoch = new File(config.getLogDir(), "AckEpoch");
     this.fProposedEpoch = new File(config.getLogDir(), "ProposedEpoch");
-    this.fAckConfig = new File(config.getLogDir(), "AckConfig");
-    this.fProposedConfig = new File(config.getLogDir(), "ProposedConfig");
+    this.fLastSeenConfig = new File(config.getLogDir(), "AckConfig");
 
     MDC.put("serverId", this.config.getServerId());
     MDC.put("state", "looking");
@@ -279,15 +273,29 @@ public class Participant implements Callable<Void>,
     this.stateChangeCallback = cb;
     this.failCallback = fcb;
     this.transport = new NettyTransport(this.config.getServerId(), this);
-    /*
-    if (initialState.getTransportMap() == null) {
-      this.transport = new DummyTransport(this.config.getServerId(), this);
+
+    if (this.config.getJoinPeer() != null) {
+      LOG.debug("Join peer is not null.");
+      // If you want to join a cluster, clear all your old states.
+      this.fAckEpoch.delete();
+      this.fProposedEpoch.delete();
+      this.fLastSeenConfig.delete();
+      this.log.truncate(Zxid.ZXID_NOT_EXIST);
     } else {
-      this.transport = new DummyTransport(this.config.getServerId(),
-                                          this,
-                                          initialState.getTransportMap());
+      LOG.debug("Join peer is null.");
+      // Means either it starts booting from static configuration or recovering
+      // from dynamic configuration.
+      Configuration cnf = getLastSeenConfigFromFile();
+      if (this.config.getPeers().size() > 0) {
+        // Means it's from static configuration, set last seen config to
+        // user configured config. It's for backward compabilities.
+        List<String> peers = this.config.getPeers();
+        cnf = new Configuration(Zxid.ZXID_NOT_EXIST,
+                                peers,
+                                this.config.getServerId());
+        setLastSeenConfig(cnf);
+      }
     }
-    */
   }
 
   void send(ByteBuffer request) {
@@ -346,8 +354,11 @@ public class Participant implements Callable<Void>,
   public Void call() throws Exception {
     LOG.debug("Participant starts running.");
     Election electionAlg = new RoundRobinElection();
-    while (true) {
-      try {
+    try {
+      if (this.config.getJoinPeer() != null) {
+        join(this.config.getJoinPeer());
+      }
+      while (true) {
         this.isBroadcasting = false;
         this.stateMachine.stateChanged(State.LOOKING);
         this.currentState = State.LOOKING;
@@ -372,14 +383,14 @@ public class Participant implements Callable<Void>,
           MDC.put("state", "following");
           follow();
         }
-      } catch (InterruptedException e) {
-        LOG.debug("Caught Interrupted exception, it has been shut down?");
-        this.transport.shutdown();
-        return null;
-      } catch (Exception e) {
-        LOG.error("Caught exception :", e);
-        return null;
       }
+    } catch (InterruptedException e) {
+      LOG.debug("Caught Interrupted exception, it has been shut down?");
+      this.transport.shutdown();
+      return null;
+    } catch (Exception e) {
+      LOG.error("Caught exception :", e);
+      return null;
     }
   }
 
@@ -447,9 +458,15 @@ public class Participant implements Callable<Void>,
    * @return the current configuration.
    * @throws IOException in case of IO failure.
    */
-  Configuration getAckConfigFromFile() throws IOException {
-    Properties prop = FileUtils.readPropertiesFromFile(this.fAckConfig);
-    return Configuration.fromProperties(prop);
+  Configuration getLastSeenConfigFromFile() throws IOException {
+    try {
+      Properties prop = FileUtils.readPropertiesFromFile(this.fLastSeenConfig);
+      return Configuration.fromProperties(prop);
+    } catch (FileNotFoundException e) {
+      LOG.debug("AckConfig file doesn't exist, probably it's the first time" +
+          "bootup.");
+    }
+    return null;
   }
 
   /**
@@ -458,29 +475,8 @@ public class Participant implements Callable<Void>,
    * @param conf the updated current configuration.
    * @throws IOException in case of IO failure.
    */
-  void setAckConfig(Configuration conf) throws IOException {
-    FileUtils.writePropertiesToFile(conf.toProperties(), this.fAckConfig);
-  }
-
-  /**
-   * Gets last proposed configuration.
-   *
-   * @return the last proposed configuration.
-   * @throws IOException in case of IO failure.
-   */
-  Configuration getProposedConfigFromFile() throws IOException {
-    Properties prop = FileUtils.readPropertiesFromFile(this.fProposedConfig);
-    return Configuration.fromProperties(prop);
-  }
-
-  /**
-   * Updates the last proposed configuration.
-   *
-   * @param conf the updated last proposed configuration.
-   * @throws IOException in case of IO failure.
-   */
-  void setProposedConfig(Configuration conf) throws IOException {
-    FileUtils.writePropertiesToFile(conf.toProperties(), this.fProposedConfig);
+  void setLastSeenConfig(Configuration conf) throws IOException {
+    FileUtils.writePropertiesToFile(conf.toProperties(), this.fLastSeenConfig);
   }
 
   /**
@@ -605,7 +601,7 @@ public class Participant implements Callable<Void>,
    */
   @Override
   public int getEnsembleSize() {
-    return config.getEnsembleSize();
+    return getServerList().size();
   }
 
   /**
@@ -613,7 +609,13 @@ public class Participant implements Callable<Void>,
    */
   @Override
   public List<String> getServerList() {
-    return config.getPeers();
+    try {
+      Configuration cnf = getLastSeenConfigFromFile();
+      return cnf.getPeers();
+    } catch (IOException e) {
+      LOG.error("IOException while reading AckConfig file!");
+    }
+    return null;
   }
 
   /**
@@ -1754,6 +1756,48 @@ public class Participant implements Callable<Void>,
         this.lastDeliveredZxid = commitProcessor.getLastDeliveredZxid();
       } catch (ExecutionException e) {
         LOG.error("Follower {} caught execution exception.", e);
+      }
+    }
+  }
+
+  void join(String peer) throws Exception {
+    LOG.debug("Trying to join server {}.", this.config.getJoinPeer());
+    if (peer.equals(this.config.getServerId())) {
+      // If the server joins itself, means the cluster starts from itself, goes
+      // to broacasting phase directly.
+      try {
+        // Initialize data directory.
+        List<String> servers = new ArrayList<String>();
+        servers.add(this.config.getServerId());
+        Configuration cnf = new Configuration(Zxid.ZXID_NOT_EXIST,
+                                              servers,
+                                              this.config.getServerId());
+        setLastSeenConfig(cnf);
+        setAckEpoch(0);
+        setProposedEpoch(0);
+
+        this.currentState = State.LEADING;
+        this.isBroadcasting = true;
+        beginBroadcasting();
+      } catch (InterruptedException | TimeoutException | IOException |
+          RuntimeException e) {
+        // Shutdown all the PeerHandlers in quorum set.
+        for (PeerHandler ph : this.quorumSet.values()) {
+          ph.shutdown();
+          this.quorumSet.remove(ph.getServerId());
+        }
+        if (e instanceof TimeoutException) {
+          LOG.debug("Didn't hear message from peers for {} milliseconds. Going"
+                    + " back to leader election.",
+                    this.config.getTimeout());
+        } else if (e instanceof InterruptedException) {
+          LOG.debug("Participant is canceled by user.");
+          throw (InterruptedException)e;
+        } else if (e instanceof BackToElectionException) {
+          LOG.debug("Got GO_BACK message from queue, going back to electing.");
+        } else {
+          LOG.error("Caught exception", e);
+        }
       }
     }
   }

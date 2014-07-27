@@ -94,4 +94,13 @@ public class ZabConfig {
   public int getTimeout() {
     return Integer.parseInt(this.prop.getProperty("timeout_ms", "1000"));
   }
+
+  /**
+   * Gets the address of peer you want to join in.
+   *
+   * @return the address of the peer.
+   */
+  public String getJoinPeer() {
+    return this.prop.getProperty("joinPeer");
+  }
 }

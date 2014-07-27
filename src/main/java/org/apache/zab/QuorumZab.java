@@ -263,7 +263,9 @@ public class QuorumZab extends Zab {
      */
     public TestState(String serverId, String servers, File baseLogDir) {
       this.prop.setProperty("serverId", serverId);
-      this.prop.setProperty("servers", servers);
+      if (servers != null) {
+        this.prop.setProperty("servers", servers);
+      }
       this.logDir = new File(baseLogDir, serverId);
 
       // Creates its log directory.
@@ -282,6 +284,9 @@ public class QuorumZab extends Zab {
       this(config.getServerId(),
            config.prop.getProperty("servers"),
            new File(config.getLogDir()));
+      if (config.getJoinPeer() != null) {
+        this.prop.setProperty("joinPeer", config.getJoinPeer());
+      }
     }
 
     TestState setProposedEpoch(int epoch) throws IOException {
