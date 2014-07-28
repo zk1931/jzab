@@ -188,8 +188,15 @@ public class Participant implements Callable<Void>,
   static class BackToElectionException extends RuntimeException {
   }
 
+  /**
+   * Failed to join cluster.
+   */
+  static class JoinFailure extends RuntimeException {
+  }
+
+
   static class Configuration {
-    private final Zxid version;
+    private Zxid version;
     private final List<String> peers;
     private final String serverId;
 
@@ -203,12 +210,20 @@ public class Participant implements Callable<Void>,
       return this.version;
     }
 
+    public void setVersion(Zxid newVersion) {
+      this.version = newVersion;
+    }
+
     public List<String> getPeers() {
       return this.peers;
     }
 
     public String getServerId() {
       return this.serverId;
+    }
+
+    public void addPeer(String peer) {
+      peers.add(peer);
     }
 
     public Properties toProperties() {
@@ -228,7 +243,8 @@ public class Participant implements Callable<Void>,
       String strPeers = prop.getProperty("peers");
       String[] strVersion = prop.getProperty("version").split(" ");
       String serverId = prop.getProperty("serverId");
-      List<String> peerList = Arrays.asList(strPeers.split(";"));
+      List<String> peerList =
+        new ArrayList<String>(Arrays.asList(strPeers.split(";")));
       if (strVersion.length != 2) {
         LOG.error("Configuration file has wrong format of version!");
         throw new RuntimeException("Configuration has wrong format of version");
@@ -236,6 +252,12 @@ public class Participant implements Callable<Void>,
       Zxid version = new Zxid(Integer.parseInt(strVersion[0]),
                               Integer.parseInt(strVersion[1]));
       return new Configuration(version, peerList, serverId);
+    }
+
+    public static Configuration fromCop(Message msg, String serverId) {
+      ZabMessage.Configuration cop = msg.getCop();
+      Zxid version = MessageBuilder.fromProtoZxid(cop.getVersion());
+      return new Configuration(version, cop.getServersList(), serverId);
     }
   }
 
@@ -254,7 +276,7 @@ public class Participant implements Callable<Void>,
     this.stateMachine = stateMachine;
     this.fAckEpoch = new File(config.getLogDir(), "AckEpoch");
     this.fProposedEpoch = new File(config.getLogDir(), "ProposedEpoch");
-    this.fLastSeenConfig = new File(config.getLogDir(), "AckConfig");
+    this.fLastSeenConfig = new File(config.getLogDir(), "LastSeenConfig");
 
     MDC.put("serverId", this.config.getServerId());
     MDC.put("state", "looking");
@@ -487,66 +509,70 @@ public class Participant implements Callable<Void>,
    * @throws InterruptedException it's interrupted.
    */
   MessageTuple getMessage() throws TimeoutException, InterruptedException {
-    MessageTuple tuple = messageQueue.poll(config.getTimeout(),
-                                           TimeUnit.MILLISECONDS);
-    // Checks if timeout.
-    if (tuple == null) {
-      throw new TimeoutException("Timeout while waiting for the message.");
-    } else if (tuple == MessageTuple.GO_BACK) {
-      // Goes back to leader election.
-      throw new BackToElectionException();
-    } else if (tuple.getMessage().getType() == MessageType.PROPOSED_EPOCH &&
-        this.currentState != State.LEADING) {
-      // Explicitly close the connection when gets PROPOSED_EPOCH message in
-      // FOLLOWING state to help the peer selecting the right leader faster.
-      LOG.debug("Got PROPOSED_EPOCH in FOLLOWING state. Close the connection.");
-      this.transport.clear(tuple.getSource());
-    } else if (tuple.getMessage().getType() == MessageType.DISCONNECTED) {
-      // Got DISCONNECTED message enqueued by onDisconnected callback.
-      Message msg = tuple.getMessage();
-      String serverId = msg.getDisconnected().getServerId();
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Got DISCONNECTED in getMessage().",
-                  TextFormat.shortDebugString(msg));
-      }
-      if (this.currentState == State.LEADING) {
-        // It's in LEADING state.
-        if (this.quorumSet.containsKey(serverId)) {
-          if (!this.isBroadcasting) {
-            // If you lost someone who is in your quorumSet before broadcasting
-            // phase, you are for sure not have a quorum of followers, just go
-            // back to leader election. The clearance of the transport happens
-            // in the exception handlers of lead function.
-            LOG.debug("Lost follower {} in the quorumSet.", serverId);
-            throw new BackToElectionException();
+    while (true) {
+      MessageTuple tuple = messageQueue.poll(config.getTimeout(),
+                                             TimeUnit.MILLISECONDS);
+      if (tuple == null) {
+        // Timeout.
+        throw new TimeoutException("Timeout while waiting for the message.");
+      } else if (tuple == MessageTuple.GO_BACK) {
+        // Goes back to leader election.
+        throw new BackToElectionException();
+      } else if (tuple.getMessage().getType() == MessageType.PROPOSED_EPOCH &&
+          this.currentState != State.LEADING) {
+        // Explicitly close the connection when gets PROPOSED_EPOCH message in
+        // FOLLOWING state to help the peer selecting the right leader faster.
+        LOG.debug("Got PROPOSED_EPOCH in FOLLOWING state. Close connection.");
+        this.transport.clear(tuple.getSource());
+      } else if (tuple.getMessage().getType() == MessageType.DISCONNECTED) {
+        // Got DISCONNECTED message enqueued by onDisconnected callback.
+        Message msg = tuple.getMessage();
+        String serverId = msg.getDisconnected().getServerId();
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Got DISCONNECTED in getMessage().",
+                    TextFormat.shortDebugString(msg));
+        }
+        if (this.currentState == State.LEADING) {
+          // It's in LEADING state.
+          if (this.quorumSet.containsKey(serverId)) {
+            if (!this.isBroadcasting) {
+              // If you lost someone in your quorumSet before broadcasting
+              // phase, you are for sure not have a quorum of followers, just go
+              // back to leader election. The clearance of the transport happens
+              // in the exception handlers of lead function.
+              LOG.debug("Lost follower {} in the quorumSet.", serverId);
+              throw new BackToElectionException();
+            } else {
+              // Lost someone who is in the quorumSet in broadcasting phase,
+              // return this message to caller and let it handles the
+              // disconnection.
+              LOG.debug("Lost follower {} in the quorumSet.", serverId);
+              return tuple;
+            }
           } else {
-            // Lost someone who is in the quorumSet in broadcasting phase,
-            // return this message to caller and let it handles the
-            // disconnection.
-            LOG.debug("Lost follower {} in the quorumSet.", serverId);
+            // Just lost someone you don't care, clear the transport so it can
+            // join in in later time.
+            LOG.debug("Lost follower {} outside quorumSet.", serverId);
+            this.transport.clear(serverId);
           }
         } else {
-          // Just lost someone you don't care, clear the transport so it can
-          // join in in later time.
-          LOG.debug("Lost follower {} outside quorumSet.", serverId);
-          this.transport.clear(serverId);
+          // FOLLOWING state.
+          if (serverId.equals(this.electedLeader)) {
+            // Disconnection from elected leader, going back to leader election,
+            // the clearance of transport will happen in exception handlers of
+            // follow function.
+            LOG.debug("Lost elected leader {}.", this.electedLeader);
+            throw new BackToElectionException();
+          } else {
+            // Lost connection to someone you don't care, clear transport.
+            LOG.debug("Lost peer {}.", serverId);
+            this.transport.clear(serverId);
+          }
         }
       } else {
-        // FOLLOWING state.
-        if (serverId.equals(this.electedLeader)) {
-          // Disconnection from elected leader, going back to leader election,
-          // the clearance of transport will happen in exception handlers of
-          // follow function.
-          LOG.debug("Lost elected leader {}.", this.electedLeader);
-          throw new BackToElectionException();
-        } else {
-          // Lost connection to someone you don't care, clear transport.
-          LOG.debug("Lost peer {}.", serverId);
-          this.transport.clear(serverId);
-        }
+        return tuple;
       }
     }
-    return tuple;
   }
 
   /**
@@ -1178,15 +1204,13 @@ public class Participant implements Callable<Void>,
     lh.setLastAckedZxid(lastZxid);
     lh.startBroadcastingTask();
     this.quorumSet.put(this.config.getServerId(), lh);
-    // Constructs all the processors.
     PreProcessor preProcessor= new PreProcessor(this.stateMachine,
                                                 currentEpoch,
                                                 this.quorumSet,
                                                 this.config.getServerId());
     AckProcessor ackProcessor = new AckProcessor(this.quorumSet,
-                                                 getQuorumSize(),
+                                                 this,
                                                  lastZxid);
-    // Adds leader itself to quorum set.
     SyncProposalProcessor syncProcessor =
         new SyncProposalProcessor(this.log,
                                   this.transport,
@@ -1197,7 +1221,6 @@ public class Participant implements Callable<Void>,
     // The followers who joins in broadcasting phase and wait for their first
     // COMMIT message.
     Map<String, PeerHandler> pendingPeers = new HashMap<String, PeerHandler>();
-
     try {
       while (this.quorumSet.size() >= getQuorumSize()) {
         MessageTuple tuple = getMessage();
@@ -1210,6 +1233,13 @@ public class Participant implements Callable<Void>,
         } else if (msg.getType() == MessageType.ACK_EPOCH) {
           LOG.debug("Got ACK_EPOCH from {}", source);
           onLeaderAckEpoch(source, msg, preProcessor);
+        } else if (msg.getType() == MessageType.QUERY_LEADER) {
+          LOG.debug("Got QUERY_LEADER from {}", source);
+          Message reply = MessageBuilder.buildQueryReply(config.getServerId());
+          sendMessage(source, reply);
+        } else if (msg.getType() == MessageType.JOIN) {
+          LOG.debug("Got JOIN from {}", source);
+          onLeaderJoin(source, preProcessor, currentEpoch);
         } else {
           // In broadcasting phase, the only expected messages come outside
           // the quorum set is PROPOSED_EPOCH and ACK_EPOCH.
@@ -1279,6 +1309,12 @@ public class Participant implements Callable<Void>,
                                  pendingPeers,
                                  preProcessor,
                                  ackProcessor);
+          } else if (msg.getType() == MessageType.COP) {
+            if (LOG.isDebugEnabled()) {
+              LOG.debug("Got message COP {}", TextFormat.shortDebugString(msg));
+            }
+            setLastSeenConfig(Configuration.fromCop(msg,
+                                                    this.config.getServerId()));
           } else {
             if (LOG.isWarnEnabled()) {
               LOG.warn("Unexpected messgae : {} from {}",
@@ -1286,9 +1322,7 @@ public class Participant implements Callable<Void>,
                        source);
             }
           }
-          // Updates last received message time for this follower.
           this.quorumSet.get(source).updateHeartbeatTime();
-          // Checks if any peers in quorum set are dead.
           checkFollowerLiveness();
         }
       }
@@ -1296,14 +1330,11 @@ public class Participant implements Callable<Void>,
           + "quorum size {}, goes back to electing phase.",
           getQuorumSize());
     } finally {
-      // Stop all the processors.
       try {
         ackProcessor.shutdown();
         preProcessor.shutdown();
         commitProcessor.shutdown();
         syncProcessor.shutdown();
-        // Updates last delivered zxid. Avoid delivering delivered transactions
-        // next time even transactions are idempotent.
         this.lastDeliveredZxid = commitProcessor.getLastDeliveredZxid();
       } catch (ExecutionException e) {
         LOG.error("Caught exectuion exception.", e);
@@ -1328,6 +1359,34 @@ public class Participant implements Callable<Void>,
     preProcessor.processRequest(new Request(null, flush));
     // Add new joined follower to PreProcessor.
     preProcessor.processRequest(new Request(null, add));
+  }
+
+  void onLeaderJoin(String source,
+                    PreProcessor preProcessor,
+                    int currentEpoch) throws IOException {
+    Zxid lastPeerZxid = Zxid.ZXID_NOT_EXIST;
+    PeerHandler ph = new PeerHandler(source,
+                                     this.transport,
+                                     this.config.getTimeout() / 3);
+    ph.setLastZxid(lastPeerZxid);
+    this.quorumSet.put(source, ph);
+    Message flush = MessageBuilder.buildFlushPreProcessor(source);
+    Message add = MessageBuilder.buildAddFollower(source);
+    Configuration current = getLastSeenConfigFromFile();
+    Zxid version = current.getVersion();
+    if (version.getEpoch() != currentEpoch) {
+      current.setVersion(new Zxid(currentEpoch, 0));
+    } else {
+      current.setVersion(new Zxid(currentEpoch, version.getXid() + 1));
+    }
+    current.addPeer(source);
+    Message cop = MessageBuilder.buildCop(current);
+    // Flush the pipeline before start synchronization.
+    preProcessor.processRequest(new Request(null, flush));
+    // Add new joined follower to PreProcessor.
+    preProcessor.processRequest(new Request(null, add));
+    // Broadcast COP message to all peers.
+    preProcessor.processRequest(new Request(null, cop));
   }
 
   void onLeaderAck(String source,
@@ -1371,7 +1430,6 @@ public class Participant implements Callable<Void>,
     Message add = MessageBuilder.buildAddFollower(followerId);
     // Add new joined follower to AckProcessor.
     ackProcessor.processRequest(new Request(null, add));
-
     // Got last proposed zxid.
     Zxid lastSyncZxid = MessageBuilder
                         .fromProtoZxid(flush.getLastAppendedZxid());
@@ -1500,7 +1558,7 @@ public class Participant implements Callable<Void>,
       }
 
       waitForSync(this.electedLeader);
-      waitForNewLeaderMesage();
+      waitForNewLeaderMessage();
       waitForCommitMessage();
       // Delivers all transactions in log before entering broadcasting phase.
       deliverUndeliveredTxns();
@@ -1599,7 +1657,7 @@ public class Participant implements Callable<Void>,
    * @throws InterruptedException in case of interrupt.
    * @throws IOException in case of IO failure.
    */
-  void waitForNewLeaderMesage()
+  void waitForNewLeaderMessage()
       throws TimeoutException, InterruptedException, IOException {
     LOG.debug("Waiting for New Leader message from {}.", this.electedLeader);
     MessageTuple tuple = getExpectedMessage(MessageType.NEW_LEADER,
@@ -1671,26 +1729,16 @@ public class Participant implements Callable<Void>,
 
     try {
       while (true) {
-        /*
-         * Starts accepting loop, the follower will handle 4 kinds of messages
-         * in the loop.
-         *
-         *  1) PROPOSAL : The leader will propose proposals to followers,
-         *  followers will hand it to SyncProposalProcessor to accept it and
-         *  send back ACK to leader.
-         *
-         *  2) COMMIT : Once a quorum of followers accept the proposal, the
-         *  leader will send COMMIT message to all the peers in quorum set.
-         *  Followers will hand in to DeliverProcesor to deliver it to client
-         *  application.
-         *
-         *  3) HEARTBEAT : Leader will send HEARTBEAT messages to followers
-         *  periodically, followers will reply the same message to leader.
-         */
         MessageTuple tuple = getMessage();
         Message msg = tuple.getMessage();
         String source = tuple.getSource();
 
+        if (msg.getType() == MessageType.QUERY_LEADER) {
+          LOG.debug("Got QUERY_LEADER from {}", source);
+          Message reply = MessageBuilder.buildQueryReply(this.electedLeader);
+          sendMessage(source, reply);
+          continue;
+        }
         // The follower only expect receiving message from leader and
         // itself(REQUEST).
         if (source.equals(this.electedLeader)) {
@@ -1737,12 +1785,16 @@ public class Participant implements Callable<Void>,
           // Replies HEARTBEAT message to leader.
           Message heartbeatReply = MessageBuilder.buildHeartbeat();
           sendMessage(source, heartbeatReply);
-        } else if (msg.getType() == MessageType.DISCONNECTED) {
-          LOG.debug("Ignores DISCONNECTED message in FOLLOWING state.");
+        } else if (msg.getType() == MessageType.COP) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Got message COP {}", TextFormat.shortDebugString(msg));
+          }
+          setLastSeenConfig(Configuration.fromCop(msg,
+                                                  this.config.getServerId()));
         } else {
           if (LOG.isWarnEnabled()) {
             LOG.warn("Unexpected messgae : {} from {}",
-                      TextFormat.shortDebugString(msg),
+                     TextFormat.shortDebugString(msg),
                      source);
           }
         }
@@ -1762,11 +1814,13 @@ public class Participant implements Callable<Void>,
 
   void join(String peer) throws Exception {
     LOG.debug("Trying to join server {}.", this.config.getJoinPeer());
+    MDC.put("phase", "join");
     if (peer.equals(this.config.getServerId())) {
       // If the server joins itself, means the cluster starts from itself, goes
       // to broacasting phase directly.
       try {
         // Initialize data directory.
+        MDC.put("state", "leading");
         List<String> servers = new ArrayList<String>();
         servers.add(this.config.getServerId());
         Configuration cnf = new Configuration(Zxid.ZXID_NOT_EXIST,
@@ -1778,6 +1832,7 @@ public class Participant implements Callable<Void>,
 
         this.currentState = State.LEADING;
         this.isBroadcasting = true;
+        MDC.put("phase", "broadcast");
         beginBroadcasting();
       } catch (InterruptedException | TimeoutException | IOException |
           RuntimeException e) {
@@ -1799,13 +1854,44 @@ public class Participant implements Callable<Void>,
           LOG.error("Caught exception", e);
         }
       }
+    } else {
+      MDC.put("state", "following");
+      LOG.debug("Query leader from {}", peer);
+      Message query = MessageBuilder.buildQueryLeader();
+      sendMessage(peer, query);
+      MessageTuple tuple  = getExpectedMessage(MessageType.QUERY_REPLY, peer);
+      Message msg = tuple.getMessage();
+      this.electedLeader = msg.getReply().getLeader();
+      LOG.debug("Got current leader {}", this.electedLeader);
+      Message join = MessageBuilder.buildJoin();
+      sendMessage(this.electedLeader, join);
+
+      waitForSync(this.electedLeader);
+      waitForNewLeaderMessage();
+      waitForCommitMessage();
+      // Delivers all transactions in log before entering broadcasting phase.
+      deliverUndeliveredTxns();
+
+      /* -- Broadcasting phase -- */
+      this.isBroadcasting = true;
+      MDC.put("phase", "broadcast");
+      LOG.debug("Now it's in broadcasting phase.");
+      if (stateChangeCallback != null) {
+        stateChangeCallback.followerBroadcasting(getAckEpochFromFile(),
+                                                 getAllTxns());
+      }
+      if (failCallback != null) {
+        failCallback.followerBroadcasting();
+      }
+      this.stateMachine.stateChanged(State.FOLLOWING);
+      beginAccepting();
     }
   }
 
   /**
    * Synchronizes server's history to peer based on the last zxid of peer.
    * This function is called when the follower syncs its history to leader as
-   * initial history or the leader syncs its initial history to followers in
+   * intial history or the leader syncs its initial history to followers in
    * synchronization phase. Based on the last zxid of peer, the synchronization
    * can be performed by TRUNCATE, DIFF or SNAPSHOT. The assumption is that
    * the server has all the committed transactions in its transaction log.

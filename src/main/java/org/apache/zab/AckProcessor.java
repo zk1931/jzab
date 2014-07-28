@@ -49,7 +49,7 @@ public class AckProcessor implements RequestProcessor,
 
   private final Map<String, PeerHandler> quorumSet;
 
-  private final int quorumSize;
+  private final ServerState serverState;
 
   private static final Logger LOG =
       LoggerFactory.getLogger(AckProcessor.class);
@@ -63,11 +63,11 @@ public class AckProcessor implements RequestProcessor,
   private Zxid lastCommittedZxid;
 
   public AckProcessor(Map<String, PeerHandler> quorumSet,
-                         int quorumSize,
-                         Zxid lastCommittedZxid) {
+                      ServerState serverState,
+                      Zxid lastCommittedZxid) {
     this.quorumSetOriginal = quorumSet;
     this.quorumSet = new HashMap<String, PeerHandler>(quorumSet);
-    this.quorumSize = quorumSize;
+    this.serverState = serverState;
     this.lastCommittedZxid = lastCommittedZxid;
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
@@ -106,13 +106,14 @@ public class AckProcessor implements RequestProcessor,
               zxids.add(ph.getLastAckedZxid());
             }
           }
-          if (zxids.size() < this.quorumSize) {
+          int quorumSize = this.serverState.getQuorumSize();
+          if (zxids.size() < quorumSize) {
             continue;
           }
           // Sorts the last ACK zxid of each peer to find one transaction which
           // can be committed safely.
           Collections.sort(zxids);
-          Zxid zxidCanCommit = zxids.get(zxids.size() - this.quorumSize);
+          Zxid zxidCanCommit = zxids.get(zxids.size() - quorumSize);
           LOG.debug("CAN COMMIT : {}", zxidCanCommit);
 
           if (zxidCanCommit.compareTo(this.lastCommittedZxid) > 0) {

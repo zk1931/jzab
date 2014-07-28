@@ -18,6 +18,7 @@
 
 package org.apache.zab;
 
+import com.google.protobuf.TextFormat;
 import java.nio.ByteBuffer;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
@@ -118,6 +119,13 @@ public class PreProcessor implements RequestProcessor,
           String followerId = msg.getRemoveFollower().getFollowerId();
           LOG.debug("Got REMOVE_FOLLOWER for {}.", followerId);
           this.quorumSet.remove(followerId);
+        } else if (msg.getType() == MessageType.COP) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Got COP {}", TextFormat.shortDebugString(msg));
+          }
+          for (PeerHandler ph : quorumSet.values()) {
+            ph.queueMessage(msg);
+          }
         } else {
           LOG.warn("Got unexpected Message.");
         }

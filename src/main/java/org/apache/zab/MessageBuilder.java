@@ -37,6 +37,7 @@ import org.apache.zab.proto.ZabMessage.NewLeader;
 import org.apache.zab.proto.ZabMessage.Proposal;
 import org.apache.zab.proto.ZabMessage.ProposedEpoch;
 import org.apache.zab.proto.ZabMessage.PullTxnReq;
+import org.apache.zab.proto.ZabMessage.QueryReply;
 import org.apache.zab.proto.ZabMessage.RemoveFollower;
 import org.apache.zab.proto.ZabMessage.Request;
 import org.apache.zab.proto.ZabMessage.Snapshot;
@@ -438,6 +439,34 @@ public final class MessageBuilder {
                                                   .build();
     return Message.newBuilder().setType(MessageType.REMOVE_FOLLOWER)
                                .setRemoveFollower(removeFollower)
+                               .build();
+  }
+
+  public static Message buildQueryLeader() {
+    return Message.newBuilder().setType(MessageType.QUERY_LEADER).build();
+  }
+
+  public static Message buildQueryReply(String leader) {
+    QueryReply reply = QueryReply.newBuilder()
+                                 .setLeader(leader)
+                                 .build();
+    return Message.newBuilder().setType(MessageType.QUERY_REPLY)
+                               .setReply(reply)
+                               .build();
+  }
+
+  public static Message buildJoin() {
+    return Message.newBuilder().setType(MessageType.JOIN).build();
+  }
+
+  public static Message buildCop(Participant.Configuration config) {
+    ZabMessage.Zxid version = toProtoZxid(config.getVersion());
+    ZabMessage.Configuration zConfig = ZabMessage.Configuration.newBuilder()
+                                        .setVersion(version)
+                                        .addAllServers(config.getPeers())
+                                        .build();
+    return Message.newBuilder().setType(MessageType.COP)
+                               .setCop(zConfig)
                                .build();
   }
 }

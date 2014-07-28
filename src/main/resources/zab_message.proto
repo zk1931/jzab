@@ -28,6 +28,10 @@ message Message {
     ADD_FOLLOWER = 20;
     DISCONNECTED = 21;
     REMOVE_FOLLOWER = 22;
+    QUERY_LEADER = 23;
+    QUERY_REPLY = 24;
+    JOIN = 25;
+    COP = 26;
     INVALID_MESSAGE = 30;
   }
 
@@ -54,6 +58,8 @@ message Message {
   optional AddFollower add_follower = 18;
   optional Disconnected disconnected = 19;
   optional RemoveFollower removeFollower = 20;
+  optional QueryReply reply = 21;
+  optional Configuration cop = 22;
   optional InvalidMessage invalid = 30;
 }
 
@@ -167,4 +173,8 @@ message RemoveFollower {
 message Configuration {
   repeated string servers = 1;
   required Zxid version = 2;
+}
+
+message QueryReply {
+  required string leader = 1;
 }
