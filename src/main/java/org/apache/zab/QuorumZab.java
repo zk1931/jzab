@@ -71,7 +71,8 @@ public class QuorumZab extends Zab {
     this.participant = new Participant(stateMachine,
                                        cb,
                                        fcb,
-                                       initialState);
+                                       this.config,
+                                       initialState.getLog());
 
     this.ft = Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY)
              .submit(this.participant);
@@ -91,6 +92,9 @@ public class QuorumZab extends Zab {
     LOG.debug("Quorum has been shut down ? {}", res);
   }
 
+  public String getServerId() {
+    return this.participant.getServerId();
+  }
 
   /**
    * Interface of callbacks which will be called when phase change happens.
@@ -262,12 +266,17 @@ public class QuorumZab extends Zab {
      * then the log directory for this server is /tmp/log/server1.
      */
     public TestState(String serverId, String servers, File baseLogDir) {
-      this.prop.setProperty("serverId", serverId);
+      if (serverId != null) {
+        this.prop.setProperty("serverId", serverId);
+      }
       if (servers != null) {
         this.prop.setProperty("servers", servers);
       }
-      this.logDir = new File(baseLogDir, serverId);
-
+      if (serverId != null) {
+        this.logDir = new File(baseLogDir, serverId);
+      } else {
+        this.logDir = baseLogDir;
+      }
       // Creates its log directory.
       if(!this.logDir.mkdir()) {
         LOG.warn("Creating log directory {} failed, already exists?",
@@ -278,15 +287,6 @@ public class QuorumZab extends Zab {
       this.fAckEpoch = new File(this.logDir, "AckEpoch");
       this.fProposedEpoch = new File(this.logDir, "ProposedEpoch");
 
-    }
-
-    public TestState(ZabConfig config) {
-      this(config.getServerId(),
-           config.prop.getProperty("servers"),
-           new File(config.getLogDir()));
-      if (config.getJoinPeer() != null) {
-        this.prop.setProperty("joinPeer", config.getJoinPeer());
-      }
     }
 
     TestState setProposedEpoch(int epoch) throws IOException {

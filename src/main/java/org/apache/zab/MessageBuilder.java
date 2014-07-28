@@ -459,7 +459,7 @@ public final class MessageBuilder {
     return Message.newBuilder().setType(MessageType.JOIN).build();
   }
 
-  public static Message buildCop(Participant.Configuration config) {
+  public static Message buildCop(Configuration config) {
     ZabMessage.Zxid version = toProtoZxid(config.getVersion());
     ZabMessage.Configuration zConfig = ZabMessage.Configuration.newBuilder()
                                         .setVersion(version)
