@@ -29,7 +29,7 @@ message Message {
     DISCONNECTED = 21;
     REMOVE_FOLLOWER = 22;
     QUERY_LEADER = 23;
-    QUERY_REPLY = 24;
+    QUERY_LEADER_REPLY = 24;
     JOIN = 25;
     COP = 26;
     INVALID_MESSAGE = 30;

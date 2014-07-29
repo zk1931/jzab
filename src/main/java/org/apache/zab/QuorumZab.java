@@ -284,8 +284,8 @@ public class QuorumZab extends Zab {
       }
 
       this.prop.setProperty("logdir", logDir.getAbsolutePath());
-      this.fAckEpoch = new File(this.logDir, "AckEpoch");
-      this.fProposedEpoch = new File(this.logDir, "ProposedEpoch");
+      this.fAckEpoch = new File(this.logDir, "ack_epoch");
+      this.fProposedEpoch = new File(this.logDir, "proposed_epoch");
 
     }
 

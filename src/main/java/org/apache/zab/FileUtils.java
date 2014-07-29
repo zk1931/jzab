@@ -100,7 +100,7 @@ public final class FileUtils {
     File temp = File.createTempFile(file.getName(), null,
                                     file.getAbsoluteFile().getParentFile());
     try (FileOutputStream fos = new FileOutputStream(temp)) {
-      prop.save(fos, "");
+      prop.store(fos, "");
       fos.getChannel().force(true);
     }
     Files.move(temp.toPath(), file.toPath(), ATOMIC_MOVE);

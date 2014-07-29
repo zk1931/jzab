@@ -30,21 +30,21 @@ public interface ServerState {
    *
    * @return the size of the ensemble
    */
-  int getEnsembleSize();
+  int getEnsembleSize() throws Exception;
 
   /**
    * Gets a list of server ids.
    *
    * @return a list of server ids
    */
-  List<String> getServerList();
+  List<String> getServerList() throws Exception;
 
   /**
    * Gets the minimal quorum size.
    *
    * @return the minimal quorum size.
    */
-  int getQuorumSize();
+  int getQuorumSize() throws Exception;
 
   /**
    * Gets the last accepted proposed epoch.

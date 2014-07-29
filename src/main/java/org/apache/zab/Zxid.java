@@ -109,4 +109,16 @@ public class Zxid implements Comparable<Zxid> {
     hash = hash * 31 + this.xid;
     return hash;
   }
+
+  public String toSimpleString() {
+    return this.epoch + " " + this.xid;
+  }
+
+  public static Zxid fromSimpleString(String zxid) {
+    String []str = zxid.split(" ");
+    if (str.length != 2) {
+      throw new RuntimeException("Can't convert string to zxid, wrong format.");
+    }
+    return new Zxid(Integer.parseInt(str[0]), Integer.parseInt(str[1]));
+  }
 }

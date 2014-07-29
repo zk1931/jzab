@@ -113,7 +113,7 @@ public class SyncProposalProcessorTest extends TestBase {
       Transaction txn = new Transaction(new Zxid(epoch, i),
                             ByteBuffer.wrap(message.getBytes()));
       Message proposal = MessageBuilder.buildProposal(txn);
-      Request request = new Request(leader, proposal);
+      MessageTuple request = new MessageTuple(leader, proposal);
       processor.processRequest(request);
     }
     latch.await();

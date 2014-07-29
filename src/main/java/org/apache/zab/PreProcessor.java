@@ -42,8 +42,8 @@ import org.slf4j.LoggerFactory;
 public class PreProcessor implements RequestProcessor,
                                      Callable<Void> {
 
-  private final BlockingQueue<Request> requestQueue =
-      new LinkedBlockingQueue<Request>();
+  private final BlockingQueue<MessageTuple> requestQueue =
+      new LinkedBlockingQueue<MessageTuple>();
 
   private static final Logger LOG =
       LoggerFactory.getLogger(PreProcessor.class);
@@ -77,7 +77,7 @@ public class PreProcessor implements RequestProcessor,
   }
 
   @Override
-  public void processRequest(Request request) {
+  public void processRequest(MessageTuple request) {
     this.requestQueue.add(request);
   }
 
@@ -86,8 +86,8 @@ public class PreProcessor implements RequestProcessor,
     LOG.debug("PreProcessor gets started.");
     try {
       while (true) {
-        Request request = this.requestQueue.take();
-        if (request == Request.REQUEST_OF_DEATH) {
+        MessageTuple request = this.requestQueue.take();
+        if (request == MessageTuple.REQUEST_OF_DEATH) {
           break;
         }
         Message msg = request.getMessage();
@@ -140,7 +140,7 @@ public class PreProcessor implements RequestProcessor,
 
   @Override
   public void shutdown() throws InterruptedException, ExecutionException {
-    this.requestQueue.add(Request.REQUEST_OF_DEATH);
+    this.requestQueue.add(MessageTuple.REQUEST_OF_DEATH);
     this.ft.get();
   }
 }

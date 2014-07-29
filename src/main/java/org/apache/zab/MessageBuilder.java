@@ -53,7 +53,6 @@ public final class MessageBuilder {
     // Can't be instantiated.
   }
 
-
   /**
    * Converts Zxid object to protobuf Zxid object.
    *
@@ -442,24 +441,46 @@ public final class MessageBuilder {
                                .build();
   }
 
+  /**
+   * Creates a QUERY_LEADER message.
+   *
+   * @return a protobuf message.
+   */
   public static Message buildQueryLeader() {
     return Message.newBuilder().setType(MessageType.QUERY_LEADER).build();
   }
 
+  /**
+   * Creates a QUERY_REPLY message.
+   *
+   * @param leader the current leader in broadcasting phase.
+   * @return a protobuf message.
+   */
   public static Message buildQueryReply(String leader) {
     QueryReply reply = QueryReply.newBuilder()
                                  .setLeader(leader)
                                  .build();
-    return Message.newBuilder().setType(MessageType.QUERY_REPLY)
+    return Message.newBuilder().setType(MessageType.QUERY_LEADER_REPLY)
                                .setReply(reply)
                                .build();
   }
 
+  /**
+   * Creates a JOIN message.
+   *
+   * @return a protobuf message.
+   */
   public static Message buildJoin() {
     return Message.newBuilder().setType(MessageType.JOIN).build();
   }
 
-  public static Message buildCop(Configuration config) {
+  /**
+   * Creats a COP message.
+   *
+   * @param config the proposed configuration
+   * @return a protobuf message.
+   */
+  public static Message buildCop(ClusterConfiguration config) {
     ZabMessage.Zxid version = toProtoZxid(config.getVersion());
     ZabMessage.Configuration zConfig = ZabMessage.Configuration.newBuilder()
                                         .setVersion(version)

@@ -31,7 +31,7 @@ public interface RequestProcessor {
    *
    * @param request the request object.
    */
-  void processRequest(Request request);
+  void processRequest(MessageTuple request);
 
   /**
    * Shutdown the processor.

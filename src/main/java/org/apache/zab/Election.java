@@ -28,7 +28,7 @@ public interface Election {
    * @param state the state provides needed information for leader election
    * @param cb the callback which will be called to notify the elected leader
    */
-  void initialize(ServerState state, ElectionCallback cb);
+  void initialize(ServerState state, ElectionCallback cb) throws Exception;
 
   /**
    * Processes messages of election. Now the message format is undefined.

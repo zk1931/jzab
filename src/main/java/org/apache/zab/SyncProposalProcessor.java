@@ -42,8 +42,8 @@ public class SyncProposalProcessor implements RequestProcessor,
 
   private final Log log;
 
-  private final BlockingQueue<Request> proposalQueue =
-      new LinkedBlockingQueue<Request>();
+  private final BlockingQueue<MessageTuple> proposalQueue =
+      new LinkedBlockingQueue<MessageTuple>();
 
   Future<Void> ft;
 
@@ -74,7 +74,7 @@ public class SyncProposalProcessor implements RequestProcessor,
   }
 
   @Override
-  public void processRequest(Request request) {
+  public void processRequest(MessageTuple request) {
     proposalQueue.add(request);
   }
 
@@ -89,19 +89,19 @@ public class SyncProposalProcessor implements RequestProcessor,
     try {
       LOG.debug("Batched SyncRequestProcessor gets started.");
       Zxid lastAppendedZxid = this.log.getLatestZxid();
-      Request lastReq = null;
+      MessageTuple lastReq = null;
       // Number of transactions batched so far.
       int batchCount = 0;
 
       while (true) {
-        Request req;
+        MessageTuple req;
         if (lastReq == null) {
           req = this.proposalQueue.take();
         } else {
           req = this.proposalQueue.poll();
           if (req == null ||
               batchCount == maxBatchSize ||
-              req == Request.REQUEST_OF_DEATH ||
+              req == MessageTuple.REQUEST_OF_DEATH ||
               req.getMessage().getType() == MessageType.FLUSH_SYNCPROCESSOR) {
             // Sync to disk and send ACK to leader.
             this.log.sync();
@@ -113,7 +113,7 @@ public class SyncProposalProcessor implements RequestProcessor,
             batchCount = 0;
           }
         }
-        if (req == Request.REQUEST_OF_DEATH) {
+        if (req == MessageTuple.REQUEST_OF_DEATH) {
           break;
         }
         if (req == null) {
@@ -155,7 +155,7 @@ public class SyncProposalProcessor implements RequestProcessor,
 
   @Override
   public void shutdown() throws InterruptedException, ExecutionException {
-    this.proposalQueue.add(Request.REQUEST_OF_DEATH);
+    this.proposalQueue.add(MessageTuple.REQUEST_OF_DEATH);
     this.ft.get();
   }
 }

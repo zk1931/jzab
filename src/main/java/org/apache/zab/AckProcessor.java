@@ -42,8 +42,8 @@ import org.slf4j.LoggerFactory;
 public class AckProcessor implements RequestProcessor,
                                         Callable<Void> {
 
-  private final BlockingQueue<Request> ackQueue =
-      new LinkedBlockingQueue<Request>();
+  private final BlockingQueue<MessageTuple> ackQueue =
+      new LinkedBlockingQueue<MessageTuple>();
 
   private final Map<String, PeerHandler> quorumSetOriginal;
 
@@ -76,7 +76,7 @@ public class AckProcessor implements RequestProcessor,
   }
 
   @Override
-  public void processRequest(Request request) {
+  public void processRequest(MessageTuple request) {
     this.ackQueue.add(request);
   }
 
@@ -85,8 +85,8 @@ public class AckProcessor implements RequestProcessor,
     LOG.debug("AckProcessor gets started.");
     try {
       while (true) {
-        Request request = ackQueue.take();
-        if (request == Request.REQUEST_OF_DEATH) {
+        MessageTuple request = ackQueue.take();
+        if (request == MessageTuple.REQUEST_OF_DEATH) {
           break;
         }
         Message msg = request.getMessage();
@@ -150,7 +150,7 @@ public class AckProcessor implements RequestProcessor,
 
   @Override
   public void shutdown() throws InterruptedException, ExecutionException {
-    this.ackQueue.add(Request.REQUEST_OF_DEATH);
+    this.ackQueue.add(MessageTuple.REQUEST_OF_DEATH);
     this.ft.get();
   }
 }
