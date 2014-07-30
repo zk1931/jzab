@@ -75,7 +75,7 @@ public class RoundRobinElectionTest extends TestBase {
    * Tests the dummy server state.
    */
   @Test
-  public void testServerState() {
+  public void testServerState() throws Exception {
     DummyServerState st = new DummyServerState("server1;server2");
     Assert.assertEquals(st.serverList.get(0), "server1");
     Assert.assertEquals(st.serverList.get(1), "server2");
@@ -86,7 +86,7 @@ public class RoundRobinElectionTest extends TestBase {
    * Tests single round round robin election.
    */
   @Test
-  public void testSingleRoundElection() {
+  public void testSingleRoundElection() throws Exception {
     DummyServerState st = new DummyServerState("server1;server2");
     DummyElectionCallback cb = new DummyElectionCallback();
     Election election = new RoundRobinElection();
@@ -98,7 +98,7 @@ public class RoundRobinElectionTest extends TestBase {
    * Tests multiple rounds round robin election.
    */
   @Test
-  public void testMultiRoundsElection() {
+  public void testMultiRoundsElection() throws Exception {
     DummyServerState st = new DummyServerState("server1;server2;server3");
     DummyElectionCallback cb = new DummyElectionCallback();
     Election election = new RoundRobinElection();
@@ -117,7 +117,7 @@ public class RoundRobinElectionTest extends TestBase {
    * Tests if the round number is reset to zero after epoch changes.
    */
   @Test
-  public void testResetRound() {
+  public void testResetRound() throws Exception {
     DummyServerState st = new DummyServerState("server1;server2;server3");
     DummyElectionCallback cb = new DummyElectionCallback();
     Election election = new RoundRobinElection();

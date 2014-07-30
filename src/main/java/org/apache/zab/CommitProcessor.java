@@ -39,8 +39,8 @@ import org.slf4j.LoggerFactory;
 public class CommitProcessor implements RequestProcessor,
                                         Callable<Void> {
 
-  private final BlockingQueue<Request> commitQueue =
-      new LinkedBlockingQueue<Request>();
+  private final BlockingQueue<MessageTuple> commitQueue =
+      new LinkedBlockingQueue<MessageTuple>();
 
   private static final Logger LOG =
       LoggerFactory.getLogger(CommitProcessor.class);
@@ -74,7 +74,7 @@ public class CommitProcessor implements RequestProcessor,
   }
 
   @Override
-  public void processRequest(Request request) {
+  public void processRequest(MessageTuple request) {
     this.commitQueue.add(request);
   }
 
@@ -83,8 +83,8 @@ public class CommitProcessor implements RequestProcessor,
     LOG.debug("CommitProcessor gets started.");
     try {
       while (true) {
-        Request request = this.commitQueue.take();
-        if (request == Request.REQUEST_OF_DEATH) {
+        MessageTuple request = this.commitQueue.take();
+        if (request == MessageTuple.REQUEST_OF_DEATH) {
           break;
         }
         Message msg = request.getMessage();
@@ -133,7 +133,7 @@ public class CommitProcessor implements RequestProcessor,
 
   @Override
   public void shutdown() throws InterruptedException, ExecutionException {
-    this.commitQueue.add(Request.REQUEST_OF_DEATH);
+    this.commitQueue.add(MessageTuple.REQUEST_OF_DEATH);
     this.ft.get();
   }
 

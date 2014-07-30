@@ -18,6 +18,7 @@
 
 package org.apache.zab;
 
+import com.google.protobuf.TextFormat;
 import java.nio.ByteBuffer;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
@@ -41,8 +42,8 @@ import org.slf4j.LoggerFactory;
 public class PreProcessor implements RequestProcessor,
                                      Callable<Void> {
 
-  private final BlockingQueue<Request> requestQueue =
-      new LinkedBlockingQueue<Request>();
+  private final BlockingQueue<MessageTuple> requestQueue =
+      new LinkedBlockingQueue<MessageTuple>();
 
   private static final Logger LOG =
       LoggerFactory.getLogger(PreProcessor.class);
@@ -76,7 +77,7 @@ public class PreProcessor implements RequestProcessor,
   }
 
   @Override
-  public void processRequest(Request request) {
+  public void processRequest(MessageTuple request) {
     this.requestQueue.add(request);
   }
 
@@ -85,8 +86,8 @@ public class PreProcessor implements RequestProcessor,
     LOG.debug("PreProcessor gets started.");
     try {
       while (true) {
-        Request request = this.requestQueue.take();
-        if (request == Request.REQUEST_OF_DEATH) {
+        MessageTuple request = this.requestQueue.take();
+        if (request == MessageTuple.REQUEST_OF_DEATH) {
           break;
         }
         Message msg = request.getMessage();
@@ -118,6 +119,13 @@ public class PreProcessor implements RequestProcessor,
           String followerId = msg.getRemoveFollower().getFollowerId();
           LOG.debug("Got REMOVE_FOLLOWER for {}.", followerId);
           this.quorumSet.remove(followerId);
+        } else if (msg.getType() == MessageType.COP) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Got COP {}", TextFormat.shortDebugString(msg));
+          }
+          for (PeerHandler ph : quorumSet.values()) {
+            ph.queueMessage(msg);
+          }
         } else {
           LOG.warn("Got unexpected Message.");
         }
@@ -132,7 +140,7 @@ public class PreProcessor implements RequestProcessor,
 
   @Override
   public void shutdown() throws InterruptedException, ExecutionException {
-    this.requestQueue.add(Request.REQUEST_OF_DEATH);
+    this.requestQueue.add(MessageTuple.REQUEST_OF_DEATH);
     this.ft.get();
   }
 }

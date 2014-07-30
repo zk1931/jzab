@@ -21,15 +21,17 @@ package org.apache.zab;
 import org.apache.zab.proto.ZabMessage.Message;
 
 /**
- * Encapsulates the request needs to be processed by RequestProcessor.
+ * Class that holds both message and source/destionation.
  */
-public class Request {
+public class MessageTuple {
   private final String serverId;
   private final Message message;
 
-  public static final Request REQUEST_OF_DEATH = new Request(null, null);
+  public static final MessageTuple REQUEST_OF_DEATH =
+      new MessageTuple(null, null);
+  public static final MessageTuple GO_BACK = new MessageTuple(null, null);
 
-  public Request(String serverId, Message message) {
+  public MessageTuple(String serverId, Message message) {
     this.serverId = serverId;
     this.message = message;
   }

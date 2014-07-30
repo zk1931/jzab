@@ -32,7 +32,8 @@ public class RoundRobinElection implements Election {
       LoggerFactory.getLogger(RoundRobinElection.class);
 
   @Override
-  public void initialize(ServerState state, ElectionCallback cb) {
+  public void initialize(ServerState state,
+                         ElectionCallback cb) throws Exception {
     if (state.getProposedEpoch() != this.lastEpoch) {
       LOG.debug("Last proposed epoch is changed from {} to {}, resets round.",
                 this.lastEpoch,
@@ -43,8 +44,10 @@ public class RoundRobinElection implements Election {
     } else {
       try {
         Thread.sleep((long)(Math.random() * 500));
-      } catch(InterruptedException e) {
+      } catch (InterruptedException e) {
         LOG.debug("Interrupted exception in RoundRobinElection.");
+      } catch (Exception e) {
+        throw e;
       }
     }
     int idx = this.round % state.getEnsembleSize();
