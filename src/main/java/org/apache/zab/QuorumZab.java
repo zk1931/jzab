@@ -28,6 +28,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.List;
 import java.util.Properties;
+
 import org.apache.zab.transport.DummyTransport.Message;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -149,14 +150,14 @@ public class QuorumZab extends Zab {
      *
      * @param epoch the established epoch.
      */
-    void leaderSynchronizating(int epoch);
+    void leaderSynchronizing(int epoch);
 
     /**
      * Will be called when entering synchronization phase of follower.
      *
      * @param epoch the established epoch.
      */
-    void followerSynchronizating(int epoch);
+    void followerSynchronizing(int epoch);
 
     /**
      * Will be called when entering broadcasting phase of leader.
@@ -164,7 +165,8 @@ public class QuorumZab extends Zab {
      * @param epoch the acknowledged epoch (f.a).
      * @param history the initial history (f.h) of broadcasting phase.
      */
-    void leaderBroadcasting(int epoch, List<Transaction> history);
+    void leaderBroadcasting(int epoch, List<Transaction> history,
+                            ClusterConfiguration config);
 
     /**
      * Will be called when entering broadcasting phase of follower.
@@ -172,7 +174,8 @@ public class QuorumZab extends Zab {
      * @param epoch the current epoch (f.a).
      * @param history the initial history (f.h) of broadcasting phase.
      */
-    void followerBroadcasting(int epoch, List<Transaction> history);
+    void followerBroadcasting(int epoch, List<Transaction> history,
+                              ClusterConfiguration config);
   }
 
   /**
@@ -250,6 +253,8 @@ public class QuorumZab extends Zab {
 
     private final File fProposedEpoch;
 
+    private final File fLastSeenConfig;
+
     Log log = null;
 
     private ConcurrentHashMap<String, BlockingQueue<Message>> queueMap = null;
@@ -286,7 +291,7 @@ public class QuorumZab extends Zab {
       this.prop.setProperty("logdir", logDir.getAbsolutePath());
       this.fAckEpoch = new File(this.logDir, "ack_epoch");
       this.fProposedEpoch = new File(this.logDir, "proposed_epoch");
-
+      this.fLastSeenConfig = new File(this.logDir, "cluster_config");
     }
 
     TestState setProposedEpoch(int epoch) throws IOException {
@@ -306,6 +311,13 @@ public class QuorumZab extends Zab {
 
     Log getLog() {
       return this.log;
+    }
+
+    TestState setClusterConfiguration(ClusterConfiguration conf)
+        throws IOException {
+      FileUtils.writePropertiesToFile(conf.toProperties(),
+                                      this.fLastSeenConfig);
+      return this;
     }
 
     ConcurrentHashMap<String, BlockingQueue<Message>> getTransportMap() {

@@ -24,7 +24,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 import org.apache.zab.proto.ZabMessage;
-import org.apache.zab.proto.ZabMessage.Message;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,7 +42,7 @@ class ClusterConfiguration {
                               List<String> peers,
                               String serverId) {
     this.version = version;
-    this.peers = peers;
+    this.peers = new ArrayList<String>(peers);
     this.serverId = serverId;
   };
 
@@ -89,13 +88,19 @@ class ClusterConfiguration {
     return new ClusterConfiguration(version, peerList, serverId);
   }
 
-  public static ClusterConfiguration fromCop(Message msg, String serverId) {
-    ZabMessage.Configuration cop = msg.getCop();
-    Zxid version = MessageBuilder.fromProtoZxid(cop.getVersion());
-    return new ClusterConfiguration(version, cop.getServersList(), serverId);
+  public static
+  ClusterConfiguration fromProto(ZabMessage.ClusterConfiguration cnf,
+                                 String serverId) {
+    Zxid version = MessageBuilder.fromProtoZxid(cnf.getVersion());
+    return new ClusterConfiguration(version, cnf.getServersList(), serverId);
   }
 
   public boolean contains(String peerId) {
     return this.peers.contains(peerId);
+  }
+
+  @Override
+  public String toString() {
+    return toProperties().toString();
   }
 }

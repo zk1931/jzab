@@ -21,6 +21,7 @@ package org.apache.zab;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.util.Set;
 
 /**
  * The state machine interface. It contains a list
@@ -87,4 +88,12 @@ public interface StateMachine {
    * RECOVERING/FOLLOWING/LEADING.
    */
   void stateChanged(Zab.State state);
+
+  /**
+   * Upcall to notify the leader the change of membership of the cluster, it
+   * will be called once the membership of the cluster is changed.
+   *
+   * @param members the current members of the cluster.
+   */
+  void membersChange(Set<String> members);
 }

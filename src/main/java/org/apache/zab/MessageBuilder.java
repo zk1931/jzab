@@ -104,13 +104,25 @@ public final class MessageBuilder {
   /**
    * Creates CEPOCH message.
    *
-   * @param epoch the last proposed epoch.
+   * @param proposedEpoch the last proposed epoch.
+   * @param acknowledgedEpoch the acknowledged epoch.
+   * @param config the current seen configuration.
    * @return the protobuf message.
    */
-  public static Message buildProposedEpoch(int epoch) {
-    ProposedEpoch pEpoch = ProposedEpoch.newBuilder().setProposedEpoch(epoch)
-                           .build();
-
+  public static Message buildProposedEpoch(int proposedEpoch,
+                                           int acknowledgedEpoch,
+                                           ClusterConfiguration config) {
+    ZabMessage.Zxid version = toProtoZxid(config.getVersion());
+    ZabMessage.ClusterConfiguration zCnf
+      = ZabMessage.ClusterConfiguration.newBuilder()
+                                       .setVersion(version)
+                                       .addAllServers(config.getPeers())
+                                       .build();
+    ProposedEpoch pEpoch = ProposedEpoch.newBuilder()
+                                        .setProposedEpoch(proposedEpoch)
+                                        .setCurrentEpoch(acknowledgedEpoch)
+                                        .setConfig(zCnf)
+                                        .build();
     return Message.newBuilder().setType(MessageType.PROPOSED_EPOCH)
                                .setProposedEpoch(pEpoch)
                                .build();
@@ -482,12 +494,31 @@ public final class MessageBuilder {
    */
   public static Message buildCop(ClusterConfiguration config) {
     ZabMessage.Zxid version = toProtoZxid(config.getVersion());
-    ZabMessage.Configuration zConfig = ZabMessage.Configuration.newBuilder()
-                                        .setVersion(version)
-                                        .addAllServers(config.getPeers())
-                                        .build();
+    ZabMessage.ClusterConfiguration zConfig
+      = ZabMessage.ClusterConfiguration.newBuilder()
+                                       .setVersion(version)
+                                       .addAllServers(config.getPeers())
+                                       .build();
     return Message.newBuilder().setType(MessageType.COP)
-                               .setCop(zConfig)
+                               .setConfig(zConfig)
+                               .build();
+  }
+
+  /**
+   * Creats a SYNC_END message.
+   *
+   * @param config the cluster configuration.
+   * @return a protobuf message.
+   */
+  public static Message buildSyncEnd(ClusterConfiguration config) {
+    ZabMessage.Zxid version = toProtoZxid(config.getVersion());
+    ZabMessage.ClusterConfiguration zConfig
+      = ZabMessage.ClusterConfiguration.newBuilder()
+                                       .setVersion(version)
+                                       .addAllServers(config.getPeers())
+                                       .build();
+    return Message.newBuilder().setType(MessageType.SYNC_END)
+                               .setConfig(zConfig)
                                .build();
   }
 }

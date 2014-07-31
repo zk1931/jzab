@@ -52,7 +52,7 @@ class QuorumTestCallback implements QuorumZab.StateChangeCallback {
   CountDownLatch conditionDiscovering = new CountDownLatch(1);
   CountDownLatch conditionSynchronizing = new CountDownLatch(1);
   CountDownLatch conditionBroadcasting = new CountDownLatch(1);
-
+  ClusterConfiguration clusterConfig;
 
   @Override
   public void electing() {
@@ -79,36 +79,40 @@ class QuorumTestCallback implements QuorumZab.StateChangeCallback {
   }
 
   @Override
-  public void leaderSynchronizating(int epoch) {
+  public void leaderSynchronizing(int epoch) {
     this.establishedEpoch = epoch;
     this.conditionSynchronizing.countDown();
   }
 
   @Override
-  public void followerSynchronizating(int epoch) {
+  public void followerSynchronizing(int epoch) {
     this.establishedEpoch = epoch;
     this.conditionSynchronizing.countDown();
   }
 
   @Override
-  public void leaderBroadcasting(int epoch, List<Transaction> history) {
+  public void leaderBroadcasting(int epoch, List<Transaction> history,
+                                 ClusterConfiguration config) {
     LOG.debug("The history after synchronization:");
     for (Transaction txn : history) {
       LOG.debug("Txn zxid : {}", txn.getZxid());
     }
     this.acknowledgedEpoch = epoch;
     this.initialHistory = history;
+    this.clusterConfig = config;
     this.conditionBroadcasting.countDown();
   }
 
   @Override
-  public void followerBroadcasting(int epoch, List<Transaction> history) {
+  public void followerBroadcasting(int epoch, List<Transaction> history,
+                                   ClusterConfiguration config) {
     LOG.debug("The history after synchronization:");
     for (Transaction txn : history) {
       LOG.debug("Txn zxid : {}", txn.getZxid());
     }
     this.acknowledgedEpoch = epoch;
     this.initialHistory = history;
+    this.clusterConfig = config;
     this.conditionBroadcasting.countDown();
   }
 }
@@ -1317,6 +1321,263 @@ public class QuorumZabTest extends TestBase  {
     Assert.assertEquals(1, cb1.initialHistory.size());
     Assert.assertEquals(1, cb2.initialHistory.size());
     Assert.assertEquals(1, cb3.initialHistory.size());
+
+    zab1.shutdown();
+    zab2.shutdown();
+    zab3.shutdown();
+  }
+
+  @Test(timeout=10000)
+  public void testReconfigRecoveryCase1()
+      throws IOException, InterruptedException {
+    /**
+     * Recovery case 1:
+     *
+     * server 1 : <0, 0>
+     * last seen config : {peers : server1,server2,server3, version : 0 0}
+     *
+     * server 2 : <0, 0>
+     * last seen config : {peers : server1,server2,server3, version : 0 0}
+     *
+     * server 3 : <0, 0>
+     * last seen config : {peers : server1,server2,server3, version : 0 0}
+     *
+     * After recovery :
+     *  expected config :
+     *    last seen config : {peers : server1,server2,server3, version : 0 0}
+     */
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    QuorumTestCallback cb3 = new QuorumTestCallback();
+    TestStateMachine st = new TestStateMachine();
+    final String server1 = getUniqueHostPort();
+    final String server2 = getUniqueHostPort();
+    final String server3 = getUniqueHostPort();
+    Zxid version = new Zxid(0, 0);
+    ArrayList<String> peers = new ArrayList<String>();
+    peers.add(server1);
+    peers.add(server2);
+    peers.add(server3);
+    ClusterConfiguration cnf1 = new ClusterConfiguration(version, peers,
+                                                         server1);
+    ClusterConfiguration cnf2 = new ClusterConfiguration(version, peers,
+                                                         server2);
+    ClusterConfiguration cnf3 = new ClusterConfiguration(version, peers,
+                                                         server3);
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState(server1,
+                                                null,
+                                                getDirectory())
+                                      .setProposedEpoch(0)
+                                      .setLog(new DummyLog(1))
+                                      .setAckEpoch(0)
+                                      .setClusterConfiguration(cnf1);
+    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
+
+    QuorumZab.TestState state2 = new QuorumZab
+        .TestState(server2,
+                   null,
+                   getDirectory())
+         .setProposedEpoch(0)
+         .setLog(new DummyLog(1))
+         .setAckEpoch(0)
+         .setClusterConfiguration(cnf2);
+    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
+
+    QuorumZab.TestState state3 = new QuorumZab
+        .TestState(server3,
+                   null,
+                   getDirectory())
+         .setProposedEpoch(0)
+         .setLog(new DummyLog(1))
+         .setAckEpoch(0)
+         .setClusterConfiguration(cnf3);
+    QuorumZab zab3 = new QuorumZab(st, cb3, null, state3);
+
+    cb1.conditionBroadcasting.await();
+    cb2.conditionBroadcasting.await();
+    cb3.conditionBroadcasting.await();
+
+    Assert.assertEquals(cb1.clusterConfig.getVersion(), cnf1.getVersion());
+    Assert.assertEquals(cb2.clusterConfig.getVersion(), cnf2.getVersion());
+    Assert.assertEquals(cb3.clusterConfig.getVersion(), cnf3.getVersion());
+
+    zab1.shutdown();
+    zab2.shutdown();
+    zab3.shutdown();
+  }
+
+  @Test(timeout=10000)
+  public void testReconfigRecoveryCase2()
+      throws IOException, InterruptedException {
+    /**
+     * Recovery case 2:
+     *
+     * server 1 : <0, 0>
+     * last seen config : {peers : server1,server2, version : 0 0}
+     *
+     * server 2 : <0, 0>
+     * last seen config : {peers : server1,server2,server3, version : 0 1}
+     *
+     * server 3 : <0, 0>
+     * last seen config : {peers : server1,server2,server3, version : 0 1}
+     *
+     * After recovery :
+     *  expected config :
+     *    last seen config : {peers : server1,server2,server3, version : 0 1}
+     */
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    QuorumTestCallback cb3 = new QuorumTestCallback();
+    TestStateMachine st = new TestStateMachine();
+    final String server1 = getUniqueHostPort();
+    final String server2 = getUniqueHostPort();
+    final String server3 = getUniqueHostPort();
+    Zxid version1 = new Zxid(0, 0);
+    Zxid version2 = new Zxid(0, 1);
+    ArrayList<String> peers1 = new ArrayList<String>();
+    peers1.add(server1);
+    peers1.add(server2);
+    ArrayList<String> peers2 = new ArrayList<String>();
+    peers2.add(server1);
+    peers2.add(server2);
+    peers2.add(server3);
+    ClusterConfiguration cnf1 = new ClusterConfiguration(version1, peers1,
+                                                         server1);
+    ClusterConfiguration cnf2 = new ClusterConfiguration(version2, peers2,
+                                                         server2);
+    ClusterConfiguration cnf3 = new ClusterConfiguration(version2, peers2,
+                                                         server3);
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState(server1,
+                                                null,
+                                                getDirectory())
+                                      .setProposedEpoch(0)
+                                      .setLog(new DummyLog(1))
+                                      .setAckEpoch(0)
+                                      .setClusterConfiguration(cnf1);
+    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
+
+    QuorumZab.TestState state2 = new QuorumZab
+        .TestState(server2,
+                   null,
+                   getDirectory())
+         .setProposedEpoch(0)
+         .setLog(new DummyLog(1))
+         .setAckEpoch(0)
+         .setClusterConfiguration(cnf2);
+    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
+
+    QuorumZab.TestState state3 = new QuorumZab
+        .TestState(server3,
+                   null,
+                   getDirectory())
+         .setProposedEpoch(0)
+         .setLog(new DummyLog(1))
+         .setAckEpoch(0)
+         .setClusterConfiguration(cnf3);
+    QuorumZab zab3 = new QuorumZab(st, cb3, null, state3);
+
+    cb1.conditionBroadcasting.await();
+    cb2.conditionBroadcasting.await();
+    cb3.conditionBroadcasting.await();
+
+    Assert.assertEquals(cb1.clusterConfig.getVersion(), cnf2.getVersion());
+    Assert.assertEquals(cb2.clusterConfig.getVersion(), cnf2.getVersion());
+    Assert.assertEquals(cb3.clusterConfig.getVersion(), cnf2.getVersion());
+    // server1 should not be selected as leader.
+    Assert.assertNotEquals(cb1.electedLeader, server1);
+    zab1.shutdown();
+    zab2.shutdown();
+    zab3.shutdown();
+  }
+
+  @Test(timeout=10000)
+  public void testReconfigRecoveryCase3()
+      throws IOException, InterruptedException {
+    /**
+     * Recovery case 3:
+     *
+     * server 1 : <0, 0>
+     * last seen config : {peers : server1,server2, version : 0 1}
+     * f.a = 0
+     *
+     * server 2 : <0, 0> <1, 0>
+     * last seen config : {peers : server1,server2,server3, version : 0 0}
+     * f.a = 1
+     *
+     * server 3 : <0, 0>
+     * last seen config : {peers : server1,server2,server3, version : 0 0}
+     * f.a = 1
+     *
+     * After recovery :
+     *  expected config :
+     *    last seen config : {peers : server1,server2,server3 version : 0 0}
+     */
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    QuorumTestCallback cb3 = new QuorumTestCallback();
+    TestStateMachine st = new TestStateMachine();
+    final String server1 = getUniqueHostPort();
+    final String server2 = getUniqueHostPort();
+    final String server3 = getUniqueHostPort();
+    Zxid version1 = new Zxid(0, 1);
+    Zxid version2 = new Zxid(0, 0);
+    ArrayList<String> peers1 = new ArrayList<String>();
+    peers1.add(server1);
+    peers1.add(server2);
+    ArrayList<String> peers2 = new ArrayList<String>();
+    peers2.add(server1);
+    peers2.add(server2);
+    peers2.add(server3);
+    ClusterConfiguration cnf1 = new ClusterConfiguration(version1, peers1,
+                                                         server1);
+    ClusterConfiguration cnf2 = new ClusterConfiguration(version2, peers2,
+                                                         server2);
+    ClusterConfiguration cnf3 = new ClusterConfiguration(version2, peers2,
+                                                         server3);
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState(server1,
+                                                null,
+                                                getDirectory())
+                                      .setProposedEpoch(0)
+                                      .setLog(new DummyLog(1))
+                                      .setAckEpoch(0)
+                                      .setClusterConfiguration(cnf1);
+    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
+
+    QuorumZab.TestState state2 = new QuorumZab
+        .TestState(server2,
+                   null,
+                   getDirectory())
+         .setProposedEpoch(1)
+         .setLog(new DummyLog(2))
+         .setAckEpoch(1)
+         .setClusterConfiguration(cnf2);
+    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
+
+    QuorumZab.TestState state3 = new QuorumZab
+        .TestState(server3,
+                   null,
+                   getDirectory())
+         .setProposedEpoch(1)
+         .setLog(new DummyLog(1))
+         .setAckEpoch(1)
+         .setClusterConfiguration(cnf3);
+    QuorumZab zab3 = new QuorumZab(st, cb3, null, state3);
+
+    //cb1.conditionBroadcasting.await();
+    cb2.conditionBroadcasting.await();
+    cb3.conditionBroadcasting.await();
+
+    Assert.assertEquals(cb2.clusterConfig.getVersion(), cnf2.getVersion());
+    Assert.assertEquals(cb3.clusterConfig.getVersion(), cnf3.getVersion());
+    // After synchronization, size of initial history should equal to 2.
+    Assert.assertEquals(2, cb2.initialHistory.size());
+    Assert.assertEquals(2, cb3.initialHistory.size());
+    // server1 should not be selected as leader.
+    Assert.assertNotEquals(cb2.electedLeader, server1);
+    Assert.assertNotEquals(cb3.electedLeader, server1);
 
     zab1.shutdown();
     zab2.shutdown();
