@@ -1755,6 +1755,11 @@ public class Participant implements Callable<Void>,
         /* -- Broadcasting phase -- */
         this.isBroadcasting = true;
         MDC.put("phase", "broadcasting");
+        if (stateChangeCallback != null) {
+          stateChangeCallback.leaderBroadcasting(getAckEpochFromFile(),
+                                                 getAllTxns(),
+                                                 getLastSeenConfig());
+        }
         this.stateMachine.stateChanged(State.LEADING);
         beginBroadcasting();
       } catch (InterruptedException e) {
@@ -1799,6 +1804,11 @@ public class Participant implements Callable<Void>,
         this.isBroadcasting = true;
         MDC.put("phase", "broadcasting");
         LOG.debug("Now it's in broadcasting phase.");
+        if (stateChangeCallback != null) {
+          stateChangeCallback.followerBroadcasting(getAckEpochFromFile(),
+                                                   getAllTxns(),
+                                                   getLastSeenConfig());
+        }
         this.stateMachine.stateChanged(State.FOLLOWING);
         beginAccepting();
       } catch (InterruptedException e) {

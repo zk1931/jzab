@@ -25,6 +25,8 @@ import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
 import org.apache.zab.QuorumZab.FailureCaseCallback;
 import org.apache.zab.QuorumZab.SimulatedException;
 import org.apache.zab.transport.DummyTransport.Message;
@@ -1582,5 +1584,232 @@ public class QuorumZabTest extends TestBase  {
     zab1.shutdown();
     zab2.shutdown();
     zab3.shutdown();
+  }
+
+  @Test(timeout=10000)
+  public void testJoinCase1()
+      throws IOException, InterruptedException {
+    /**
+     * Case 1 :
+     *
+     * 1. starts server1
+     * 2. starts server2 join in server1
+     * 3. starts server3 join in server1
+     * 4. send request 1
+     *
+     * Then waits for all servers deliver txn1.
+     */
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    QuorumTestCallback cb3 = new QuorumTestCallback();
+    TestStateMachine st1 = new TestStateMachine(1);
+    TestStateMachine st2 = new TestStateMachine(1);
+    TestStateMachine st3 = new TestStateMachine(1);
+    final String server1 = getUniqueHostPort();
+    final String server2 = getUniqueHostPort();
+    final String server3 = getUniqueHostPort();
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState(server1,
+                                                null,
+                                                getDirectory())
+                                     .setJoinPeer(server1);
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1);
+    cb1.conditionBroadcasting.await();
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState(server2,
+                                                null,
+                                                getDirectory())
+                                     .setJoinPeer(server1);
+    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2);
+    cb2.conditionBroadcasting.await();
+
+
+    QuorumZab.TestState state3 = new QuorumZab
+                                     .TestState(server3,
+                                                null,
+                                                getDirectory())
+                                     .setJoinPeer(server1);
+    QuorumZab zab3 = new QuorumZab(st3, cb3, null, state3);
+    cb3.conditionBroadcasting.await();
+
+    zab1.send(ByteBuffer.wrap("req1".getBytes()));
+    // Waits for the transaction delivered.
+    st1.txnsCount.await();
+    st2.txnsCount.await();
+    st3.txnsCount.await();
+
+    zab1.shutdown();
+    zab2.shutdown();
+    zab3.shutdown();
+  }
+
+  @Test(timeout=10000)
+  public void testJoinCase2()
+      throws IOException, InterruptedException {
+    /**
+     * Case 2 :
+     *
+     * 1. starts server1
+     * 2. send req1
+     * 3. send req3
+     * 2. starts server2 join in server1
+     * 3. starts server3 join in server2
+     * 4. send req3
+     *
+     * Then waits for all servers deliver txn1, txn2, txn3.
+     */
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    QuorumTestCallback cb3 = new QuorumTestCallback();
+    TestStateMachine st1 = new TestStateMachine(3);
+    TestStateMachine st2 = new TestStateMachine(3);
+    TestStateMachine st3 = new TestStateMachine(3);
+    final String server1 = getUniqueHostPort();
+    final String server2 = getUniqueHostPort();
+    final String server3 = getUniqueHostPort();
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState(server1,
+                                                null,
+                                                getDirectory())
+                                     .setJoinPeer(server1);
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1);
+    cb1.conditionBroadcasting.await();
+
+    zab1.send(ByteBuffer.wrap("req1".getBytes()));
+    zab1.send(ByteBuffer.wrap("req2".getBytes()));
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState(server2,
+                                                null,
+                                                getDirectory())
+                                     .setJoinPeer(server1);
+    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2);
+    cb2.conditionBroadcasting.await();
+
+    QuorumZab.TestState state3 = new QuorumZab
+                                     .TestState(server3,
+                                                null,
+                                                getDirectory())
+                                     .setJoinPeer(server2);
+    QuorumZab zab3 = new QuorumZab(st3, cb3, null, state3);
+    cb3.conditionBroadcasting.await();
+
+    zab1.send(ByteBuffer.wrap("req3".getBytes()));
+    // Waits for all the transactions delivered.
+    st1.txnsCount.await();
+    st2.txnsCount.await();
+    st3.txnsCount.await();
+
+    zab1.shutdown();
+    zab2.shutdown();
+    zab3.shutdown();
+  }
+
+  @Test(timeout=10000)
+  public void testJoinCase3()
+      throws IOException, InterruptedException {
+    /**
+     * This test case shows that after reconfiguration is done, the quorum size
+     * should be changed.
+     *
+     * Case 3 :
+     *
+     * 1. starts server1
+     * 2. sends req1
+     * 3. starts server2
+     * 4. after server2 joins in cluster, it dies.
+     * 5. sends req2
+     *
+     * expected result :
+     * txn1 should be delivered on both server1 and server2, since after
+     * reconfiguration, the quorum size is changed to 2, the txn2 should
+     * never be delivered.
+     */
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    TestStateMachine st1 = new TestStateMachine(2);
+    TestStateMachine st2 = new TestStateMachine(1);
+    final String server1 = getUniqueHostPort();
+    final String server2 = getUniqueHostPort();
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState(server1,
+                                                null,
+                                                getDirectory())
+                                     .setJoinPeer(server1);
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1);
+    cb1.conditionBroadcasting.await();
+    zab1.send(ByteBuffer.wrap("req1".getBytes()));
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState(server2,
+                                                null,
+                                                getDirectory())
+                                     .setJoinPeer(server1);
+    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2);
+    cb2.conditionBroadcasting.await();
+    // Simulate server2 dies.
+    zab2.shutdown();
+    zab1.send(ByteBuffer.wrap("req2".getBytes()));
+    // Waits the both txn1 and txn2 to be delivered or timeout on server1.
+    boolean isCountedDown = st1.txnsCount.await(500, TimeUnit.MILLISECONDS);
+    // It should not be delivered.
+    Assert.assertFalse(isCountedDown);
+    // Waits for txn1 to be delivered on server2.
+    st2.txnsCount.await();
+    zab1.shutdown();
+  }
+
+  @Test(timeout=10000)
+  public void testJoinCase4()
+      throws IOException, InterruptedException {
+    /**
+     * It's as same as testJoinCase3 except server2 gets restarted. So the txn1
+     * and txn2 will be eventually delivered on both servers.
+     */
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    TestStateMachine st1 = new TestStateMachine(2);
+    TestStateMachine st2 = new TestStateMachine(2);
+    final String server1 = getUniqueHostPort();
+    final String server2 = getUniqueHostPort();
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState(server1,
+                                                null,
+                                                getDirectory())
+                                     .setJoinPeer(server1);
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1);
+    cb1.conditionBroadcasting.await();
+    zab1.send(ByteBuffer.wrap("req1".getBytes()));
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState(server2,
+                                                null,
+                                                getDirectory())
+                                     .setJoinPeer(server1);
+    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2);
+    cb2.conditionBroadcasting.await();
+    // Simulate server2 dies.
+    zab2.shutdown();
+    zab1.send(ByteBuffer.wrap("req2".getBytes()));
+    // Waits the both txn1 and txn2 to be delivered or timeout on server1.
+    boolean isCountedDown = st1.txnsCount.await(500, TimeUnit.MILLISECONDS);
+    // It should not be delivered.
+    Assert.assertFalse(isCountedDown);
+
+    // Restart server2.
+    state2 = new QuorumZab
+                 .TestState(server2,
+                            null,
+                            getDirectory());
+    zab2 = new QuorumZab(st2, cb2, null, state2);
+    // Now all the transactions should be delivered.
+    st1.txnsCount.await();
+    st2.txnsCount.await();
+    zab1.shutdown();
   }
 }

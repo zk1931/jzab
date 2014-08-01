@@ -329,5 +329,10 @@ public class QuorumZab extends Zab {
       this.queueMap = qMap;
       return this;
     }
+
+    TestState setJoinPeer(String peer) {
+      this.prop.setProperty("joinPeer", peer);
+      return this;
+    }
   }
 }
