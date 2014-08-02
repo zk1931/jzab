@@ -18,6 +18,7 @@
 
 package org.apache.zab;
 
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -78,5 +79,10 @@ class TestStateMachine implements StateMachine {
 
   @Override
   public void stateChanged(Zab.State state) {
+  }
+
+  @Override
+  public void membersChange(Set<String> members) {
+    LOG.debug("members change.");
   }
 }

@@ -32,6 +32,8 @@ message Message {
     QUERY_LEADER_REPLY = 24;
     JOIN = 25;
     COP = 26;
+    // The last message of synchronization. It contains cluster configuration.
+    SYNC_END = 27;
     INVALID_MESSAGE = 30;
   }
 
@@ -59,7 +61,7 @@ message Message {
   optional Disconnected disconnected = 19;
   optional RemoveFollower removeFollower = 20;
   optional QueryReply reply = 21;
-  optional Configuration cop = 22;
+  optional ClusterConfiguration config = 22;
   optional InvalidMessage invalid = 30;
 }
 
@@ -70,6 +72,8 @@ message InvalidMessage {
 // This message corresponds to CEPOCH message in Zab paper.
 message ProposedEpoch {
   required int32 proposed_epoch = 1;
+  required int32 current_epoch = 2;
+  required ClusterConfiguration config = 3;
 }
 
 message NewEpoch {
@@ -170,7 +174,7 @@ message RemoveFollower {
   required string followerId = 1;
 }
 
-message Configuration {
+message ClusterConfiguration {
   repeated string servers = 1;
   required Zxid version = 2;
 }
