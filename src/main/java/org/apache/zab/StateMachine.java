@@ -24,28 +24,24 @@ import java.nio.ByteBuffer;
 import java.util.Set;
 
 /**
- * The state machine interface. It contains a list
- * of callbacks which will be called by Zab. It
- * should be implemented by user.
+ * The state machine interface. It contains a list of callbacks which will be
+ * called by Zab. It should be implemented by user.
  */
 public interface StateMachine {
   /**
-   * This method is called only on the leader after
-   * the Zxid has been assigned but before proposing
-   * the message to followers.
+   * This method is called only on the leader after the Zxid has been assigned
+   * but before proposing the message to followers.
    *
    * @param zxid zxid of the message.
    * @param message the original message
-   * @return an idempotent state update based on
-   * the original message. This is what gets proposed
-   * to followers.
+   * @return an idempotent state update based on the original message. This is
+   * what gets proposed to followers.
    */
   ByteBuffer preprocess(Zxid zxid, ByteBuffer message);
 
   /**
-   * Upcall to deliver a state update. This method is
-   * called from a single thread to ensure that the
-   * state updates are applied in the same order
+   * Upcall to deliver a state update. This method is called from a single
+   * thread to ensure that the state updates are applied in the same order
    * they arrived.
    *
    * @param zxid zxid of the message
@@ -56,44 +52,50 @@ public interface StateMachine {
   void deliver(Zxid zxid, ByteBuffer stateUpdate, String clientId);
 
   /**
-   * Upcall to serialize the application state using an
-   * OutputStream. Upon a call to getState, the application
-   * writes its state to os. getState must be called from a
-   * different thread of the one that calls deliver
-   * to avoid blocking the delivery of the message.
+   * Upcall to serialize the application state using an OutputStream. Upon a
+   * call to getState, the application writes its state to os. getState must
+   * be called from a different thread of the one that calls deliver to avoid
+   * blocking the delivery of the message.
    *
    * @param os the output stream
    */
   void getState(OutputStream os);
 
   /**
-   * Deserializes the state of the application from the
-   * InputStream. Once this callback is called. The app
-   * restores the state using the input stream. This
-   * method must be called from the same thread of the
-   * one calls deliver to avoid ending up in inconsistent
-   * state.
+   * Deserializes the state of the application from the InputStream. Once this
+   * callback is called. The app restores the state using the input stream. This
+   * method must be called from the same thread of the one calls deliver to
+   * avoid ending up in inconsistent state.
    *
    * @param is the input stream
    */
   void setState(InputStream is);
 
   /**
-   * Upcall to notify the state of Zab is changed. The state of Zab
-   * is important to applications. Applications should only send request
-   * to Zab or serve requests from clients when Zab is in LEADING/FOLLOWING
-   * state.
+   * Upcall to notify all the servers the cluster configuration changes. This
+   * happens when the server receives COP message.
    *
-   * @param state the current state of Zab, it could be
-   * RECOVERING/FOLLOWING/LEADING.
+   * @param servers the servers in new configuration.
    */
-  void stateChanged(Zab.State state);
+  void clusterChange(Set<String> servers);
 
   /**
-   * Upcall to notify the leader the change of membership of the cluster, it
-   * will be called once the membership of the cluster is changed.
-   *
-   * @param members the current members of the cluster.
+   * Upcall to notify the server it's in recovering phase. Servers in recovering
+   * phase shouldn't issue or process any requests.
    */
-  void membersChange(Set<String> members);
+  void recovering();
+
+  /**
+   * Upcall to notify the application who is running on the leader role of ZAB
+   * instance. This callback will be called once ZAB enters broadcasting phase
+   * or the membership of active followers is changed.
+   */
+  void leading(Set<String> activeFollowers);
+
+  /**
+   * Upcall to notify the application who is running on follower role of ZAB
+   * instance. This callback will be called once the ZAB enters the broadcasting
+   * phase.
+   */
+  void following(String leader);
 }
