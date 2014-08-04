@@ -28,7 +28,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.List;
 import java.util.Properties;
-
 import org.apache.zab.transport.DummyTransport.Message;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -84,6 +83,10 @@ public class QuorumZab extends Zab {
     this.participant.send(message);
   }
 
+  public void leave() {
+    this.participant.leave();
+  }
+
   @Override
   public void trimLogTo(Zxid zxid) {
   }
@@ -104,9 +107,9 @@ public class QuorumZab extends Zab {
    * Phase changes :
    *
    *        leaderDiscovering - leaderSynchronizating - leaderBroadcasting
-   *        /
-   * electing
-   *        \
+   *        /                                                              \
+   * electing                                                               Exit
+   *        \                                                              /
    *        followerDiscovering - followerSynchronizating - followerBroadcasting
    *
    */
@@ -176,6 +179,16 @@ public class QuorumZab extends Zab {
      */
     void followerBroadcasting(int epoch, List<Transaction> history,
                               ClusterConfiguration config);
+
+    /**
+     * Will be called when QuorumZab stops running.
+     */
+    void exit();
+
+    /**
+     * Will be called once a COP is committed on leader side.
+     */
+    void commitCop();
   }
 
   /**

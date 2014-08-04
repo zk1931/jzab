@@ -48,7 +48,6 @@ import org.apache.zab.proto.ZabMessage.ProposedEpoch;
 import org.apache.zab.proto.ZabMessage.Message.MessageType;
 import org.apache.zab.transport.NettyTransport;
 import org.apache.zab.transport.Transport;
-import org.apache.zab.Zab.State;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -168,10 +167,37 @@ public class Participant implements Callable<Void>,
   private static final Logger LOG = LoggerFactory.getLogger(Participant.class);
 
   /**
+   * The state of Zab.
+   */
+  public enum State {
+    LOOKING,
+    LEADING,
+    FOLLOWING
+  }
+
+  /**
+   * The phase of Zab.
+   */
+  public enum Phase {
+    DISCOVERING,
+    SYNCHRONIZING,
+    BROADCASTING
+  }
+
+  /**
    * This exception is only used to force leader/follower goes back to election
    * phase.
    */
   static class BackToElectionException extends RuntimeException {
+  }
+
+  /**
+   * This exception is used to make the server exits.
+   */
+  static class Exit extends RuntimeException {
+    public Exit(String desc) {
+      super(desc);
+    }
   }
 
   /**
@@ -268,6 +294,20 @@ public class Participant implements Callable<Void>,
     }
   }
 
+  public void leave() {
+    if (!this.isBroadcasting) {
+      LOG.warn("Can leave the cluster only if you are in broaccsting phase.");
+      throw new RuntimeException("Leave cluster in revoering phase.");
+    }
+    Message msg = MessageBuilder.buildLeave(this.serverId);
+    if (this.currentState == State.LEADING) {
+      MessageTuple tuple = new MessageTuple(this.serverId, msg);
+      this.messageQueue.add(tuple);
+    } else {
+      sendMessage(this.electedLeader, msg);
+    }
+  }
+
   String getServerId() {
     return this.serverId;
   }
@@ -305,6 +345,91 @@ public class Participant implements Callable<Void>,
   }
 
   /**
+   * Change the state of current participant.
+   *
+   * @param state the state change(LOOKING/FOLLOWING/LEADING).
+   */
+  void changeState(State state) {
+    if (state == State.LOOKING) {
+      MDC.put("state", "looking");
+      if (this.stateChangeCallback != null) {
+        this.stateChangeCallback.electing();
+      }
+    } else if (state == State.FOLLOWING) {
+      MDC.put("state", "following");
+    } else if (state == State.LEADING) {
+      MDC.put("state", "leading");
+    }
+    this.currentState = state;
+  }
+
+  /**
+   * Change the phase of current participant.
+   *
+   * @param phase the phase change(DISCOVERING/SYNCHRONIZING/BROADCASTING).
+   * @throws IOException in case of IO failure.
+   */
+  void changePhase(Phase phase) throws IOException {
+    if (phase == Phase.DISCOVERING) {
+      MDC.put("phase", "discovering");
+      if (this.currentState == State.LEADING) {
+        if (stateChangeCallback != null) {
+          stateChangeCallback.leaderDiscovering(this.serverId);
+        }
+        if (failCallback != null) {
+          failCallback.leaderDiscovering();
+        }
+      } else if (this.currentState == State.FOLLOWING) {
+        if (stateChangeCallback != null) {
+          stateChangeCallback.followerDiscovering(this.electedLeader);
+        }
+        if (failCallback != null) {
+          failCallback.followerDiscovering();
+        }
+      }
+    } else if (phase == Phase.SYNCHRONIZING) {
+      MDC.put("phase", "synchronizing");
+      if (this.currentState == State.LEADING) {
+        if (stateChangeCallback != null) {
+          stateChangeCallback.leaderSynchronizing(getProposedEpochFromFile());
+        }
+        if (failCallback != null) {
+          failCallback.leaderSynchronizing();
+        }
+      } else if (this.currentState == State.FOLLOWING) {
+        if (stateChangeCallback != null) {
+          stateChangeCallback.followerSynchronizing(getProposedEpochFromFile());
+        }
+        if (failCallback != null) {
+          failCallback.followerSynchronizing();
+        }
+      }
+    } else if (phase == Phase.BROADCASTING) {
+      MDC.put("phase", "broadcasting");
+      this.isBroadcasting = true;
+      if (this.currentState == State.LEADING) {
+        if (failCallback != null) {
+          failCallback.leaderBroadcasting();
+        }
+        if (stateChangeCallback != null) {
+          stateChangeCallback.leaderBroadcasting(getAckEpochFromFile(),
+                                                 getAllTxns(),
+                                                 getLastSeenConfig());
+        }
+      } else if (this.currentState == State.FOLLOWING) {
+        if (stateChangeCallback != null) {
+          stateChangeCallback.followerBroadcasting(getAckEpochFromFile(),
+                                                   getAllTxns(),
+                                                   getLastSeenConfig());
+        }
+        if (failCallback != null) {
+          failCallback.followerBroadcasting();
+        }
+      }
+    }
+  }
+
+  /**
    * Starts main logic of participant.
    */
   @Override
@@ -313,7 +438,6 @@ public class Participant implements Callable<Void>,
     Election electionAlg = new RoundRobinElection();
     try {
       if (this.config.getJoinPeer() != null) {
-        MDC.put("state", "joining");
         this.stateMachine.recovering();
         join(this.config.getJoinPeer());
       }
@@ -321,33 +445,32 @@ public class Participant implements Callable<Void>,
         this.isBroadcasting = false;
         this.stateMachine.recovering();
         this.currentState = State.LOOKING;
-        MDC.put("state", "looking");
-        MDC.put("phase", "electing");
-        if (this.stateChangeCallback != null) {
-          this.stateChangeCallback.electing();
-        }
+        changeState(State.LOOKING);
         startLeaderElection(electionAlg);
         waitForLeaderElected();
         LOG.debug("Selected {} as prospective leader.",
                   this.electedLeader);
         if (this.electedLeader.equals(this.serverId)) {
-          this.currentState = State.LEADING;
-          MDC.put("state", "leading");
+          changeState(State.LEADING);
           lead();
         } else {
-          this.currentState = State.FOLLOWING;
-          MDC.put("state", "following");
+          changeState(State.FOLLOWING);
           follow();
         }
       }
     } catch (InterruptedException e) {
       LOG.debug("Caught Interrupted exception, it has been shut down?");
       this.transport.shutdown();
-      return null;
+    } catch (Exit e) {
+      LOG.debug("Exit Participant");
     } catch (Exception e) {
       LOG.error("Caught exception :", e);
       throw e;
     }
+    if (this.stateChangeCallback != null) {
+      this.stateChangeCallback.exit();
+    }
+    return null;
   }
 
   /**
@@ -620,9 +743,8 @@ public class Participant implements Callable<Void>,
     this.transport.send(dest, ByteBuffer.wrap(message.toByteArray()));
   }
 
+
   /* -----------------   For ELECTING state only -------------------- */
-
-
   void startLeaderElection(Election electionAlg) throws Exception {
     this.leaderCondition = new CountDownLatch(1);
     electionAlg.initialize(this, this);
@@ -640,7 +762,6 @@ public class Participant implements Callable<Void>,
 
 
   /* -----------------   For BOTH LEADING and FOLLOWING -------------------- */
-
   /**
    * Waits synchronization message from peer. This method is called on both
    * leader side and follower side.
@@ -819,7 +940,6 @@ public class Participant implements Callable<Void>,
 
 
   /* -----------------   For LEADING state only -------------------- */
-
   /**
    * Begins executing leader steps. It returns if any exception is caught,
    * which causes it goes back to election phase.
@@ -827,37 +947,18 @@ public class Participant implements Callable<Void>,
   void lead() throws Exception {
     try {
       /* -- Discovering phase -- */
-      MDC.put("phase", "discovering");
-      LOG.debug("Now it's in discovering phase.");
-
-      if (stateChangeCallback != null) {
-        stateChangeCallback.leaderDiscovering(this.serverId);
-      }
-      if (failCallback != null) {
-        failCallback.leaderDiscovering();
-      }
+      changePhase(Phase.DISCOVERING);
       waitProposedEpochFromQuorum();
       proposeNewEpoch();
       waitEpochAckFromQuorum();
-
-      LOG.debug("Established new epoch {}!",
+      LOG.debug("Established new epoch {}",
                 getProposedEpochFromFile());
-
       // Finds one who has the "best" history.
       String peerId = selectSyncHistoryOwner();
-      LOG.debug("Chooses {} to pull its history.",
-                peerId);
+      LOG.debug("Chooses {} to pull its history.", peerId);
 
       /* -- Synchronizing phase -- */
-      MDC.put("phase", "synchronizing");
-      LOG.debug("It's in synchronizating phase.");
-
-      if (stateChangeCallback != null) {
-        stateChangeCallback.leaderSynchronizing(getProposedEpochFromFile());
-      }
-      if (failCallback != null) {
-        failCallback.leaderSynchronizing();
-      }
+      changePhase(Phase.SYNCHRONIZING);
       if (!peerId.equals(this.serverId)) {
         // Pulls history from the follower.
         synchronizeFromFollower(peerId);
@@ -874,18 +975,7 @@ public class Participant implements Callable<Void>,
       deliverUndeliveredTxns();
 
       /* -- Broadcasting phase -- */
-      this.isBroadcasting = true;
-      MDC.put("phase", "broadcasting");
-      LOG.debug("Now it's in broadcasting phase.");
-
-      if (failCallback != null) {
-        failCallback.leaderBroadcasting();
-      }
-      if (stateChangeCallback != null) {
-        stateChangeCallback.leaderBroadcasting(getAckEpochFromFile(),
-                                               getAllTxns(),
-                                               getLastSeenConfig());
-      }
+      changePhase(Phase.BROADCASTING);
       for (PeerHandler ph : this.quorumSet.values()) {
         ph.startBroadcastingTask();
       }
@@ -901,7 +991,10 @@ public class Participant implements Callable<Void>,
       LOG.debug("Got GO_BACK message from queue, going back to electing.");
     } catch (QuorumZab.SimulatedException e) {
       LOG.debug("Got SimulatedException, go back to leader election.");
-    } catch (RuntimeException e) {
+    } catch (Exit e) {
+      LOG.debug("Exit running : {}", e.getMessage());
+      throw e;
+    } catch (Exception e) {
       LOG.error("Caught exception", e);
       throw e;
     } finally {
@@ -1133,10 +1226,11 @@ public class Participant implements Callable<Void>,
    * @throws InterruptedException if it's interrupted.
    * @throws TimeoutException in case of timeout.
    * @throws IOException in case of IO failure.
-   * @throws ExecutionException
+   * @throws ExecutionException in case of exception from executors.
    */
   void beginBroadcasting()
-      throws TimeoutException, InterruptedException, IOException {
+      throws TimeoutException, InterruptedException, IOException,
+      ExecutionException {
     Zxid lastZxid = this.log.getLatestZxid();
     // Last committed zxid main thread has received.
     Zxid lastCommittedZxid = lastZxid;
@@ -1162,6 +1256,10 @@ public class Participant implements Callable<Void>,
     // The followers who join in broadcasting phase and wait for their first
     // COMMIT message.
     Map<String, PeerHandler> pendingPeers = new HashMap<String, PeerHandler>();
+    // The reconfiguration in progress. It's no if there's no pending reconfig.
+    ClusterConfiguration pendingConfig = null;
+    // The COP acknowledgements for current pending configuration.
+    int ackCopCount = 0;
     this.stateMachine.leading(this.quorumSet.keySet());
     try {
       while (this.quorumSet.size() >= getQuorumSize()) {
@@ -1188,7 +1286,11 @@ public class Participant implements Callable<Void>,
           sendMessage(source, reply);
         } else if (msg.getType() == MessageType.JOIN) {
           LOG.debug("Got JOIN from {}", source);
-          onLeaderJoin(source, preProcessor, currentEpoch);
+          if (pendingConfig != null) {
+            LOG.warn("There's a pending configuration, ignore JOIN request.");
+            continue;
+          }
+          pendingConfig = onLeaderJoin(source, preProcessor, currentEpoch);
         } else {
           // In broadcasting phase, the only expected messages come outside
           // the quorum set is PROPOSED_EPOCH, ACK_EPOCH, QUERY_LEADER and JOIN.
@@ -1255,8 +1357,48 @@ public class Participant implements Callable<Void>,
             if (LOG.isDebugEnabled()) {
               LOG.debug("Got message COP {}", TextFormat.shortDebugString(msg));
             }
-            setLastSeenConfig(ClusterConfiguration.fromProto(msg.getConfig(),
-                                                             this.serverId));
+            ClusterConfiguration cnf =
+              ClusterConfiguration.fromProto(msg.getConfig(), this.serverId);
+            setLastSeenConfig(cnf);
+            Message ackCop = MessageBuilder.buildAckCop(cnf.getVersion());
+            sendMessage(this.serverId, ackCop);
+          } else if (msg.getType() == MessageType.LEAVE) {
+            if (LOG.isDebugEnabled()) {
+              LOG.debug("Got message LEAVE {}",
+                        TextFormat.shortDebugString(msg));
+            }
+            if (pendingConfig != null) {
+              LOG.warn("There's a pending configuration, ignore LEAVE request");
+              continue;
+            }
+            pendingConfig = onLeaderLeave(source, msg, pendingPeers,
+                                          preProcessor, ackProcessor);
+          } else if (msg.getType() == MessageType.ACK_COP) {
+            if (LOG.isDebugEnabled()) {
+              LOG.debug("Got message ACK_COP {} from {}",
+                        TextFormat.shortDebugString(msg), source);
+            }
+            Zxid version =
+              MessageBuilder.fromProtoZxid(msg.getAckCop().getVersion());
+            if (pendingConfig != null &&
+                pendingConfig.getVersion().equals(version) &&
+                pendingConfig.contains(source)) {
+              ackCopCount++;
+              // Checks if we got ACK from a quorum of machines.
+              if (ackCopCount == pendingConfig.getPeers().size() / 2 + 1) {
+                LOG.debug("ACK_COP for {} is committed from a quorum size {}",
+                          version, ackCopCount);
+                if (this.stateChangeCallback != null) {
+                  this.stateChangeCallback.commitCop();
+                }
+                if (!pendingConfig.contains(this.serverId)) {
+                  LOG.debug("Leader is not in new configuration, exiting.");
+                  throw new Exit("Exit because it's not in new configuration.");
+                }
+                ackCopCount = 0;
+                pendingConfig = null;
+              }
+            }
           } else {
             if (LOG.isWarnEnabled()) {
               LOG.warn("Unexpected messgae : {} from {}",
@@ -1264,7 +1406,10 @@ public class Participant implements Callable<Void>,
                        source);
             }
           }
-          this.quorumSet.get(source).updateHeartbeatTime();
+          PeerHandler ph = quorumSet.get(source);
+          if (ph != null) {
+            ph.updateHeartbeatTime();
+          }
           checkFollowerLiveness();
         }
       }
@@ -1272,15 +1417,11 @@ public class Participant implements Callable<Void>,
           + "quorum size {}, goes back to electing phase.",
           getQuorumSize());
     } finally {
-      try {
-        ackProcessor.shutdown();
-        preProcessor.shutdown();
-        commitProcessor.shutdown();
-        syncProcessor.shutdown();
-        this.lastDeliveredZxid = commitProcessor.getLastDeliveredZxid();
-      } catch (ExecutionException e) {
-        LOG.error("Caught exectuion exception.", e);
-      }
+      ackProcessor.shutdown();
+      preProcessor.shutdown();
+      commitProcessor.shutdown();
+      syncProcessor.shutdown();
+      this.lastDeliveredZxid = commitProcessor.getLastDeliveredZxid();
     }
   }
 
@@ -1304,9 +1445,9 @@ public class Participant implements Callable<Void>,
     preProcessor.processRequest(new MessageTuple(null, add));
   }
 
-  void onLeaderJoin(String source,
-                    PreProcessor preProcessor,
-                    int currentEpoch) throws IOException {
+  ClusterConfiguration onLeaderJoin(String source,
+                                    PreProcessor preProcessor,
+                                    int currentEpoch) throws IOException {
     PeerHandler ph = new PeerHandler(source,
                                      this.transport,
                                      this.config.getTimeout() / 3);
@@ -1334,6 +1475,7 @@ public class Participant implements Callable<Void>,
     preProcessor.processRequest(new MessageTuple(null, add));
     // Broadcast COP message to all peers.
     preProcessor.processRequest(new MessageTuple(null, cop));
+    return clusterConfig;
   }
 
   void onLeaderAck(String source,
@@ -1446,6 +1588,39 @@ public class Participant implements Callable<Void>,
     ackProcessor.processRequest(req);
   }
 
+  ClusterConfiguration onLeaderLeave(String source,
+                                     Message msg,
+                                     Map<String, PeerHandler> pendingPeers,
+                                     PreProcessor preProcessor,
+                                     AckProcessor ackProcessor)
+      throws IOException {
+    int currentEpoch = getAckEpochFromFile();
+    String server = msg.getLeave().getServerId();
+    // Remove if it's in pendingPeers.
+    pendingPeers.remove(server);
+    // Remove from quorumSet.
+    this.quorumSet.remove(server);
+    ClusterConfiguration clusterConfig = getLastSeenConfig();
+    Zxid version = clusterConfig.getVersion();
+    if (version.getEpoch() != currentEpoch) {
+      clusterConfig.setVersion(new Zxid(currentEpoch, 0));
+    } else {
+      clusterConfig.setVersion(new Zxid(currentEpoch, version.getXid() + 1));
+    }
+    // Remove it from current configuration.
+    clusterConfig.removePeer(source);
+    Message cop = MessageBuilder.buildCop(clusterConfig);
+    Message remove = MessageBuilder.buildRemoveFollower(server);
+    MessageTuple req = new MessageTuple(null, remove);
+    // Broadcasts new configuration to all the peers.
+    preProcessor.processRequest(new MessageTuple(null, cop));
+    // Remove this server from PreProcessor.
+    preProcessor.processRequest(req);
+    // Remove this server from AckProcessor.
+    ackProcessor.processRequest(req);
+    return clusterConfig;
+  }
+
   void checkFollowerLiveness() {
     long currentTime = System.nanoTime();
     long timeoutNs = this.config.getTimeout() * (long)1000000;
@@ -1476,26 +1651,12 @@ public class Participant implements Callable<Void>,
   void follow() throws Exception {
     try {
       /* -- Discovering phase -- */
-      MDC.put("phase", "discovering");
-      LOG.debug("It's in discovering phase.");
-      if (stateChangeCallback != null) {
-        stateChangeCallback.followerDiscovering(this.electedLeader);
-      }
-      if (failCallback != null) {
-        failCallback.followerDiscovering();
-      }
+      changePhase(Phase.DISCOVERING);
       sendProposedEpoch();
       waitForNewEpoch();
 
       /* -- Synchronizing phase -- */
-      MDC.put("phase", "synchronizing");
-      LOG.debug("Now it's in synchronizating phase.");
-      if (stateChangeCallback != null) {
-        stateChangeCallback.followerSynchronizing(getProposedEpochFromFile());
-      }
-      if (failCallback != null) {
-        failCallback.followerSynchronizing();
-      }
+      changePhase(Phase.SYNCHRONIZING);
       waitForSync(this.electedLeader);
       waitForNewLeaderMessage();
       waitForCommitMessage();
@@ -1503,17 +1664,7 @@ public class Participant implements Callable<Void>,
       deliverUndeliveredTxns();
 
       /* -- Broadcasting phase -- */
-      this.isBroadcasting = true;
-      MDC.put("phase", "broadcasting");
-      LOG.debug("Now it's in broadcasting phase.");
-      if (stateChangeCallback != null) {
-        stateChangeCallback.followerBroadcasting(getAckEpochFromFile(),
-                                                 getAllTxns(),
-                                                 getLastSeenConfig());
-      }
-      if (failCallback != null) {
-        failCallback.followerBroadcasting();
-      }
+      changePhase(Phase.BROADCASTING);
       beginAccepting();
     } catch (InterruptedException e) {
       LOG.debug("Participant is canceled by user.");
@@ -1527,6 +1678,9 @@ public class Participant implements Callable<Void>,
       LOG.debug("Got GO_BACK message from queue, going back to electing.");
     } catch (QuorumZab.SimulatedException e) {
       LOG.debug("Got SimulatedException, go back to leader election.");
+    } catch (Exit e) {
+      LOG.debug("Exit running : {}", e.getMessage());
+      throw e;
     } catch (Exception e) {
       LOG.error("Caught exception", e);
       throw e;
@@ -1641,9 +1795,11 @@ public class Participant implements Callable<Void>,
    * @throws InterruptedException if it's interrupted.
    * @throws TimeoutException  in case of timeout.
    * @throws IOException in case of IOException.
+   * @throws ExecutionException in case of exception from executors.
    */
   void beginAccepting()
-      throws TimeoutException, InterruptedException, IOException {
+      throws TimeoutException, InterruptedException, IOException,
+      ExecutionException {
     SyncProposalProcessor syncProcessor =
         new SyncProposalProcessor(this.log, this.transport,
                                   SYNC_MAX_BATCH_SIZE);
@@ -1702,8 +1858,6 @@ public class Participant implements Callable<Void>,
           if (LOG.isDebugEnabled()) {
             LOG.debug("Got COMMIT {}.", TextFormat.shortDebugString(msg));
           }
-          Transaction txn = MessageBuilder.fromProposal(msg.getProposal());
-          Zxid zxid = txn.getZxid();
           commitProcessor.processRequest(tuple);
         } else if (msg.getType() == MessageType.HEARTBEAT) {
           LOG.trace("Got HEARTBEAT from {}.", source);
@@ -1712,10 +1866,17 @@ public class Participant implements Callable<Void>,
           sendMessage(source, heartbeatReply);
         } else if (msg.getType() == MessageType.COP) {
           if (LOG.isDebugEnabled()) {
-            LOG.debug("Got message COP {}", TextFormat.shortDebugString(msg));
+            LOG.debug("Got COP {}", TextFormat.shortDebugString(msg));
           }
-          setLastSeenConfig(ClusterConfiguration.fromProto(msg.getConfig(),
-                                                           this.serverId));
+          ClusterConfiguration cnf =
+            ClusterConfiguration.fromProto(msg.getConfig(), this.serverId);
+          setLastSeenConfig(cnf);
+          Message ackCop = MessageBuilder.buildAckCop(cnf.getVersion());
+          sendMessage(this.electedLeader, ackCop);
+          if (!getLastSeenConfig().contains(this.serverId)) {
+            LOG.debug("The server is not in the new configuration, exiting.");
+            throw new Exit("Due to the server is not in new configuration");
+          }
         } else {
           if (LOG.isWarnEnabled()) {
             LOG.warn("Unexpected messgae : {} from {}",
@@ -1725,26 +1886,19 @@ public class Participant implements Callable<Void>,
         }
       }
     } finally {
-      try {
-        commitProcessor.shutdown();
-        syncProcessor.shutdown();
-        this.lastDeliveredZxid = commitProcessor.getLastDeliveredZxid();
-      } catch (ExecutionException e) {
-        LOG.error("Follower {} caught execution exception.", e);
-      }
+      commitProcessor.shutdown();
+      syncProcessor.shutdown();
+      this.lastDeliveredZxid = commitProcessor.getLastDeliveredZxid();
     }
   }
 
   void join(String peer) throws Exception {
     LOG.debug("Trying to join server {}.", this.config.getJoinPeer());
-    MDC.put("phase", "joining");
     if (peer.equals(this.serverId)) {
       // If the server joins itself, means the cluster starts from itself, goes
       // to broacasting phase directly.
       try {
-        // Initialize data directory.
-        MDC.put("state", "leading");
-        this.currentState = State.LEADING;
+        changeState(State.LEADING);
         List<String> servers = new ArrayList<String>();
         servers.add(this.serverId);
         ClusterConfiguration cnf = new ClusterConfiguration(Zxid.ZXID_NOT_EXIST,
@@ -1755,13 +1909,7 @@ public class Participant implements Callable<Void>,
         setProposedEpoch(0);
 
         /* -- Broadcasting phase -- */
-        this.isBroadcasting = true;
-        MDC.put("phase", "broadcasting");
-        if (stateChangeCallback != null) {
-          stateChangeCallback.leaderBroadcasting(getAckEpochFromFile(),
-                                                 getAllTxns(),
-                                                 getLastSeenConfig());
-        }
+        changePhase(Phase.BROADCASTING);
         beginBroadcasting();
       } catch (InterruptedException e) {
         LOG.debug("Participant is canceled by user.");
@@ -1772,6 +1920,9 @@ public class Participant implements Callable<Void>,
                   this.config.getTimeout());
       } catch (BackToElectionException e) {
         LOG.debug("Got GO_BACK message from queue, going back to electing.");
+      } catch (Exit e) {
+        LOG.debug("Exit running : {}", e.getMessage());
+        throw e;
       } catch (Exception e) {
         LOG.error("Caught exception", e);
         throw e;
@@ -1783,9 +1934,8 @@ public class Participant implements Callable<Void>,
       }
     } else {
       try {
-        MDC.put("state", "following");
+        changeState(State.FOLLOWING);
         LOG.debug("Query leader from {}", peer);
-        this.currentState = State.FOLLOWING;
         Message query = MessageBuilder.buildQueryLeader();
         sendMessage(peer, query);
         MessageTuple tuple = getExpectedMessage(MessageType.QUERY_LEADER_REPLY,
@@ -1794,6 +1944,9 @@ public class Participant implements Callable<Void>,
         LOG.debug("Got current leader {}", this.electedLeader);
         Message join = MessageBuilder.buildJoin();
         sendMessage(this.electedLeader, join);
+
+        /* -- Synchronizing phase --*/
+        changePhase(Phase.SYNCHRONIZING);
         waitForSync(this.electedLeader);
         waitForNewLeaderMessage();
         waitForCommitMessage();
@@ -1802,14 +1955,7 @@ public class Participant implements Callable<Void>,
         deliverUndeliveredTxns();
 
         /* -- Broadcasting phase -- */
-        this.isBroadcasting = true;
-        MDC.put("phase", "broadcasting");
-        LOG.debug("Now it's in broadcasting phase.");
-        if (stateChangeCallback != null) {
-          stateChangeCallback.followerBroadcasting(getAckEpochFromFile(),
-                                                   getAllTxns(),
-                                                   getLastSeenConfig());
-        }
+        changePhase(Phase.BROADCASTING);
         beginAccepting();
       } catch (InterruptedException e) {
         LOG.debug("Participant is canceled by user.");
@@ -1827,6 +1973,9 @@ public class Participant implements Callable<Void>,
         if (getLastSeenConfig() == null) {
           throw new JoinFailure("Fails to join cluster.");
         }
+      } catch (Exit e) {
+        LOG.debug("Exit running : {}", e.getMessage());
+        throw e;
       } catch (Exception e) {
         LOG.error("Caught exception", e);
         throw e;

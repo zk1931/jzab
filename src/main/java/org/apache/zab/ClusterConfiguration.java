@@ -66,6 +66,10 @@ class ClusterConfiguration {
     peers.add(peer);
   }
 
+  public void removePeer(String peer) {
+    this.peers.remove(peer);
+  }
+
   public Properties toProperties() {
     Properties prop = new Properties();
     StringBuilder strBuilder = new StringBuilder();
