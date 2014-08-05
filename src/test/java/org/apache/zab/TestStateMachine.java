@@ -78,11 +78,18 @@ class TestStateMachine implements StateMachine {
   }
 
   @Override
-  public void stateChanged(Zab.State state) {
+  public void recovering() {
   }
 
   @Override
-  public void membersChange(Set<String> members) {
-    LOG.debug("members change.");
+  public void leading(Set<String> activeFollowers) {
+  }
+
+  @Override
+  public void following(String leader) {
+  }
+
+  @Override
+  public void clusterChange(Set<String> servers) {
   }
 }

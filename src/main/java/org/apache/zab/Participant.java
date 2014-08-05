@@ -25,6 +25,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -313,11 +314,12 @@ public class Participant implements Callable<Void>,
     try {
       if (this.config.getJoinPeer() != null) {
         MDC.put("state", "joining");
+        this.stateMachine.recovering();
         join(this.config.getJoinPeer());
       }
       while (true) {
         this.isBroadcasting = false;
-        this.stateMachine.stateChanged(State.LOOKING);
+        this.stateMachine.recovering();
         this.currentState = State.LOOKING;
         MDC.put("state", "looking");
         MDC.put("phase", "electing");
@@ -436,6 +438,7 @@ public class Participant implements Callable<Void>,
    */
   void setLastSeenConfig(ClusterConfiguration conf) throws IOException {
     this.clusterConfiguration = conf;
+    this.stateMachine.clusterChange(new HashSet<String>(conf.getPeers()));
     FileUtils.writePropertiesToFile(conf.toProperties(), this.fLastSeenConfig);
   }
 
@@ -886,7 +889,6 @@ public class Participant implements Callable<Void>,
       for (PeerHandler ph : this.quorumSet.values()) {
         ph.startBroadcastingTask();
       }
-      this.stateMachine.stateChanged(State.LEADING);
       beginBroadcasting();
     } catch (InterruptedException e) {
       LOG.debug("Participant is canceled by user.");
@@ -1160,7 +1162,7 @@ public class Participant implements Callable<Void>,
     // The followers who join in broadcasting phase and wait for their first
     // COMMIT message.
     Map<String, PeerHandler> pendingPeers = new HashMap<String, PeerHandler>();
-    this.stateMachine.membersChange(this.quorumSet.keySet());
+    this.stateMachine.leading(this.quorumSet.keySet());
     try {
       while (this.quorumSet.size() >= getQuorumSize()) {
         MessageTuple tuple = getMessage();
@@ -1293,7 +1295,7 @@ public class Participant implements Callable<Void>,
                                      this.config.getTimeout() / 3);
     ph.setLastZxid(lastPeerZxid);
     this.quorumSet.put(source, ph);
-    this.stateMachine.membersChange(this.quorumSet.keySet());
+    this.stateMachine.leading(this.quorumSet.keySet());
     Message flush = MessageBuilder.buildFlushPreProcessor(source);
     Message add = MessageBuilder.buildAddFollower(source);
     // Flush the pipeline before start synchronization.
@@ -1310,7 +1312,7 @@ public class Participant implements Callable<Void>,
                                      this.config.getTimeout() / 3);
     ph.setLastZxid(Zxid.ZXID_NOT_EXIST);
     this.quorumSet.put(source, ph);
-    this.stateMachine.membersChange(this.quorumSet.keySet());
+    this.stateMachine.leading(this.quorumSet.keySet());
     Message flush = MessageBuilder.buildFlushPreProcessor(source);
     Message add = MessageBuilder.buildAddFollower(source);
     ClusterConfiguration clusterConfig = getLastSeenConfig();
@@ -1435,7 +1437,7 @@ public class Participant implements Callable<Void>,
     // Stop PeerHandler thread and clear tranport.
     ph.shutdown();
     this.quorumSet.remove(followerId);
-    this.stateMachine.membersChange(this.quorumSet.keySet());
+    this.stateMachine.leading(this.quorumSet.keySet());
     Message remove = MessageBuilder.buildRemoveFollower(followerId);
     MessageTuple req = new MessageTuple(null, remove);
     // Ask PreProcessor to remove this follower.
@@ -1512,7 +1514,6 @@ public class Participant implements Callable<Void>,
       if (failCallback != null) {
         failCallback.followerBroadcasting();
       }
-      this.stateMachine.stateChanged(State.FOLLOWING);
       beginAccepting();
     } catch (InterruptedException e) {
       LOG.debug("Participant is canceled by user.");
@@ -1651,6 +1652,7 @@ public class Participant implements Callable<Void>,
     // The last time of HEARTBEAT message comes from leader.
     long lastHeartbeatTime = System.nanoTime();
     int ackEpoch = getAckEpochFromFile();
+    this.stateMachine.following(this.electedLeader);
     try {
       while (true) {
         MessageTuple tuple = getMessage();
@@ -1760,7 +1762,6 @@ public class Participant implements Callable<Void>,
                                                  getAllTxns(),
                                                  getLastSeenConfig());
         }
-        this.stateMachine.stateChanged(State.LEADING);
         beginBroadcasting();
       } catch (InterruptedException e) {
         LOG.debug("Participant is canceled by user.");
@@ -1809,7 +1810,6 @@ public class Participant implements Callable<Void>,
                                                    getAllTxns(),
                                                    getLastSeenConfig());
         }
-        this.stateMachine.stateChanged(State.FOLLOWING);
         beginAccepting();
       } catch (InterruptedException e) {
         LOG.debug("Participant is canceled by user.");
