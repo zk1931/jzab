@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 import com.google.protobuf.ByteString;
 import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Ack;
+import org.apache.zab.proto.ZabMessage.AckCop;
 import org.apache.zab.proto.ZabMessage.AckEpoch;
 import org.apache.zab.proto.ZabMessage.AddFollower;
 import org.apache.zab.proto.ZabMessage.Commit;
@@ -31,6 +32,7 @@ import org.apache.zab.proto.ZabMessage.FlushPreProcessor;
 import org.apache.zab.proto.ZabMessage.FlushSyncProcessor;
 import org.apache.zab.proto.ZabMessage.Handshake;
 import org.apache.zab.proto.ZabMessage.InvalidMessage;
+import org.apache.zab.proto.ZabMessage.Leave;
 import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.NewEpoch;
 import org.apache.zab.proto.ZabMessage.NewLeader;
@@ -519,6 +521,21 @@ public final class MessageBuilder {
                                        .build();
     return Message.newBuilder().setType(MessageType.SYNC_END)
                                .setConfig(zConfig)
+                               .build();
+  }
+
+  public static Message buildLeave(String serverId) {
+    Leave leave = Leave.newBuilder().setServerId(serverId).build();
+    return Message.newBuilder().setType(MessageType.LEAVE)
+                               .setLeave(leave)
+                               .build();
+  }
+
+  public static Message buildAckCop(Zxid version) {
+    AckCop ackCop = AckCop.newBuilder().setVersion(toProtoZxid(version))
+                                       .build();
+    return Message.newBuilder().setType(MessageType.ACK_COP)
+                               .setAckCop(ackCop)
                                .build();
   }
 }
