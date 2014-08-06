@@ -524,6 +524,12 @@ public final class MessageBuilder {
                                .build();
   }
 
+  /**
+   * Creats a LEAVE message.
+   *
+   * @param serverId the id of server who is leaving the current configuration.
+   * @return a protobuf message.
+   */
   public static Message buildLeave(String serverId) {
     Leave leave = Leave.newBuilder().setServerId(serverId).build();
     return Message.newBuilder().setType(MessageType.LEAVE)
@@ -531,6 +537,12 @@ public final class MessageBuilder {
                                .build();
   }
 
+  /**
+   * Creats a ACK_COP message.
+   *
+   * @param version the version of reconfiguration.
+   * @return a protobuf message.
+   */
   public static Message buildAckCop(Zxid version) {
     AckCop ackCop = AckCop.newBuilder().setVersion(toProtoZxid(version))
                                        .build();

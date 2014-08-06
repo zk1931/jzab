@@ -62,6 +62,7 @@ public class SyncProposalProcessor implements RequestProcessor,
    *
    * @param log the log which the transaction will be synchronized to.
    * @param transport used to send acknowledgment.
+   * @param maxBatchSize the maximum batch size.
    */
   public SyncProposalProcessor(Log log, Transport transport, int maxBatchSize) {
     this.log = log;

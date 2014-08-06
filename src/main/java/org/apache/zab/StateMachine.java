@@ -89,6 +89,8 @@ public interface StateMachine {
    * Upcall to notify the application who is running on the leader role of ZAB
    * instance. This callback will be called once ZAB enters broadcasting phase
    * or the membership of active followers is changed.
+   *
+   * @param activeFollowers current alive followers.
    */
   void leading(Set<String> activeFollowers);
 
@@ -96,6 +98,8 @@ public interface StateMachine {
    * Upcall to notify the application who is running on follower role of ZAB
    * instance. This callback will be called once the ZAB enters the broadcasting
    * phase.
+   *
+   * @param leader the elected leader for this follower.
    */
   void following(String leader);
 }

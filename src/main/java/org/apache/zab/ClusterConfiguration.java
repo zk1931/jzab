@@ -107,4 +107,11 @@ class ClusterConfiguration {
   public String toString() {
     return toProperties().toString();
   }
+
+  /**
+   * Gets the minimal quorum size.
+   */
+  public int getQuorumSize() {
+    return this.getPeers().size() / 2 + 1;
+  }
 }

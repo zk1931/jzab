@@ -18,52 +18,35 @@
 
 package org.apache.zab;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.Assert;
 import org.junit.Test;
 
 /**
- * Fakes the server state for test purpose only.
+ * Utility class used to make PersistentState object for testing.
  */
-class DummyServerState implements ServerState {
-  List<String> serverList;
-  int lastProposedEpoch = -1;
+final class DummyPersistentState {
 
-  public DummyServerState(String servers) {
-    this.serverList = Arrays.asList(servers.split(";"));
+  private DummyPersistentState() {}
+
+  static PersistentState make(File directory, String peers, int epoch)
+      throws IOException {
+    PersistentState persistence = new PersistentState(directory);
+    List<String> peerList = Arrays.asList(peers.split(";"));
+    ClusterConfiguration cnf = new ClusterConfiguration(Zxid.ZXID_NOT_EXIST,
+                                                        peerList,
+                                                        "host");
+    persistence.setLastSeenConfig(cnf);
+    persistence.setProposedEpoch(epoch);
+    return persistence;
   }
 
-  @Override
-  public int getEnsembleSize() {
-    return this.serverList.size();
-  }
-
-  @Override
-  public List<String> getServerList() {
-    return this.serverList;
-  }
-
-  @Override
-  public int getQuorumSize() {
-    return getEnsembleSize() / 2 + 1;
-  }
-
-  @Override
-  public int getProposedEpoch() {
-    return this.lastProposedEpoch;
-  }
-}
-
-/**
- * Dummy election callback, used for test purpose only.
- */
-class DummyElectionCallback implements Election.ElectionCallback {
-  String electedLeader = null;
-
-  @Override
-  public void leaderElected(String serverId) {
-    this.electedLeader = serverId;
+  static PersistentState make(File directory, String peers)
+      throws IOException {
+    return make(directory, peers, -1);
   }
 }
 
@@ -75,11 +58,14 @@ public class RoundRobinElectionTest extends TestBase {
    * Tests the dummy server state.
    */
   @Test
-  public void testServerState() throws Exception {
-    DummyServerState st = new DummyServerState("server1;server2");
-    Assert.assertEquals(st.serverList.get(0), "server1");
-    Assert.assertEquals(st.serverList.get(1), "server2");
-    Assert.assertEquals(st.getEnsembleSize(), 2);
+  public void testDummyPersistentState() throws Exception {
+    PersistentState ps
+      = DummyPersistentState.make(getDirectory(), "server1;server2", 1);
+    List<String> peers = ps.getLastSeenConfig().getPeers();
+    Assert.assertEquals("server1", peers.get(0));
+    Assert.assertEquals("server2", peers.get(1));
+    Assert.assertEquals(2, peers.size());
+    Assert.assertEquals(ps.getProposedEpoch(), 1);
   }
 
   /**
@@ -87,11 +73,11 @@ public class RoundRobinElectionTest extends TestBase {
    */
   @Test
   public void testSingleRoundElection() throws Exception {
-    DummyServerState st = new DummyServerState("server1;server2");
-    DummyElectionCallback cb = new DummyElectionCallback();
+    PersistentState ps
+      = DummyPersistentState.make(getDirectory(), "server1;server2");
     Election election = new RoundRobinElection();
-    election.initialize(st, cb);
-    Assert.assertEquals(cb.electedLeader, "server1");
+    String electedLeader = election.electLeader(ps);
+    Assert.assertEquals(electedLeader, "server1");
   }
 
   /**
@@ -99,18 +85,18 @@ public class RoundRobinElectionTest extends TestBase {
    */
   @Test
   public void testMultiRoundsElection() throws Exception {
-    DummyServerState st = new DummyServerState("server1;server2;server3");
-    DummyElectionCallback cb = new DummyElectionCallback();
+    PersistentState ps
+      = DummyPersistentState.make(getDirectory(), "server1;server2;server3");
     Election election = new RoundRobinElection();
-    election.initialize(st, cb);
+    String electedLeader = election.electLeader(ps);
     // First round should select server 1.
-    Assert.assertEquals(cb.electedLeader, "server1");
-    election.initialize(st, cb);
+    Assert.assertEquals(electedLeader, "server1");
+    electedLeader = election.electLeader(ps);
     // Second round should select server 2.
-    Assert.assertEquals(cb.electedLeader, "server2");
-    election.initialize(st, cb);
+    Assert.assertEquals(electedLeader, "server2");
+    electedLeader = election.electLeader(ps);
     // Third round should select server 3.
-    Assert.assertEquals(cb.electedLeader, "server3");
+    Assert.assertEquals(electedLeader, "server3");
   }
 
   /**
@@ -118,20 +104,20 @@ public class RoundRobinElectionTest extends TestBase {
    */
   @Test
   public void testResetRound() throws Exception {
-    DummyServerState st = new DummyServerState("server1;server2;server3");
-    DummyElectionCallback cb = new DummyElectionCallback();
+    PersistentState ps
+      = DummyPersistentState.make(getDirectory(), "server1;server2");
     Election election = new RoundRobinElection();
     // First round election, the round number will be set to 1.
-    election.initialize(st, cb);
-    Assert.assertEquals(cb.electedLeader, "server1");
+    String electedLeader = election.electLeader(ps);
+    Assert.assertEquals(electedLeader, "server1");
     // Increase epoch number by 1.
-    st.lastProposedEpoch = st.lastProposedEpoch + 1;
-    election.initialize(st, cb);
+    ps = DummyPersistentState.make(getDirectory(), "server1;server2", 0);
+    electedLeader = election.electLeader(ps);
     // Now since the round number is reset to 0, it should select server1.
-    Assert.assertEquals(cb.electedLeader, "server1");
+    Assert.assertEquals(electedLeader, "server1");
     // Third election.
-    election.initialize(st, cb);
+    electedLeader = election.electLeader(ps);
     // Since the epoch remains same, it should select server2.
-    Assert.assertEquals(cb.electedLeader, "server2");
+    Assert.assertEquals(electedLeader, "server2");
   }
 }

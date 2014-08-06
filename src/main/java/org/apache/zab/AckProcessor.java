@@ -40,7 +40,7 @@ import org.slf4j.LoggerFactory;
  * any committed transactions.
  */
 public class AckProcessor implements RequestProcessor,
-                                        Callable<Void> {
+                                     Callable<Void> {
 
   private final BlockingQueue<MessageTuple> ackQueue =
       new LinkedBlockingQueue<MessageTuple>();
@@ -49,7 +49,7 @@ public class AckProcessor implements RequestProcessor,
 
   private final Map<String, PeerHandler> quorumSet;
 
-  private final ServerState serverState;
+  private final PersistentState persistence;
 
   private static final Logger LOG =
       LoggerFactory.getLogger(AckProcessor.class);
@@ -63,11 +63,11 @@ public class AckProcessor implements RequestProcessor,
   private Zxid lastCommittedZxid;
 
   public AckProcessor(Map<String, PeerHandler> quorumSet,
-                      ServerState serverState,
+                      PersistentState persistence,
                       Zxid lastCommittedZxid) {
     this.quorumSetOriginal = quorumSet;
     this.quorumSet = new HashMap<String, PeerHandler>(quorumSet);
-    this.serverState = serverState;
+    this.persistence = persistence;
     this.lastCommittedZxid = lastCommittedZxid;
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
@@ -106,7 +106,7 @@ public class AckProcessor implements RequestProcessor,
               zxids.add(ph.getLastAckedZxid());
             }
           }
-          int quorumSize = this.serverState.getQuorumSize();
+          int quorumSize = persistence.getLastSeenConfig().getQuorumSize();
           if (zxids.size() < quorumSize) {
             continue;
           }

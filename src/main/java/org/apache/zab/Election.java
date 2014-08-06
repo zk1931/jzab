@@ -25,26 +25,14 @@ public interface Election {
   /**
    * Starts one round leader election.
    *
-   * @param state the state provides needed information for leader election
-   * @param cb the callback which will be called to notify the elected leader
+   * @param persistence persistent variables which affect the election result.
+   * @return the elected leader.
+   * @throws Exception in case of exception.
    */
-  void initialize(ServerState state, ElectionCallback cb) throws Exception;
+  String electLeader(PersistentState persistence) throws Exception;
 
   /**
    * Processes messages of election. Now the message format is undefined.
    */
   void processMessage();
-
-  /**
-   * Interface used by election. Once a leader is elected, the callback will
-   * be invoked.
-   */
-  public interface ElectionCallback {
-    /**
-     * Callback that will be called once the leader is elected.
-     *
-     * @param serverId the id of newly elected leader
-     */
-    void leaderElected(String serverId);
-  }
 }
