@@ -32,15 +32,15 @@ public class RoundRobinElection implements Election {
       LoggerFactory.getLogger(RoundRobinElection.class);
 
   @Override
-  public void initialize(ServerState state,
-                         ElectionCallback cb) throws Exception {
-    if (state.getProposedEpoch() != this.lastEpoch) {
+  public String electLeader(PersistentState persistence) throws Exception {
+    ClusterConfiguration cnf = persistence.getLastSeenConfig();
+    if (persistence.getProposedEpoch() != this.lastEpoch) {
       LOG.debug("Last proposed epoch is changed from {} to {}, resets round.",
                 this.lastEpoch,
-                state.getProposedEpoch());
+                persistence.getProposedEpoch());
       // Reset round to zero once change to a new epoch.
       this.round = 0;
-      this.lastEpoch = state.getProposedEpoch();
+      this.lastEpoch = persistence.getProposedEpoch();
     } else {
       try {
         Thread.sleep((long)(Math.random() * 500));
@@ -50,9 +50,9 @@ public class RoundRobinElection implements Election {
         throw e;
       }
     }
-    int idx = this.round % state.getEnsembleSize();
-    cb.leaderElected(state.getServerList().get(idx));
+    int idx = this.round % cnf.getPeers().size();
     this.round++;
+    return cnf.getPeers().get(idx);
   }
 
   @Override

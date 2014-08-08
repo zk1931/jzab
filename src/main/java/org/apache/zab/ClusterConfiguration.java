@@ -66,6 +66,10 @@ class ClusterConfiguration {
     peers.add(peer);
   }
 
+  public void removePeer(String peer) {
+    this.peers.remove(peer);
+  }
+
   public Properties toProperties() {
     Properties prop = new Properties();
     StringBuilder strBuilder = new StringBuilder();
@@ -102,5 +106,12 @@ class ClusterConfiguration {
   @Override
   public String toString() {
     return toProperties().toString();
+  }
+
+  /**
+   * Gets the minimal quorum size.
+   */
+  public int getQuorumSize() {
+    return this.getPeers().size() / 2 + 1;
   }
 }

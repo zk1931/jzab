@@ -34,6 +34,8 @@ message Message {
     COP = 26;
     // The last message of synchronization. It contains cluster configuration.
     SYNC_END = 27;
+    LEAVE = 28;
+    ACK_COP = 29;
     INVALID_MESSAGE = 30;
   }
 
@@ -62,6 +64,8 @@ message Message {
   optional RemoveFollower removeFollower = 20;
   optional QueryReply reply = 21;
   optional ClusterConfiguration config = 22;
+  optional Leave leave = 23;
+  optional AckCop ack_cop = 24;
   optional InvalidMessage invalid = 30;
 }
 
@@ -181,4 +185,12 @@ message ClusterConfiguration {
 
 message QueryReply {
   required string leader = 1;
+}
+
+message Leave {
+  required string serverId = 1;
+}
+
+message AckCop {
+  required Zxid version = 1;
 }

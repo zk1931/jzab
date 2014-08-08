@@ -35,8 +35,9 @@ public interface RequestProcessor {
 
   /**
    * Shutdown the processor.
-   * @throws ExecutionException
-   * @throws InterruptedException
+   *
+   * @throws ExecutionException in case of ExecutionException in Processors.
+   * @throws InterruptedException in case of interruption.
    */
   void shutdown() throws InterruptedException, ExecutionException;
 }
