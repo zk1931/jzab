@@ -533,7 +533,14 @@ public class Leader extends Participant {
     int ackCopCount = 0;
     this.stateMachine.leading(this.quorumSet.keySet());
     try {
-      while (this.quorumSet.size() >= getQuorumSize()) {
+      while (true) {
+        if (pendingConfig != null) {
+          if (this.quorumSet.size() < pendingConfig.getQuorumSize()) {
+            break;
+          }
+        } else if (this.quorumSet.size() < getQuorumSize()){
+          break;
+        }
         MessageTuple tuple = getMessage();
         Message msg = tuple.getMessage();
         String source = tuple.getServerId();
@@ -626,11 +633,7 @@ public class Leader extends Participant {
             if (LOG.isDebugEnabled()) {
               LOG.debug("Got message COP {}", TextFormat.shortDebugString(msg));
             }
-            ClusterConfiguration cnf =
-              ClusterConfiguration.fromProto(msg.getConfig(), this.serverId);
-            persistence.setLastSeenConfig(cnf);
-            Message ackCop = MessageBuilder.buildAckCop(cnf.getVersion());
-            sendMessage(this.serverId, ackCop);
+            onCop(tuple);
           } else if (msg.getType() == MessageType.LEAVE) {
             if (LOG.isDebugEnabled()) {
               LOG.debug("Got message LEAVE {}",
@@ -868,8 +871,6 @@ public class Leader extends Participant {
     Message msg = tuple.getMessage();
     int currentEpoch = persistence.getAckEpoch();
     String server = msg.getLeave().getServerId();
-    // Remove if it's in pendingPeers.
-    pendingPeers.remove(server);
     // Remove from quorumSet.
     this.quorumSet.remove(server);
     ClusterConfiguration clusterConfig = persistence.getLastSeenConfig();
@@ -891,6 +892,15 @@ public class Leader extends Participant {
     // Remove this server from AckProcessor.
     ackProcessor.processRequest(req);
     return clusterConfig;
+  }
+
+  void onCop(MessageTuple tuple) throws IOException {
+    Message msg = tuple.getMessage();
+    ClusterConfiguration cnf =
+      ClusterConfiguration.fromProto(msg.getConfig(), this.serverId);
+    persistence.setLastSeenConfig(cnf);
+    Message ackCop = MessageBuilder.buildAckCop(cnf.getVersion());
+    sendMessage(this.serverId, ackCop);
   }
 
   void checkFollowerLiveness() {
