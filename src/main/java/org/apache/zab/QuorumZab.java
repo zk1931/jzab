@@ -18,22 +18,15 @@
 
 package org.apache.zab;
 
-import com.google.protobuf.InvalidProtocolBufferException;
-import com.google.protobuf.TextFormat;
 import java.io.IOException;
 import java.io.File;
 import java.nio.ByteBuffer;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.List;
 import java.util.Properties;
-import org.apache.zab.proto.ZabMessage.Message;
-import org.apache.zab.transport.NettyTransport;
-import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -44,8 +37,7 @@ import org.slf4j.MDC;
  *   ELECTING, FOLLOWING, LEADING.
  * Among all the nodes, there's only one server can be established leader.
  */
-public class QuorumZab implements Callable<Void>,
-                                  Transport.Receiver {
+public class QuorumZab implements Callable<Void> {
 
   private static final Logger LOG = LoggerFactory.getLogger(QuorumZab.class);
 
@@ -63,27 +55,20 @@ public class QuorumZab implements Callable<Void>,
   protected final FailureCaseCallback failureCallback;
 
   /**
-   * Message queue. The receiving callback simply parses the message and puts
-   * it in queue, it's up to Leader/Follower/Election to take out
-   * and process the message.
+   * The State for Zab. It will be passed accross different instances of
+   * Leader/Follower class.
    */
-  protected final BlockingQueue<MessageTuple> messageQueue =
-    new LinkedBlockingQueue<MessageTuple>();
+  private final ParticipantState participantState;
 
   /**
-   * The server id of the QuorumZab.
-   */
-  protected String serverId = null;
-
-  /**
-   * Used for communication between nodes.
-   */
-  private final Transport transport;
-
-  /**
-   * Persistent variables used by Zab.
+   * Persistent state of Zab.
    */
   private final PersistentState persistence;
+
+  /**
+   * Server id for QuorumZab.
+   */
+  private final String serverId;
 
   /**
    * The current role of QuorumZab.
@@ -121,7 +106,7 @@ public class QuorumZab implements Callable<Void>,
     this.stateChangeCallback = stateCallback;
     this.failureCallback = failureCallback;
     this.persistence = new PersistentState(this.config.getLogDir(),
-                                       initialState.getLog());
+                                           initialState.getLog());
     if (this.config.getJoinPeer() != null) {
       // First time start up. Joining some one.
       if (!this.persistence.isEmpty()) {
@@ -152,7 +137,7 @@ public class QuorumZab implements Callable<Void>,
         this.serverId = cnf.getServerId();
       }
     }
-    this.transport = new NettyTransport(this.serverId, this);
+    this.participantState = new ParticipantState(persistence, serverId);
     MDC.put("serverId", this.serverId);
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
@@ -209,16 +194,14 @@ public class QuorumZab implements Callable<Void>,
         String leader = electionAlg.electLeader(this.persistence);
         LOG.debug("Select {} as leader.", leader);
         if (leader.equals(this.serverId)) {
-          this.participant = new Leader(transport, persistence,
-                                        stateMachine, serverId, config,
-                                        lastDeliveredZxid, messageQueue);
+          this.participant = new Leader(this.participantState,
+                                        this.stateMachine, this.config);
           this.participant.setStateChangeCallback(this.stateChangeCallback);
           this.participant.setFailureCaseCallback(this.failureCallback);
           ((Leader)this.participant).lead();
         } else {
-          this.participant = new Follower(transport, persistence,
-                                          stateMachine, serverId, config,
-                                          lastDeliveredZxid, messageQueue);
+          this.participant = new Follower(this.participantState,
+                                          this.stateMachine, this.config);
           this.participant.setStateChangeCallback(this.stateChangeCallback);
           this.participant.setFailureCaseCallback(this.failureCallback);
           ((Follower)this.participant).follow(leader);
@@ -226,7 +209,7 @@ public class QuorumZab implements Callable<Void>,
       }
     } catch (InterruptedException e) {
       LOG.debug("Caught Interrupted exception, it has been shut down?");
-      this.transport.shutdown();
+      this.participantState.getTransport().shutdown();
     } catch (Participant.LeftCluster e) {
       LOG.debug("Exit Participant");
     } catch (Exception e) {
@@ -242,50 +225,16 @@ public class QuorumZab implements Callable<Void>,
   void join(String peer) throws Exception {
     if (peer.equals(this.serverId)) {
       LOG.debug("Trying to join itself. Becomes leader directly.");
-      this.participant = new Leader(transport, persistence,
-                                    stateMachine, serverId, config,
-                                    lastDeliveredZxid, messageQueue);
+      this.participant = new Leader(this.participantState,
+                                    this.stateMachine, this.config);
     } else {
       LOG.debug("Trying to join {}.", peer);
-      this.participant = new Follower(transport, persistence,
-                                      stateMachine, serverId, config,
-                                      lastDeliveredZxid, messageQueue);
+      this.participant = new Follower(this.participantState,
+                                      this.stateMachine, this.config);
     }
     this.participant.setStateChangeCallback(this.stateChangeCallback);
     this.participant.setFailureCaseCallback(this.failureCallback);
     this.participant.join(peer);
-  }
-
-  @Override
-  public void onReceived(String source, ByteBuffer message) {
-    byte[] buffer = null;
-    try {
-      // Parses it to protocol message.
-      buffer = new byte[message.remaining()];
-      message.get(buffer);
-      Message msg = Message.parseFrom(buffer);
-      if (LOG.isTraceEnabled()) {
-        LOG.trace("Received message from {}: {} ",
-                  source,
-                  TextFormat.shortDebugString(msg));
-      }
-      // Puts the message in message queue.
-      this.messageQueue.add(new MessageTuple(source, msg));
-    } catch (InvalidProtocolBufferException e) {
-      LOG.error("Exception when parse protocol buffer.", e);
-      // Puts an invalid message to queue, it's up to handler to decide what
-      // to do.
-      Message msg = MessageBuilder.buildInvalidMessage(buffer);
-      this.messageQueue.add(new MessageTuple(source, msg));
-    }
-  }
-
-  @Override
-  public void onDisconnected(String server) {
-    LOG.debug("ONDISCONNECTED from {}", server);
-    Message disconnected = MessageBuilder.buildDisconnected(server);
-    this.messageQueue.add(new MessageTuple(this.serverId,
-                                           disconnected));
   }
 
   /**
