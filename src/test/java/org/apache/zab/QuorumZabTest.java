@@ -22,13 +22,10 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
-//import java.util.concurrent.BlockingQueue;
-//import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import org.apache.zab.QuorumZab.FailureCaseCallback;
 import org.apache.zab.QuorumZab.SimulatedException;
-//import org.apache.zab.transport.DummyTransport.Message;
 import org.junit.Assert;
 import org.junit.Test;
 import org.slf4j.Logger;
@@ -49,60 +46,55 @@ class QuorumTestCallback implements QuorumZab.StateChangeCallback {
   Zxid syncZxid;
   int syncAckEpoch;
   List<Transaction> initialHistory = new ArrayList<Transaction>();
-  volatile CountDownLatch conditionElecting = new CountDownLatch(1);
-  volatile CountDownLatch conditionDiscovering = new CountDownLatch(1);
-  volatile CountDownLatch conditionSynchronizing = new CountDownLatch(1);
-  volatile CountDownLatch conditionBroadcasting = new CountDownLatch(1);
-  volatile CountDownLatch conditionExit = new CountDownLatch(1);
-  volatile CountDownLatch conditionCopCommit = new CountDownLatch(1);
+
+  Semaphore semElection = new Semaphore(0);
+  Semaphore semDiscovering = new Semaphore(0);
+  Semaphore semSynchronizing = new Semaphore(0);
+  Semaphore semBroadcasting = new Semaphore(0);
+  Semaphore semCopCommit = new Semaphore(0);
+  Semaphore semExit = new Semaphore(0);
 
   ClusterConfiguration clusterConfig;
 
   void waitElection() throws InterruptedException {
-    conditionElecting.await();
-    conditionElecting = new CountDownLatch(1);
+    this.semElection.acquire();
   }
 
   void waitDiscovering() throws InterruptedException {
-    conditionDiscovering.await();
-    conditionDiscovering = new CountDownLatch(1);
+    this.semDiscovering.acquire();
   }
 
   void waitSynchronizing() throws InterruptedException {
-    conditionSynchronizing.await();
-    conditionSynchronizing = new CountDownLatch(1);
+    this.semSynchronizing.acquire();
   }
 
   void waitBroadcasting() throws InterruptedException {
-    conditionBroadcasting.await();
-    conditionBroadcasting = new CountDownLatch(1);
+    this.semBroadcasting.acquire();
   }
 
   void waitExit() throws InterruptedException {
-    conditionExit.await();
-    conditionExit = new CountDownLatch(1);
+    this.semExit.acquire();
   }
 
   void waitCopCommit() throws InterruptedException {
-    conditionCopCommit.await();
-    conditionCopCommit = new CountDownLatch(1);
+    this.semCopCommit.acquire();
   }
 
   @Override
   public void electing() {
-    this.conditionElecting.countDown();
+    this.semElection.release();
   }
 
   @Override
   public void leaderDiscovering(String leader) {
     this.electedLeader = leader;
-    this.conditionDiscovering.countDown();
+    this.semDiscovering.release();
   }
 
   @Override
   public void followerDiscovering(String leader) {
     this.electedLeader = leader;
-    this.conditionDiscovering.countDown();
+    this.semDiscovering.release();
   }
 
   @Override
@@ -115,13 +107,13 @@ class QuorumTestCallback implements QuorumZab.StateChangeCallback {
   @Override
   public void leaderSynchronizing(int epoch) {
     this.establishedEpoch = epoch;
-    this.conditionSynchronizing.countDown();
+    this.semSynchronizing.release();
   }
 
   @Override
   public void followerSynchronizing(int epoch) {
     this.establishedEpoch = epoch;
-    this.conditionSynchronizing.countDown();
+    this.semSynchronizing.release();
   }
 
   @Override
@@ -134,7 +126,7 @@ class QuorumTestCallback implements QuorumZab.StateChangeCallback {
     this.acknowledgedEpoch = epoch;
     this.initialHistory = history;
     this.clusterConfig = config;
-    this.conditionBroadcasting.countDown();
+    this.semBroadcasting.release();
   }
 
   @Override
@@ -147,17 +139,17 @@ class QuorumTestCallback implements QuorumZab.StateChangeCallback {
     this.acknowledgedEpoch = epoch;
     this.initialHistory = history;
     this.clusterConfig = config;
-    this.conditionBroadcasting.countDown();
+    this.semBroadcasting.release();
   }
 
   @Override
   public void leftCluster() {
-    this.conditionExit.countDown();
+    this.semExit.release();
   }
 
   @Override
   public void commitCop() {
-    this.conditionCopCommit.countDown();
+    this.semCopCommit.release();
   }
 }
 
@@ -217,7 +209,7 @@ public class QuorumZabTest extends TestBase  {
 
     QuorumZab zab3 = new QuorumZab(st, null, null, state3);
 
-    cb.conditionBroadcasting.await();
+    cb.waitBroadcasting();
     // The established epoch should be 3.
     Assert.assertEquals(cb.establishedEpoch, 3);
 
@@ -257,7 +249,7 @@ public class QuorumZabTest extends TestBase  {
 
     QuorumZab zab1 = new QuorumZab(st, cb, null, state);
 
-    cb.conditionBroadcasting.await();
+    cb.waitBroadcasting();
     Assert.assertEquals(0, cb.acknowledgedEpoch);
     Assert.assertEquals(0, cb.establishedEpoch);
     Assert.assertEquals(server1, cb.electedLeader);
@@ -317,8 +309,8 @@ public class QuorumZabTest extends TestBase  {
 
     QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
 
-    cb1.conditionBroadcasting.await();
-    cb2.conditionBroadcasting.await();
+    cb1.waitBroadcasting();
+    cb2.waitBroadcasting();
 
     Assert.assertEquals(cb1.initialHistory.size(), 1);
     Assert.assertEquals(cb1.initialHistory.get(0).getZxid(), new Zxid(0, 0));
@@ -379,8 +371,8 @@ public class QuorumZabTest extends TestBase  {
 
     QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
 
-    cb1.conditionBroadcasting.await();
-    cb2.conditionBroadcasting.await();
+    cb1.waitBroadcasting();
+    cb2.waitBroadcasting();
 
     Assert.assertEquals(cb1.initialHistory.size(), 2);
     Assert.assertEquals(cb1.initialHistory.get(0).getZxid(), new Zxid(0, 0));
@@ -444,8 +436,8 @@ public class QuorumZabTest extends TestBase  {
 
     QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
 
-    cb1.conditionBroadcasting.await();
-    cb2.conditionBroadcasting.await();
+    cb1.waitBroadcasting();
+    cb2.waitBroadcasting();
 
     Assert.assertEquals(cb1.initialHistory.size(), 2);
     Assert.assertEquals(cb1.initialHistory.get(0).getZxid(), new Zxid(0, 0));
@@ -513,8 +505,8 @@ public class QuorumZabTest extends TestBase  {
 
     QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
 
-    cb1.conditionBroadcasting.await();
-    cb2.conditionBroadcasting.await();
+    cb1.waitBroadcasting();
+    cb2.waitBroadcasting();
 
     Assert.assertEquals(cb1.initialHistory.size(), 2);
     Assert.assertEquals(cb1.initialHistory.get(0).getZxid(), new Zxid(0, 0));
@@ -581,8 +573,8 @@ public class QuorumZabTest extends TestBase  {
 
     QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
 
-    cb1.conditionBroadcasting.await();
-    cb2.conditionBroadcasting.await();
+    cb1.waitBroadcasting();
+    cb2.waitBroadcasting();
 
     Assert.assertEquals(cb1.initialHistory.size(), 2);
     Assert.assertEquals(cb1.initialHistory.get(0).getZxid(), new Zxid(0, 0));
@@ -645,8 +637,8 @@ public class QuorumZabTest extends TestBase  {
 
     QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
 
-    cb1.conditionBroadcasting.await();
-    cb2.conditionBroadcasting.await();
+    cb1.waitBroadcasting();
+    cb2.waitBroadcasting();
 
     Assert.assertEquals(cb1.initialHistory.size(), 0);
     Assert.assertEquals(cb2.initialHistory.size(), 0);
@@ -696,8 +688,8 @@ public class QuorumZabTest extends TestBase  {
                                      .setAckEpoch(0);
     QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
     QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
-    cb1.conditionBroadcasting.await();
-    cb2.conditionBroadcasting.await();
+    cb1.waitBroadcasting();
+    cb2.waitBroadcasting();
     Assert.assertEquals(3, cb1.initialHistory.size());
     Assert.assertEquals(3, cb2.initialHistory.size());
 
@@ -772,9 +764,9 @@ public class QuorumZabTest extends TestBase  {
 
     QuorumZab zab3 = new QuorumZab(st3, cb3, null, state3);
 
-    cb1.conditionBroadcasting.await();
-    cb2.conditionBroadcasting.await();
-    cb3.conditionBroadcasting.await();
+    cb1.waitBroadcasting();
+    cb2.waitBroadcasting();
+    cb3.waitBroadcasting();
 
     zab1.send(ByteBuffer.wrap("HelloWorld1".getBytes()));
     zab1.send(ByteBuffer.wrap("HelloWorld2".getBytes()));
@@ -876,9 +868,9 @@ public class QuorumZabTest extends TestBase  {
 
     QuorumZab zab3 = new QuorumZab(st, cb3, null, state3);
 
-    cb1.conditionBroadcasting.await();
-    cb2.conditionBroadcasting.await();
-    cb3.conditionBroadcasting.await();
+    cb1.waitBroadcasting();
+    cb2.waitBroadcasting();
+    cb3.waitBroadcasting();
 
     Assert.assertEquals(1, cb1.initialHistory.size());
     Assert.assertEquals(1, cb2.initialHistory.size());
@@ -989,9 +981,9 @@ public class QuorumZabTest extends TestBase  {
 
     QuorumZab zab3 = new QuorumZab(st, cb3, fb3, state3);
 
-    cb1.conditionBroadcasting.await();
-    cb2.conditionBroadcasting.await();
-    cb3.conditionBroadcasting.await();
+    cb1.waitBroadcasting();
+    cb2.waitBroadcasting();
+    cb3.waitBroadcasting();
 
     Assert.assertEquals(1, cb1.initialHistory.size());
     Assert.assertEquals(1, cb2.initialHistory.size());
@@ -1083,9 +1075,9 @@ public class QuorumZabTest extends TestBase  {
 
     QuorumZab zab3 = new QuorumZab(st, cb3, null, state3);
 
-    cb1.conditionBroadcasting.await();
-    cb2.conditionBroadcasting.await();
-    cb3.conditionBroadcasting.await();
+    cb1.waitBroadcasting();
+    cb2.waitBroadcasting();
+    cb3.waitBroadcasting();
 
     Assert.assertEquals(1, cb1.initialHistory.size());
     Assert.assertEquals(1, cb2.initialHistory.size());
@@ -1196,9 +1188,9 @@ public class QuorumZabTest extends TestBase  {
 
     QuorumZab zab3 = new QuorumZab(st, cb3, fb3, state3);
 
-    cb1.conditionBroadcasting.await();
-    cb2.conditionBroadcasting.await();
-    cb3.conditionBroadcasting.await();
+    cb1.waitBroadcasting();
+    cb2.waitBroadcasting();
+    cb3.waitBroadcasting();
 
     Assert.assertEquals(1, cb1.initialHistory.size());
     Assert.assertEquals(1, cb2.initialHistory.size());
@@ -1290,9 +1282,9 @@ public class QuorumZabTest extends TestBase  {
 
     QuorumZab zab3 = new QuorumZab(st, cb3, null, state3);
 
-    cb1.conditionBroadcasting.await();
-    cb2.conditionBroadcasting.await();
-    cb3.conditionBroadcasting.await();
+    cb1.waitBroadcasting();
+    cb2.waitBroadcasting();
+    cb3.waitBroadcasting();
 
     Assert.assertEquals(1, cb1.initialHistory.size());
     Assert.assertEquals(1, cb2.initialHistory.size());
@@ -1370,9 +1362,9 @@ public class QuorumZabTest extends TestBase  {
          .setClusterConfiguration(cnf3);
     QuorumZab zab3 = new QuorumZab(st, cb3, null, state3);
 
-    cb1.conditionBroadcasting.await();
-    cb2.conditionBroadcasting.await();
-    cb3.conditionBroadcasting.await();
+    cb1.waitBroadcasting();
+    cb2.waitBroadcasting();
+    cb3.waitBroadcasting();
 
     Assert.assertEquals(cb1.clusterConfig.getVersion(), cnf1.getVersion());
     Assert.assertEquals(cb2.clusterConfig.getVersion(), cnf2.getVersion());
@@ -1454,9 +1446,9 @@ public class QuorumZabTest extends TestBase  {
          .setClusterConfiguration(cnf3);
     QuorumZab zab3 = new QuorumZab(st, cb3, null, state3);
 
-    cb1.conditionBroadcasting.await();
-    cb2.conditionBroadcasting.await();
-    cb3.conditionBroadcasting.await();
+    cb1.waitBroadcasting();
+    cb2.waitBroadcasting();
+    cb3.waitBroadcasting();
 
     Assert.assertEquals(cb1.clusterConfig.getVersion(), cnf2.getVersion());
     Assert.assertEquals(cb2.clusterConfig.getVersion(), cnf2.getVersion());
@@ -1542,9 +1534,9 @@ public class QuorumZabTest extends TestBase  {
          .setClusterConfiguration(cnf3);
     QuorumZab zab3 = new QuorumZab(st, cb3, null, state3);
 
-    //cb1.conditionBroadcasting.await();
-    cb2.conditionBroadcasting.await();
-    cb3.conditionBroadcasting.await();
+    //cb1.waitBroadcasting();
+    cb2.waitBroadcasting();
+    cb3.waitBroadcasting();
 
     Assert.assertEquals(cb2.clusterConfig.getVersion(), cnf2.getVersion());
     Assert.assertEquals(cb3.clusterConfig.getVersion(), cnf3.getVersion());
@@ -1648,7 +1640,7 @@ public class QuorumZabTest extends TestBase  {
                                                 getDirectory())
                                      .setJoinPeer(server1);
     QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1);
-    cb1.conditionBroadcasting.await();
+    cb1.waitBroadcasting();
 
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
     zab1.send(ByteBuffer.wrap("req2".getBytes()));
@@ -1667,7 +1659,7 @@ public class QuorumZabTest extends TestBase  {
                                                 getDirectory())
                                      .setJoinPeer(server2);
     QuorumZab zab3 = new QuorumZab(st3, cb3, null, state3);
-    cb3.conditionBroadcasting.await();
+    cb3.waitBroadcasting();
 
     zab1.send(ByteBuffer.wrap("req3".getBytes()));
     // Waits for all the transactions delivered.
@@ -1713,7 +1705,7 @@ public class QuorumZabTest extends TestBase  {
                                                 getDirectory())
                                      .setJoinPeer(server1);
     QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1);
-    cb1.conditionBroadcasting.await();
+    cb1.waitBroadcasting();
 
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
     QuorumZab.TestState state2 = new QuorumZab
@@ -1723,7 +1715,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setJoinPeer(server1);
     QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2);
 
-    cb2.conditionBroadcasting.await();
+    cb2.waitBroadcasting();
     // Simulate server2 dies.
     zab2.shutdown();
     zab1.send(ByteBuffer.wrap("req2".getBytes()));
@@ -1756,7 +1748,7 @@ public class QuorumZabTest extends TestBase  {
                                                 getDirectory())
                                      .setJoinPeer(server1);
     QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1);
-    cb1.conditionBroadcasting.await();
+    cb1.waitBroadcasting();
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
 
     QuorumZab.TestState state2 = new QuorumZab
@@ -1765,7 +1757,7 @@ public class QuorumZabTest extends TestBase  {
                                                 getDirectory())
                                      .setJoinPeer(server1);
     QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2);
-    cb2.conditionBroadcasting.await();
+    cb2.waitBroadcasting();
 
     // Simulate server2 dies.
     zab2.shutdown();
@@ -1808,14 +1800,14 @@ public class QuorumZabTest extends TestBase  {
     TestStateMachine st2 = new TestStateMachine(1);
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
-    /*
+
     QuorumZab.TestState state1 = new QuorumZab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory())
                                      .setJoinPeer(server1);
     QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1);
-    cb1.conditionBroadcasting.await();
+    cb1.waitBroadcasting();
 
     QuorumZab.TestState state2 = new QuorumZab
                                      .TestState(server2,
@@ -1823,7 +1815,7 @@ public class QuorumZabTest extends TestBase  {
                                                 getDirectory())
                                      .setJoinPeer(server1);
     QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2);
-    cb2.conditionBroadcasting.await();
+    cb1.waitCopCommit();
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
     st2.txnsCount.await();
     zab2.leave();
@@ -1834,7 +1826,6 @@ public class QuorumZabTest extends TestBase  {
     // Waits for the transaction delivered.
     st1.txnsCount.await();
     zab1.shutdown();
-    */
   }
 
   @Test(timeout=10000)
@@ -1862,7 +1853,7 @@ public class QuorumZabTest extends TestBase  {
                                                 getDirectory())
                                      .setJoinPeer(server1);
     QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1);
-    cb1.conditionBroadcasting.await();
+    cb1.waitBroadcasting();
 
     QuorumZab.TestState state2 = new QuorumZab
                                      .TestState(server2,
@@ -1879,33 +1870,4 @@ public class QuorumZabTest extends TestBase  {
     zab1.shutdown();
     zab2.shutdown();
   }
-
-  /*
-  @Test
-  public void testRefactor() throws Exception {
-    QuorumTestCallback cb1 = new QuorumTestCallback();
-    QuorumTestCallback cb2 = new QuorumTestCallback();
-    TestStateMachine st1 = new TestStateMachine(2);
-    TestStateMachine st2 = new TestStateMachine(1);
-    final String server1 = getUniqueHostPort();
-    final String server2 = getUniqueHostPort();
-
-    QuorumZab.TestState state1 = new QuorumZab
-                                     .TestState(server1,
-                                                null,
-                                                getDirectory())
-                                     .setJoinPeer(server1);
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1);
-
-    Thread.sleep(500);
-
-    QuorumZab.TestState state2 = new QuorumZab
-                                     .TestState(server2,
-                                                null,
-                                                getDirectory())
-                                     .setJoinPeer(server1);
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2);
-    Thread.sleep(1000);
-  }
-  */
 }
