@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
@@ -42,7 +43,7 @@ import org.slf4j.MDC;
 public class Leader extends Participant {
 
   private final Map<String, PeerHandler> quorumSet =
-    new HashMap<String, PeerHandler>();
+    new ConcurrentHashMap<String, PeerHandler>();
 
   private static final Logger LOG = LoggerFactory.getLogger(Leader.class);
 
