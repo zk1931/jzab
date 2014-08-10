@@ -1578,24 +1578,21 @@ public class QuorumZabTest extends TestBase  {
     QuorumZab.TestState state1 = new QuorumZab
                                      .TestState(server1,
                                                 null,
-                                                getDirectory())
-                                     .setJoinPeer(server1);
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1);
+                                                getDirectory());
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
 
     QuorumZab.TestState state2 = new QuorumZab
                                      .TestState(server2,
                                                 null,
-                                                getDirectory())
-                                     .setJoinPeer(server1);
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2);
+                                                getDirectory());
+    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
     cb1.waitCopCommit();
 
     QuorumZab.TestState state3 = new QuorumZab
                                      .TestState(server3,
                                                 null,
-                                                getDirectory())
-                                     .setJoinPeer(server1);
-    QuorumZab zab3 = new QuorumZab(st3, cb3, null, state3);
+                                                getDirectory());
+    QuorumZab zab3 = new QuorumZab(st3, cb3, null, state3, server1);
     cb1.waitCopCommit();
 
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
@@ -1637,9 +1634,8 @@ public class QuorumZabTest extends TestBase  {
     QuorumZab.TestState state1 = new QuorumZab
                                      .TestState(server1,
                                                 null,
-                                                getDirectory())
-                                     .setJoinPeer(server1);
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1);
+                                                getDirectory());
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
     cb1.waitBroadcasting();
 
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
@@ -1648,17 +1644,15 @@ public class QuorumZabTest extends TestBase  {
     QuorumZab.TestState state2 = new QuorumZab
                                      .TestState(server2,
                                                 null,
-                                                getDirectory())
-                                     .setJoinPeer(server1);
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2);
+                                                getDirectory());
+    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
     cb1.waitCopCommit();
 
     QuorumZab.TestState state3 = new QuorumZab
                                      .TestState(server3,
                                                 null,
-                                                getDirectory())
-                                     .setJoinPeer(server2);
-    QuorumZab zab3 = new QuorumZab(st3, cb3, null, state3);
+                                                getDirectory());
+    QuorumZab zab3 = new QuorumZab(st3, cb3, null, state3, server1);
     cb3.waitBroadcasting();
 
     zab1.send(ByteBuffer.wrap("req3".getBytes()));
@@ -1702,18 +1696,16 @@ public class QuorumZabTest extends TestBase  {
     QuorumZab.TestState state1 = new QuorumZab
                                      .TestState(server1,
                                                 null,
-                                                getDirectory())
-                                     .setJoinPeer(server1);
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1);
+                                                getDirectory());
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
     cb1.waitBroadcasting();
 
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
     QuorumZab.TestState state2 = new QuorumZab
                                      .TestState(server2,
                                                 null,
-                                                getDirectory())
-                                     .setJoinPeer(server1);
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2);
+                                                getDirectory());
+    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
 
     cb2.waitBroadcasting();
     // Simulate server2 dies.
@@ -1745,18 +1737,16 @@ public class QuorumZabTest extends TestBase  {
     QuorumZab.TestState state1 = new QuorumZab
                                      .TestState(server1,
                                                 null,
-                                                getDirectory())
-                                     .setJoinPeer(server1);
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1);
+                                                getDirectory());
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
     cb1.waitBroadcasting();
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
 
     QuorumZab.TestState state2 = new QuorumZab
                                      .TestState(server2,
                                                 null,
-                                                getDirectory())
-                                     .setJoinPeer(server1);
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2);
+                                                getDirectory());
+    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
     cb2.waitBroadcasting();
 
     // Simulate server2 dies.
@@ -1804,17 +1794,15 @@ public class QuorumZabTest extends TestBase  {
     QuorumZab.TestState state1 = new QuorumZab
                                      .TestState(server1,
                                                 null,
-                                                getDirectory())
-                                     .setJoinPeer(server1);
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1);
+                                                getDirectory());
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
     cb1.waitBroadcasting();
 
     QuorumZab.TestState state2 = new QuorumZab
                                      .TestState(server2,
                                                 null,
-                                                getDirectory())
-                                     .setJoinPeer(server1);
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2);
+                                                getDirectory());
+    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
     cb1.waitCopCommit();
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
     st2.txnsCount.await();
@@ -1850,17 +1838,15 @@ public class QuorumZabTest extends TestBase  {
     QuorumZab.TestState state1 = new QuorumZab
                                      .TestState(server1,
                                                 null,
-                                                getDirectory())
-                                     .setJoinPeer(server1);
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1);
+                                                getDirectory());
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
     cb1.waitBroadcasting();
 
     QuorumZab.TestState state2 = new QuorumZab
                                      .TestState(server2,
                                                 null,
-                                                getDirectory())
-                                     .setJoinPeer(server1);
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2);
+                                                getDirectory());
+    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
     cb1.waitCopCommit();
     cb2.waitBroadcasting();
     // Leader leaves current configuration.
