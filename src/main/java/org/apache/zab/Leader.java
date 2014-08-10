@@ -22,7 +22,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
@@ -30,7 +29,6 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import org.apache.zab.transport.Transport;
 import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.Message.MessageType;
@@ -48,16 +46,11 @@ public class Leader extends Participant {
 
   private static final Logger LOG = LoggerFactory.getLogger(Leader.class);
 
-  public Leader(Transport transport,
-                PersistentState persistence,
+  public Leader(ParticipantState participantState,
                 StateMachine stateMachine,
-                String serverId,
-                ZabConfig config,
-                Zxid lastDeliveredZxid,
-                BlockingQueue<MessageTuple> messageQueue) {
-    super(transport, persistence, stateMachine, serverId, config,
-          lastDeliveredZxid, messageQueue);
-    this.electedLeader = this.serverId;
+                ZabConfig config) {
+    super(participantState, stateMachine, config);
+    this.electedLeader = participantState.getServerId();
   }
 
   /**
@@ -694,6 +687,7 @@ public class Leader extends Participant {
       commitProcessor.shutdown();
       syncProcessor.shutdown();
       this.lastDeliveredZxid = commitProcessor.getLastDeliveredZxid();
+      this.participantState.updateLastDeliveredZxid(this.lastDeliveredZxid);
     }
   }
 

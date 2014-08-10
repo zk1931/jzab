@@ -19,14 +19,12 @@ package org.apache.zab;
 
 import com.google.protobuf.TextFormat;
 import java.io.IOException;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
 import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.Message.MessageType;
-import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.MDC;
 import org.slf4j.LoggerFactory;
@@ -38,15 +36,10 @@ public class Follower extends Participant {
 
   private static final Logger LOG = LoggerFactory.getLogger(Follower.class);
 
-  public Follower(Transport transport,
-                  PersistentState persistence,
+  public Follower(ParticipantState participantState,
                   StateMachine stateMachine,
-                  String serverId,
-                  ZabConfig config,
-                  Zxid lastDeliveredZxid,
-                  BlockingQueue<MessageTuple> messageQueue) {
-    super(transport, persistence, stateMachine, serverId, config,
-          lastDeliveredZxid, messageQueue);
+                  ZabConfig config) {
+    super(participantState, stateMachine, config);
   }
 
   /**
@@ -438,6 +431,7 @@ public class Follower extends Participant {
       commitProcessor.shutdown();
       syncProcessor.shutdown();
       this.lastDeliveredZxid = commitProcessor.getLastDeliveredZxid();
+      this.participantState.updateLastDeliveredZxid(this.lastDeliveredZxid);
     }
   }
 }

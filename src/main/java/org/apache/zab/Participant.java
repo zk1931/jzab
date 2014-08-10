@@ -102,6 +102,12 @@ public abstract class Participant {
    */
   protected StateChangeCallback stateChangeCallback = null;
 
+  /**
+   * The State for Zab. It will be passed accross different instances of
+   * Leader/Follower class.
+   */
+  protected final ParticipantState participantState;
+
   private static final Logger LOG = LoggerFactory.getLogger(Participant.class);
 
   protected enum Phase {
@@ -135,20 +141,17 @@ public abstract class Participant {
     }
   }
 
-  public Participant(Transport transport,
-                     PersistentState persistence,
+  public Participant(ParticipantState participantState,
                      StateMachine stateMachine,
-                     String serverId,
-                     ZabConfig config,
-                     Zxid lastDeliveredZxid,
-                     BlockingQueue<MessageTuple> messageQueue) {
-    this.transport = transport;
-    this.persistence = persistence;
+                     ZabConfig config) {
+    this.participantState = participantState;
+    this.transport = participantState.getTransport();
+    this.persistence = participantState.getPersistence();
+    this.lastDeliveredZxid = participantState.getLastDeliveredZxid();
+    this.serverId = participantState.getServerId();
+    this.messageQueue = participantState.getMessageQueue();
     this.stateMachine = stateMachine;
-    this.serverId = serverId;
     this.config = config;
-    this.lastDeliveredZxid = lastDeliveredZxid;
-    this.messageQueue = messageQueue;
   }
 
   protected abstract void join(String peer) throws Exception;
