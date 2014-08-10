@@ -23,6 +23,7 @@ import java.nio.ByteBuffer;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeoutException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Message;
@@ -386,6 +387,7 @@ public abstract class Participant {
                                        this.serverId);
     LOG.debug("Got SYNC_END {} from {}", cnf, peerId);
     this.persistence.setLastSeenConfig(cnf);
+    this.stateMachine.clusterChange(new HashSet<String>(cnf.getPeers()));
   }
 
   /**
@@ -421,6 +423,16 @@ public abstract class Participant {
         this.lastDeliveredZxid = txn.getZxid();
       }
     }
+  }
+
+  void onCop(MessageTuple tuple) throws IOException {
+    Message msg = tuple.getMessage();
+    ClusterConfiguration cnf =
+      ClusterConfiguration.fromProto(msg.getConfig(), this.serverId);
+    persistence.setLastSeenConfig(cnf);
+    Message ackCop = MessageBuilder.buildAckCop(cnf.getVersion());
+    sendMessage(this.electedLeader, ackCop);
+    this.stateMachine.clusterChange(new HashSet<String>(cnf.getPeers()));
   }
 
   /**

@@ -40,6 +40,7 @@ public class Follower extends Participant {
                   StateMachine stateMachine,
                   ZabConfig config) {
     super(participantState, stateMachine, config);
+    MDC.put("state", "following");
   }
 
   /**
@@ -410,11 +411,7 @@ public class Follower extends Participant {
           if (LOG.isDebugEnabled()) {
             LOG.debug("Got COP {}", TextFormat.shortDebugString(msg));
           }
-          ClusterConfiguration cnf =
-            ClusterConfiguration.fromProto(msg.getConfig(), this.serverId);
-          persistence.setLastSeenConfig(cnf);
-          Message ackCop = MessageBuilder.buildAckCop(cnf.getVersion());
-          sendMessage(this.electedLeader, ackCop);
+          onCop(tuple);
           if (!persistence.getLastSeenConfig().contains(this.serverId)) {
             LOG.debug("{} has been removed from the cluster.", this.serverId);
             throw new LeftCluster("Server has been removed from the cluster");
