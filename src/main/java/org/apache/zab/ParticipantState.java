@@ -54,6 +54,13 @@ public class ParticipantState implements Transport.Receiver {
     new LinkedBlockingQueue<MessageTuple>();
 
   /**
+   * Request queue. This queue buffers all the outgoing requests from clients,
+   * they will be processed once Participant enters broadcasting phase.
+   */
+  private final BlockingQueue<MessageTuple> requestQueue =
+    new LinkedBlockingQueue<MessageTuple>();
+
+  /**
    * Used for communication between nodes.
    */
   private final Transport transport;
@@ -109,6 +116,10 @@ public class ParticipantState implements Transport.Receiver {
     return this.messageQueue;
   }
 
+  public BlockingQueue<MessageTuple> getRequestQueue() {
+    return this.requestQueue;
+  }
+
   public String getServerId() {
     return this.serverId;
   }
@@ -127,6 +138,16 @@ public class ParticipantState implements Transport.Receiver {
 
   public void updateLastDeliveredZxid(Zxid zxid) {
     this.lastDeliveredZxid = zxid;
+  }
+
+  public void enqueueRequest(ByteBuffer buffer) {
+    Message msg = MessageBuilder.buildRequest(buffer);
+    this.requestQueue.add(new MessageTuple(this.serverId, msg));
+  }
+
+  public void enqueueLeave() {
+    Message msg = MessageBuilder.buildLeave(this.serverId);
+    this.requestQueue.add(new MessageTuple(this.serverId, msg));
   }
 }
 

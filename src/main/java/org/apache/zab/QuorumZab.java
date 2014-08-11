@@ -62,11 +62,6 @@ public class QuorumZab {
   private String serverId;
 
   /**
-   * The current role of QuorumZab.
-   */
-  private volatile Participant participant = null;;
-
-  /**
    * Configuration for Zab.
    */
   private final ZabConfig config;
@@ -75,6 +70,11 @@ public class QuorumZab {
    * StateMachine callback.
    */
   private final StateMachine stateMachine;
+
+  /**
+   * Background thread for QuorumZab.
+   */
+  private final MainThread mainThread;
 
   /**
    * Constructs a QuorumZab instance by recovering from log directory.
@@ -114,9 +114,17 @@ public class QuorumZab {
     this.stateMachine = stateMachine;
     this.stateChangeCallback = stateCallback;
     this.failureCallback = failureCallback;
+    this.mainThread = new MainThread(initialState, joinPeer);
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
-    this.ft = es.submit(new MainThread(initialState, joinPeer));
+    try {
+      // Initialize.
+      this.mainThread.init();
+    } catch (Exception e) {
+      LOG.warn("Caught an exception while initializing QuorumZab.");
+      throw new IllegalStateException("Failed to initialize QuorumZab.", e);
+    }
+    this.ft = es.submit(this.mainThread);
     es.shutdown();
   }
 
@@ -136,14 +144,14 @@ public class QuorumZab {
    * @param message message to send through Zab
    */
   public void send(ByteBuffer message) {
-    this.participant.send(message);
+    this.mainThread.enqueueRequest(message);
   }
 
   /**
    * Leaves the cluster.
    */
   public void leave() {
-    this.participant.leave();
+    this.mainThread.enqueueLeave();
   }
 
   public void trimLogTo(Zxid zxid) {
@@ -465,7 +473,6 @@ public class QuorumZab {
 
     @Override
     public Void call() throws Exception {
-      init();
       Election electionAlg = new RoundRobinElection();
       try {
         if (this.joinPeer != null) {
@@ -477,13 +484,14 @@ public class QuorumZab {
           String leader = electionAlg.electLeader(persistence);
           LOG.debug("Select {} as leader.", leader);
           if (leader.equals(serverId)) {
-            participant = new Leader(participantState, stateMachine, config);
+            Participant participant = new Leader(participantState, stateMachine,
+                                                 config);
             participant.setStateChangeCallback(stateChangeCallback);
             participant.setFailureCaseCallback(failureCallback);
             ((Leader)participant).lead();
           } else {
-            participant = new Follower(participantState,
-                                       stateMachine, config);
+            Participant participant = new Follower(participantState,
+                                                   stateMachine, config);
             participant.setStateChangeCallback(stateChangeCallback);
             participant.setFailureCaseCallback(failureCallback);
             ((Follower)participant).follow(leader);
@@ -505,6 +513,7 @@ public class QuorumZab {
     }
 
     void join(String peer) throws Exception {
+      Participant participant;
       if (peer.equals(serverId)) {
         LOG.debug("Trying to join itself. Becomes leader directly.");
         participant = new Leader(participantState, stateMachine, config);
@@ -515,6 +524,14 @@ public class QuorumZab {
       participant.setStateChangeCallback(stateChangeCallback);
       participant.setFailureCaseCallback(failureCallback);
       participant.join(peer);
+    }
+
+    void enqueueRequest(ByteBuffer buffer) {
+      this.participantState.enqueueRequest(buffer);
+    }
+
+    void enqueueLeave() {
+      this.participantState.enqueueLeave();
     }
   }
 }
