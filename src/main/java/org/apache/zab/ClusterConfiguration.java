@@ -19,6 +19,8 @@
 
 package org.apache.zab;
 
+import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -97,6 +99,23 @@ class ClusterConfiguration {
                                  String serverId) {
     Zxid version = MessageBuilder.fromProtoZxid(cnf.getVersion());
     return new ClusterConfiguration(version, cnf.getServersList(), serverId);
+  }
+
+  public ZabMessage.ClusterConfiguration toProto() {
+    return MessageBuilder.buildConfig(this);
+  }
+
+  public ByteBuffer toByteBuffer() {
+    return ByteBuffer.wrap(toProto().toByteArray());
+  }
+
+  public static ClusterConfiguration fromByteBuffer(ByteBuffer buffer,
+                                                    String serverId)
+      throws IOException {
+    byte[] bufArray = new byte[buffer.remaining()];
+    buffer.get(bufArray);
+    return fromProto(ZabMessage.ClusterConfiguration.parseFrom(bufArray),
+                     serverId);
   }
 
   public boolean contains(String peerId) {

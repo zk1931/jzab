@@ -267,7 +267,6 @@ public class SimpleLog implements Log {
       if(!hasNext()) {
         throw new NoSuchElementException();
       }
-
       DataInputStream in = new DataInputStream(logStream);
       int epoch, xid;
       int type;
@@ -283,7 +282,7 @@ public class SimpleLog implements Log {
       this.lastTransactionLength = Zxid.getZxidLength() + 4 + 4 + bodyLength;
       // Updates the position of file.
       this.position += this.lastTransactionLength;
-      return new Transaction(zxid, ByteBuffer.wrap(bodyBuffer), type);
+      return new Transaction(zxid, type, ByteBuffer.wrap(bodyBuffer));
     }
 
     // Moves the transaction log backward to last transaction.

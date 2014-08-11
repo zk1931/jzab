@@ -22,6 +22,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.concurrent.CountDownLatch;
@@ -103,9 +104,15 @@ public class SyncProposalProcessorTest extends TestBase {
       }
     }
 
+    PersistentState persistence = new PersistentState(getDirectory());
     TestReceiver receiver = new TestReceiver();
     Transport transport = new NettyTransport(leader, receiver);
-    SyncProposalProcessor processor = new SyncProposalProcessor(log, transport,
+    ClusterConfiguration cnf =
+      new ClusterConfiguration(Zxid.ZXID_NOT_EXIST,
+                               new ArrayList<String>(), "");
+    persistence.setLastSeenConfig(cnf);
+    SyncProposalProcessor processor = new SyncProposalProcessor(persistence,
+                                                                transport,
                                                                 batchSize);
     long startTime = System.nanoTime();
     String message = new String(new char[transactionSize]).replace('\0', 'a');

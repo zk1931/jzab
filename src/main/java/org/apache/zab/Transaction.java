@@ -39,13 +39,13 @@ public class Transaction {
   public static final int COP = 1;
 
   public Transaction(Zxid zxid, ByteBuffer body) {
-    this(zxid, body, PROPOSAL);
+    this(zxid, PROPOSAL, body);
   }
 
-  public Transaction(Zxid zxid, ByteBuffer body, int type) {
+  public Transaction(Zxid zxid, int type, ByteBuffer body) {
     this.zxid = zxid;
-    this.body = body;
     this.type = type;
+    this.body = body;
   }
 
   /**

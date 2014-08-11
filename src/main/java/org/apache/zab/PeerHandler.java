@@ -120,6 +120,8 @@ public class PeerHandler {
    */
   protected Future<Void> ftBroad = null;
 
+  private Zxid lastSyncedZxid = null;
+
   private static final Logger LOG = LoggerFactory.getLogger(PeerHandler.class);
 
   /**
@@ -137,6 +139,14 @@ public class PeerHandler {
     this.heartbeatIntervalMs = heartbeatIntervalMs;
     this.es = Executors.newSingleThreadExecutor();
     updateHeartbeatTime();
+  }
+
+  Zxid getLastSyncedZxid() {
+    return this.lastSyncedZxid;
+  }
+
+  void setLastSyncedZxid(Zxid zxid) {
+    this.lastSyncedZxid = zxid;
   }
 
   String getServerId() {
@@ -185,6 +195,10 @@ public class PeerHandler {
 
   synchronized void disableSending() {
     this.disableSending = true;
+  }
+
+  boolean isSyncStarted() {
+    return this.ftSync != null;
   }
 
   /**

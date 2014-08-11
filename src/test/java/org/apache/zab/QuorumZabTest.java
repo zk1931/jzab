@@ -1810,7 +1810,8 @@ public class QuorumZabTest extends TestBase  {
     zab2.leave();
     // Waits server2's leaving commits.
     cb1.waitCopCommit();
-    zab2.shutdown();
+    // zab2.shutdown();
+    cb2.waitExit();
     zab1.send(ByteBuffer.wrap("req2".getBytes()));
     // Waits for the transaction delivered.
     st1.txnsCount.await();

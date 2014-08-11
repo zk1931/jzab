@@ -424,20 +424,14 @@ public abstract class Participant {
     try (Log.LogIterator iter = log.getIterator(startZxid)) {
       while (iter.hasNext()) {
         Transaction txn = iter.next();
-        this.stateMachine.deliver(txn.getZxid(), txn.getBody(), null);
+        if (txn.getType() == Transaction.PROPOSAL) {
+          this.stateMachine.deliver(txn.getZxid(), txn.getBody(), null);
+        } else {
+          LOG.debug("Delivering COP!");
+        }
         this.lastDeliveredZxid = txn.getZxid();
       }
     }
-  }
-
-  void onCop(MessageTuple tuple) throws IOException {
-    Message msg = tuple.getMessage();
-    ClusterConfiguration cnf =
-      ClusterConfiguration.fromProto(msg.getConfig(), this.serverId);
-    persistence.setLastSeenConfig(cnf);
-    Message ackCop = MessageBuilder.buildAckCop(cnf.getVersion());
-    sendMessage(this.electedLeader, ackCop);
-    this.stateMachine.clusterChange(new HashSet<String>(cnf.getPeers()));
   }
 
   /**

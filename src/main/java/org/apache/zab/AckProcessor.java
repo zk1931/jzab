@@ -90,8 +90,8 @@ public class AckProcessor implements RequestProcessor,
           break;
         }
         Message msg = request.getMessage();
+        String source = request.getServerId();
         if (msg.getType() == MessageType.ACK) {
-          String source = request.getServerId();
           ZabMessage.Ack ack = request.getMessage().getAck();
           Zxid zxid = MessageBuilder.fromProtoZxid(ack.getZxid());
           this.quorumSet.get(source).setLastAckedZxid(zxid);
@@ -125,17 +125,16 @@ public class AckProcessor implements RequestProcessor,
             }
             this.lastCommittedZxid = zxidCanCommit;
           }
-        } else if (msg.getType() == MessageType.ADD_FOLLOWER) {
-          String followerId = msg.getAddFollower().getFollowerId();
-          LOG.debug("Got ADD_FOLLOWER for {}.", followerId);
-          PeerHandler ph = this.quorumSetOriginal.get(followerId);
+        } else if (msg.getType() == MessageType.JOIN ||
+                   msg.getType() == MessageType.ACK_EPOCH) {
+          PeerHandler ph = quorumSetOriginal.get(source);
           if (ph != null) {
-            this.quorumSet.put(followerId, ph);
+            this.quorumSet.put(source, ph);
           }
-        } else if (msg.getType() == MessageType.REMOVE_FOLLOWER) {
-          String followerId = msg.getRemoveFollower().getFollowerId();
-          LOG.debug("Got REMOVE_FOLLOWER for {}.", followerId);
-          this.quorumSet.remove(followerId);
+        } else if (msg.getType() == MessageType.DISCONNECTED) {
+          String peerId = msg.getDisconnected().getServerId();
+          LOG.debug("Got DISCONNECTED from {}.", peerId);
+          this.quorumSet.remove(peerId);
         } else {
           LOG.warn("Got unexpected message.");
         }

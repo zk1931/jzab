@@ -22,14 +22,10 @@ import java.nio.ByteBuffer;
 import com.google.protobuf.ByteString;
 import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Ack;
-import org.apache.zab.proto.ZabMessage.AckCop;
 import org.apache.zab.proto.ZabMessage.AckEpoch;
-import org.apache.zab.proto.ZabMessage.AddFollower;
 import org.apache.zab.proto.ZabMessage.Commit;
 import org.apache.zab.proto.ZabMessage.Diff;
 import org.apache.zab.proto.ZabMessage.Disconnected;
-import org.apache.zab.proto.ZabMessage.FlushPreProcessor;
-import org.apache.zab.proto.ZabMessage.FlushSyncProcessor;
 import org.apache.zab.proto.ZabMessage.Handshake;
 import org.apache.zab.proto.ZabMessage.InvalidMessage;
 import org.apache.zab.proto.ZabMessage.Leave;
@@ -40,7 +36,6 @@ import org.apache.zab.proto.ZabMessage.Proposal;
 import org.apache.zab.proto.ZabMessage.ProposedEpoch;
 import org.apache.zab.proto.ZabMessage.PullTxnReq;
 import org.apache.zab.proto.ZabMessage.QueryReply;
-import org.apache.zab.proto.ZabMessage.RemoveFollower;
 import org.apache.zab.proto.ZabMessage.Request;
 import org.apache.zab.proto.ZabMessage.Snapshot;
 import org.apache.zab.proto.ZabMessage.Truncate;
@@ -88,7 +83,7 @@ public final class MessageBuilder {
   public static Transaction fromProposal(Proposal prop) {
     Zxid zxid = fromProtoZxid(prop.getZxid());
     ByteBuffer buffer = prop.getBody().asReadOnlyByteBuffer();
-    return new Transaction(zxid, buffer);
+    return new Transaction(zxid, prop.getType(), buffer);
   }
 
   /**
@@ -100,7 +95,8 @@ public final class MessageBuilder {
   public static Proposal fromTransaction(Transaction txn) {
     ZabMessage.Zxid zxid = toProtoZxid(txn.getZxid());
     ByteString bs = ByteString.copyFrom(txn.getBody());
-    return Proposal.newBuilder().setZxid(zxid).setBody(bs).build();
+    return Proposal.newBuilder().setZxid(zxid).setBody(bs)
+                   .setType(txn.getType()).build();
   }
 
   /**
@@ -211,6 +207,7 @@ public final class MessageBuilder {
     Proposal prop = Proposal.newBuilder()
                             .setZxid(zxid)
                             .setBody(ByteString.copyFrom(txn.getBody()))
+                            .setType(txn.getType())
                             .build();
 
     return Message.newBuilder().setType(MessageType.PROPOSAL)
@@ -231,6 +228,7 @@ public final class MessageBuilder {
                             .setZxid(zxid)
                             .setBody(ByteString.copyFrom(txn.getBody()))
                             .setClientId(clientId)
+                            .setType(txn.getType())
                             .build();
 
     return Message.newBuilder().setType(MessageType.PROPOSAL)
@@ -368,64 +366,6 @@ public final class MessageBuilder {
   }
 
   /**
-   * Creates a FLUSH_PREPROCESSOR message.
-   *
-   * @param followerId the ID of new joined follower.
-   * @return a protobuf message.
-   */
-  public static Message buildFlushPreProcessor(String followerId) {
-    FlushPreProcessor flush = FlushPreProcessor.newBuilder()
-                                               .setFollowerId(followerId)
-                                               .build();
-    return Message.newBuilder().setType(MessageType.FLUSH_PREPROCESSOR)
-                               .setFlushPreProcessor(flush)
-                               .build();
-  }
-
-  /**
-   * Creates a FLUSH_SYNCPROCESSOR message.
-   *
-   * @param followerId the ID of new joined follower.
-   * @return a protobuf message.
-   */
-  public static Message buildFlushSyncProcessor(String followerId) {
-    return buildFlushSyncProcessor(followerId, Zxid.ZXID_NOT_EXIST);
-  }
-
-  /**
-   * Creates a FLUSH_SYNCPROCESSOR message.
-   *
-   * @param followerId the ID of new joined follower.
-   * @param zxid the last appended zxid of SyncProposalProcessor.
-   * @return a protobuf message.
-   */
-  public static Message buildFlushSyncProcessor(String followerId, Zxid zxid) {
-    ZabMessage.Zxid pZxid = toProtoZxid(zxid);
-    FlushSyncProcessor flush = FlushSyncProcessor.newBuilder()
-                                                 .setFollowerId(followerId)
-                                                 .setLastAppendedZxid(pZxid)
-                                                 .build();
-    return Message.newBuilder().setType(MessageType.FLUSH_SYNCPROCESSOR)
-                               .setFlushSyncProcessor(flush)
-                               .build();
-  }
-
-  /**
-   * Creates a ADD_FOLLOWER message.
-   *
-   * @param followerId the ID of new joined follower.
-   * @return a protobuf message.
-   */
-  public static Message buildAddFollower(String followerId) {
-    AddFollower addFollower = AddFollower.newBuilder()
-                                         .setFollowerId(followerId)
-                                         .build();
-    return Message.newBuilder().setType(MessageType.ADD_FOLLOWER)
-                               .setAddFollower(addFollower)
-                               .build();
-  }
-
-  /**
    * Creates a DISCONNECTED message.
    *
    * @param serverId the ID of the disconnected peer.
@@ -437,21 +377,6 @@ public final class MessageBuilder {
                                    .build();
     return Message.newBuilder().setType(MessageType.DISCONNECTED)
                                .setDisconnected(dis)
-                               .build();
-  }
-
-  /**
-   * Creates a REMOVE_FOLLOWER message.
-   *
-   * @param followerId the ID of disconnected follower.
-   * @return a protobuf message.
-   */
-  public static Message buildRemoveFollower(String followerId) {
-    RemoveFollower removeFollower = RemoveFollower.newBuilder()
-                                                  .setFollowerId(followerId)
-                                                  .build();
-    return Message.newBuilder().setType(MessageType.REMOVE_FOLLOWER)
-                               .setRemoveFollower(removeFollower)
                                .build();
   }
 
@@ -489,21 +414,18 @@ public final class MessageBuilder {
   }
 
   /**
-   * Creats a COP message.
+   * Creates a ZabMessage.ClusterConfiguration object.
    *
-   * @param config the proposed configuration
-   * @return a protobuf message.
+   * @param config the ClusterConfiguration object.
+   * @return protobuf ClusterConfiguration object.
    */
-  public static Message buildCop(ClusterConfiguration config) {
+  public static ZabMessage.ClusterConfiguration
+  buildConfig(ClusterConfiguration config) {
     ZabMessage.Zxid version = toProtoZxid(config.getVersion());
-    ZabMessage.ClusterConfiguration zConfig
-      = ZabMessage.ClusterConfiguration.newBuilder()
-                                       .setVersion(version)
-                                       .addAllServers(config.getPeers())
-                                       .build();
-    return Message.newBuilder().setType(MessageType.COP)
-                               .setConfig(zConfig)
-                               .build();
+    return ZabMessage.ClusterConfiguration.newBuilder()
+                                          .setVersion(version)
+                                          .addAllServers(config.getPeers())
+                                          .build();
   }
 
   /**
@@ -537,17 +459,7 @@ public final class MessageBuilder {
                                .build();
   }
 
-  /**
-   * Creats a ACK_COP message.
-   *
-   * @param version the version of reconfiguration.
-   * @return a protobuf message.
-   */
-  public static Message buildAckCop(Zxid version) {
-    AckCop ackCop = AckCop.newBuilder().setVersion(toProtoZxid(version))
-                                       .build();
-    return Message.newBuilder().setType(MessageType.ACK_COP)
-                               .setAckCop(ackCop)
-                               .build();
+  public static Message buildShutDown() {
+    return Message.newBuilder().setType(MessageType.SHUT_DOWN).build();
   }
 }
