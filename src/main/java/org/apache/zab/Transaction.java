@@ -26,10 +26,26 @@ import java.nio.ByteBuffer;
 public class Transaction {
   private final Zxid zxid;
   private final ByteBuffer body;
+  private final int type;
+
+  /**
+   * Transaction for normal PROPOSAL.
+   */
+  public static final int PROPOSAL = 0;
+
+  /**
+   * Transaction of COP.
+   */
+  public static final int COP = 1;
 
   public Transaction(Zxid zxid, ByteBuffer body) {
+    this(zxid, body, PROPOSAL);
+  }
+
+  public Transaction(Zxid zxid, ByteBuffer body, int type) {
     this.zxid = zxid;
     this.body = body;
+    this.type = type;
   }
 
   /**
@@ -52,5 +68,9 @@ public class Transaction {
 
   public String toString() {
     return this.zxid + " : " + this.body;
+  }
+
+  public int getType() {
+    return this.type;
   }
 }
