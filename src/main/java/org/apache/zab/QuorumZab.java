@@ -37,11 +37,13 @@ import org.slf4j.MDC;
  *   ELECTING, FOLLOWING, LEADING.
  * Among all the nodes, there's only one server can be established leader.
  */
-public class QuorumZab implements Callable<Void> {
-
+public class QuorumZab {
   private static final Logger LOG = LoggerFactory.getLogger(QuorumZab.class);
 
-  Future<Void> ft;
+  /**
+   * Future for background "main" thread.
+   */
+  private final Future<Void> ft;
 
   /**
    * Callback interface for testing purpose.
@@ -55,31 +57,14 @@ public class QuorumZab implements Callable<Void> {
   protected final FailureCaseCallback failureCallback;
 
   /**
-   * The State for Zab. It will be passed accross different instances of
-   * Leader/Follower class.
-   */
-  private final ParticipantState participantState;
-
-  /**
-   * Persistent state of Zab.
-   */
-  private final PersistentState persistence;
-
-  /**
    * Server id for QuorumZab.
    */
-  private final String serverId;
+  private String serverId;
 
   /**
    * The current role of QuorumZab.
    */
-  private Participant participant = null;;
-
-  /**
-   * The last delivered zxid. It's not persisted to disk. Just a place holder
-   * to pass between Follower/Leader.
-   */
-  private Zxid lastDeliveredZxid = Zxid.ZXID_NOT_EXIST;
+  private volatile Participant participant = null;;
 
   /**
    * Configuration for Zab.
@@ -91,58 +76,55 @@ public class QuorumZab implements Callable<Void> {
    */
   private final StateMachine stateMachine;
 
-  public QuorumZab(StateMachine stateMachine,
-                   Properties prop)
-      throws IOException, InterruptedException {
-    this(stateMachine, null, null, new TestState(prop));
+  /**
+   * Constructs a QuorumZab instance by recovering from log directory.
+   *
+   * @param stateMachine the state machine implementation of clients.
+   * @param prop the Properties object stores the configuration of QuorumZab.
+   */
+  public QuorumZab(StateMachine stateMachine, Properties prop) {
+    this(stateMachine, prop, null);
+  }
+
+  /**
+   * Constructs a QuorumZab instance by joining an existing cluster.
+   *
+   * @param stateMachine the state machine implementation of clients.
+   * @param prop the Properties object stores the configuration of QuorumZab.
+   * @param joinPeer the id of peer you want to join in.
+   */
+  public QuorumZab(StateMachine stateMachine, Properties prop,
+                   String joinPeer) {
+    this(stateMachine, null, null, new TestState(prop), joinPeer);
   }
 
   QuorumZab(StateMachine stateMachine,
             StateChangeCallback stateCallback,
             FailureCaseCallback failureCallback,
-            TestState initialState) throws IOException, InterruptedException {
+            TestState initialState) {
+    this(stateMachine, stateCallback, failureCallback, initialState, null);
+  }
+
+  QuorumZab(StateMachine stateMachine,
+            StateChangeCallback stateCallback,
+            FailureCaseCallback failureCallback,
+            TestState initialState,
+            String joinPeer) {
     this.config = new ZabConfig(initialState.prop);
     this.stateMachine = stateMachine;
     this.stateChangeCallback = stateCallback;
     this.failureCallback = failureCallback;
-    this.persistence = new PersistentState(this.config.getLogDir(),
-                                           initialState.getLog());
-    if (this.config.getJoinPeer() != null) {
-      // First time start up. Joining some one.
-      if (!this.persistence.isEmpty()) {
-        LOG.error("The log directory is not empty while joining.");
-        throw new RuntimeException("Log directory must be empty.");
-      }
-      this.serverId = this.config.getServerId();
-    } else {
-      // Means either it starts booting from static configuration or recovering
-      // from a log directory.
-      if (this.config.getPeers().size() > 0) {
-        // TODO : Static configuration should be removed eventually.
-        LOG.debug("Boots from static configuration.");
-        // User has specified server list.
-        List<String> peers = this.config.getPeers();
-        this.serverId = this.config.getServerId();
-        ClusterConfiguration cnf = new ClusterConfiguration(Zxid.ZXID_NOT_EXIST,
-                                                            peers,
-                                                            this.serverId);
-        this.persistence.setLastSeenConfig(cnf);
-      } else {
-        // Restore from log directory.
-        LOG.debug("Restores from log directory {}", this.config.getLogDir());
-        ClusterConfiguration cnf = this.persistence.getLastSeenConfig();
-        if (cnf == null) {
-          throw new RuntimeException("Can't find configuration file.");
-        }
-        this.serverId = cnf.getServerId();
-      }
-    }
-    this.participantState = new ParticipantState(persistence, serverId);
-    MDC.put("serverId", this.serverId);
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
-    this.ft = es.submit(this);
+    this.ft = es.submit(new MainThread(initialState, joinPeer));
     es.shutdown();
+  }
+
+  /**
+   * Get the future of the background working thread of QuorumZab.
+   */
+  public Future<Void> getFuture() {
+    return this.ft;
   }
 
   /**
@@ -179,62 +161,6 @@ public class QuorumZab implements Callable<Void> {
 
   public String getServerId() {
     return this.serverId;
-  }
-
-  @Override
-  public Void call() throws Exception {
-    LOG.debug("QuorumZab starts running.");
-    Election electionAlg = new RoundRobinElection();
-    try {
-      if (this.config.getJoinPeer() != null) {
-        this.stateMachine.recovering();
-        join(this.config.getJoinPeer());
-      }
-      while (true) {
-        String leader = electionAlg.electLeader(this.persistence);
-        LOG.debug("Select {} as leader.", leader);
-        if (leader.equals(this.serverId)) {
-          this.participant = new Leader(this.participantState,
-                                        this.stateMachine, this.config);
-          this.participant.setStateChangeCallback(this.stateChangeCallback);
-          this.participant.setFailureCaseCallback(this.failureCallback);
-          ((Leader)this.participant).lead();
-        } else {
-          this.participant = new Follower(this.participantState,
-                                          this.stateMachine, this.config);
-          this.participant.setStateChangeCallback(this.stateChangeCallback);
-          this.participant.setFailureCaseCallback(this.failureCallback);
-          ((Follower)this.participant).follow(leader);
-        }
-      }
-    } catch (InterruptedException e) {
-      LOG.debug("Caught Interrupted exception, it has been shut down?");
-      this.participantState.getTransport().shutdown();
-    } catch (Participant.LeftCluster e) {
-      LOG.debug("Exit Participant");
-    } catch (Exception e) {
-      LOG.error("Caught exception :", e);
-      throw e;
-    }
-    if (this.stateChangeCallback != null) {
-      this.stateChangeCallback.leftCluster();
-    }
-    return null;
-  }
-
-  void join(String peer) throws Exception {
-    if (peer.equals(this.serverId)) {
-      LOG.debug("Trying to join itself. Becomes leader directly.");
-      this.participant = new Leader(this.participantState,
-                                    this.stateMachine, this.config);
-    } else {
-      LOG.debug("Trying to join {}.", peer);
-      this.participant = new Follower(this.participantState,
-                                      this.stateMachine, this.config);
-    }
-    this.participant.setStateChangeCallback(this.stateChangeCallback);
-    this.participant.setFailureCaseCallback(this.failureCallback);
-    this.participant.join(peer);
   }
 
   /**
@@ -475,6 +401,120 @@ public class QuorumZab implements Callable<Void> {
     TestState setJoinPeer(String peer) {
       this.prop.setProperty("joinPeer", peer);
       return this;
+    }
+  }
+
+  /**
+   * Main working thread for QuorumZab.
+   */
+  class MainThread implements Callable<Void> {
+    private final TestState testState;
+
+    /**
+     * The id of server you want join in, or null if it's in the recovery
+     * from log directory.
+     */
+    private final String joinPeer;
+
+    /**
+     * The State for Zab. It will be passed accross different instances of
+     * Leader/Follower class.
+     */
+    private ParticipantState participantState;
+
+    private void init() throws IOException, InterruptedException {
+      PersistentState persistence = new PersistentState(config.getLogDir(),
+                                                        testState.getLog());
+      if (this.joinPeer != null) {
+        // First time start up. Joining some one.
+        if (!persistence.isEmpty()) {
+          LOG.error("The log directory is not empty while joining.");
+          throw new RuntimeException("Log directory must be empty.");
+        }
+        serverId = config.getServerId();
+      } else {
+        // Means either it starts booting from static configuration or
+        // recovering from a log directory.
+        if (config.getPeers().size() > 0) {
+          // TODO : Static configuration should be removed eventually.
+          LOG.debug("Boots from static configuration.");
+          // User has specified server list.
+          List<String> peers = config.getPeers();
+          serverId = config.getServerId();
+          ClusterConfiguration cnf =
+            new ClusterConfiguration(Zxid.ZXID_NOT_EXIST, peers, serverId);
+          persistence.setLastSeenConfig(cnf);
+        } else {
+          // Restore from log directory.
+          LOG.debug("Restores from log directory {}", config.getLogDir());
+          ClusterConfiguration cnf = persistence.getLastSeenConfig();
+          if (cnf == null) {
+            throw new RuntimeException("Can't find configuration file.");
+          }
+          serverId = cnf.getServerId();
+        }
+      }
+      participantState = new ParticipantState(persistence, serverId);
+      MDC.put("serverId", serverId);
+    }
+
+    public MainThread(TestState state, String joinPeer) {
+      this.testState = state;
+      this.joinPeer = joinPeer;
+    }
+
+    @Override
+    public Void call() throws Exception {
+      init();
+      Election electionAlg = new RoundRobinElection();
+      try {
+        if (this.joinPeer != null) {
+          stateMachine.recovering();
+          join(this.joinPeer);
+        }
+        while (true) {
+          PersistentState persistence = participantState.getPersistence();
+          String leader = electionAlg.electLeader(persistence);
+          LOG.debug("Select {} as leader.", leader);
+          if (leader.equals(serverId)) {
+            participant = new Leader(participantState, stateMachine, config);
+            participant.setStateChangeCallback(stateChangeCallback);
+            participant.setFailureCaseCallback(failureCallback);
+            ((Leader)participant).lead();
+          } else {
+            participant = new Follower(participantState,
+                                       stateMachine, config);
+            participant.setStateChangeCallback(stateChangeCallback);
+            participant.setFailureCaseCallback(failureCallback);
+            ((Follower)participant).follow(leader);
+          }
+        }
+      } catch (InterruptedException e) {
+        LOG.debug("Caught Interrupted exception, it has been shut down?");
+        participantState.getTransport().shutdown();
+      } catch (Participant.LeftCluster e) {
+        LOG.debug("Exit Participant");
+      } catch (Exception e) {
+        LOG.error("Caught exception :", e);
+        throw e;
+      }
+      if (stateChangeCallback != null) {
+        stateChangeCallback.leftCluster();
+      }
+      return null;
+    }
+
+    void join(String peer) throws Exception {
+      if (peer.equals(serverId)) {
+        LOG.debug("Trying to join itself. Becomes leader directly.");
+        participant = new Leader(participantState, stateMachine, config);
+      } else {
+        LOG.debug("Trying to join {}.", peer);
+        participant = new Follower(participantState, stateMachine, config);
+      }
+      participant.setStateChangeCallback(stateChangeCallback);
+      participant.setFailureCaseCallback(failureCallback);
+      participant.join(peer);
     }
   }
 }
