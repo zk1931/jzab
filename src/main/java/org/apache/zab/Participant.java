@@ -21,6 +21,11 @@ import com.google.protobuf.TextFormat;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeoutException;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -532,6 +537,48 @@ public abstract class Participant {
       // At the end of the synchronization, send COP.
       Message syncEnd = MessageBuilder.buildSyncEnd(this.clusterConfig);
       sendMessage(peerId, syncEnd);
+    }
+  }
+
+  /**
+   * Task that processes client's send/leave requests. It will be started
+   * once Participant enters broadcasting phase.
+   */
+  protected class SendRequestTask implements Callable<Void> {
+    private final Future<Void> ft;
+    private final String leader;
+
+    public SendRequestTask(String leader) {
+      this.leader = leader;
+      ExecutorService es =
+          Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
+      this.ft = es.submit(this);
+      es.shutdown();
+    }
+
+    public void shutdown() throws ExecutionException, InterruptedException {
+      participantState.getRequestQueue().add(MessageTuple.REQUEST_OF_DEATH);
+      this.ft.get();
+      LOG.debug("SendRequestTask has been shut down.");
+    }
+
+    @Override
+    public Void call() throws Exception {
+      LOG.debug("SendRequestTask gets started.");
+      try {
+        BlockingQueue<MessageTuple> requestQueue
+          = participantState.getRequestQueue();
+        while (true) {
+          MessageTuple tuple = requestQueue.take();
+          if (tuple == MessageTuple.REQUEST_OF_DEATH) {
+            return null;
+          }
+          sendMessage(this.leader, tuple.getMessage());
+        }
+      } catch (Exception e) {
+        LOG.error("Caught exception in SendRequest!");
+        throw e;
+      }
     }
   }
 }

@@ -532,6 +532,8 @@ public class Leader extends Participant {
         new HashSet<String>(persistence.getLastSeenConfig().getPeers()));
     // First time call leading callback.
     notifyQuorumSetChange();
+    // Starts thread to process request in request queue.
+    SendRequestTask sendTask = new SendRequestTask(this.serverId);
     try {
       while (true) {
         if (pendingConfig != null) {
@@ -689,6 +691,7 @@ public class Leader extends Participant {
           + "quorum size {}, goes back to electing phase.",
           getQuorumSize());
     } finally {
+      sendTask.shutdown();
       ackProcessor.shutdown();
       preProcessor.shutdown();
       commitProcessor.shutdown();

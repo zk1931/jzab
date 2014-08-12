@@ -1857,4 +1857,37 @@ public class QuorumZabTest extends TestBase  {
     zab1.shutdown();
     zab2.shutdown();
   }
+
+  @Test(timeout=10000)
+  public void testBufferingRequest() throws Exception {
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    TestStateMachine st1 = new TestStateMachine(2);
+    TestStateMachine st2 = new TestStateMachine(2);
+    final String server1 = getUniqueHostPort();
+    final String server2 = getUniqueHostPort();
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState(server1,
+                                                null,
+                                                getDirectory());
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    // Sends two requests immediatly before broadcasting phase.
+    zab1.send(ByteBuffer.wrap("req1".getBytes()));
+    zab1.send(ByteBuffer.wrap("req2".getBytes()));
+    cb1.waitBroadcasting();
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState(server2,
+                                                null,
+                                                getDirectory());
+    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    // Gets serverId immediately.
+    Assert.assertEquals(server2, zab2.getServerId());
+    // Wait for two transactions are delivered on both server2.
+    st1.txnsCount.await();
+    st2.txnsCount.await();
+    zab1.shutdown();
+    zab2.shutdown();
+  }
 }

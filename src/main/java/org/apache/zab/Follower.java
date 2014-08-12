@@ -352,6 +352,8 @@ public class Follower extends Participant {
     long lastHeartbeatTime = System.nanoTime();
     int ackEpoch = persistence.getAckEpoch();
     this.stateMachine.following(this.electedLeader);
+    // Starts thread to process request in request queue.
+    SendRequestTask sendTask = new SendRequestTask(this.electedLeader);
     try {
       while (true) {
         MessageTuple tuple = getMessage();
@@ -425,6 +427,7 @@ public class Follower extends Participant {
         }
       }
     } finally {
+      sendTask.shutdown();
       commitProcessor.shutdown();
       syncProcessor.shutdown();
       this.lastDeliveredZxid = commitProcessor.getLastDeliveredZxid();
