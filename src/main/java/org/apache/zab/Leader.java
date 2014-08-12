@@ -27,6 +27,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +53,7 @@ public class Leader extends Participant {
                 ZabConfig config) {
     super(participantState, stateMachine, config);
     this.electedLeader = participantState.getServerId();
+    MDC.put("state", "leading");
   }
 
   /**
@@ -525,7 +527,11 @@ public class Leader extends Participant {
     ClusterConfiguration pendingConfig = null;
     // The COP acknowledgements for current pending configuration.
     int ackCopCount = 0;
-    this.stateMachine.leading(this.quorumSet.keySet());
+    // Call cluster change right before the leading callback.
+    this.stateMachine.clusterChange(
+        new HashSet<String>(persistence.getLastSeenConfig().getPeers()));
+    // First time call leading callback.
+    notifyQuorumSetChange();
     try {
       while (true) {
         if (pendingConfig != null) {
@@ -699,8 +705,7 @@ public class Leader extends Participant {
                                      this.transport,
                                      this.config.getTimeout() / 3);
     ph.setLastZxid(Zxid.ZXID_NOT_EXIST);
-    this.quorumSet.put(source, ph);
-    this.stateMachine.leading(this.quorumSet.keySet());
+    addToQuorumSet(source, ph);
     Message flush = MessageBuilder.buildFlushPreProcessor(source);
     Message add = MessageBuilder.buildAddFollower(source);
     ClusterConfiguration clusterConfig = persistence.getLastSeenConfig();
@@ -795,8 +800,7 @@ public class Leader extends Participant {
     ph.disableSending();
     // Stop PeerHandler thread and clear tranport.
     ph.shutdown();
-    this.quorumSet.remove(followerId);
-    this.stateMachine.leading(this.quorumSet.keySet());
+    removeFromQuorumSet(followerId);
     Message remove = MessageBuilder.buildRemoveFollower(followerId);
     MessageTuple req = new MessageTuple(null, remove);
     // Ask PreProcessor to remove this follower.
@@ -847,8 +851,7 @@ public class Leader extends Participant {
                                      this.transport,
                                      this.config.getTimeout() / 3);
     ph.setLastZxid(lastPeerZxid);
-    this.quorumSet.put(source, ph);
-    this.stateMachine.leading(this.quorumSet.keySet());
+    addToQuorumSet(source, ph);
     Message flush = MessageBuilder.buildFlushPreProcessor(source);
     Message add = MessageBuilder.buildAddFollower(source);
     // Flush the pipeline before start synchronization.
@@ -867,7 +870,7 @@ public class Leader extends Participant {
     int currentEpoch = persistence.getAckEpoch();
     String server = msg.getLeave().getServerId();
     // Remove from quorumSet.
-    this.quorumSet.remove(server);
+    removeFromQuorumSet(server);
     ClusterConfiguration clusterConfig = persistence.getLastSeenConfig();
     Zxid version = clusterConfig.getVersion();
     if (version.getEpoch() != currentEpoch) {
@@ -889,15 +892,6 @@ public class Leader extends Participant {
     return clusterConfig;
   }
 
-  void onCop(MessageTuple tuple) throws IOException {
-    Message msg = tuple.getMessage();
-    ClusterConfiguration cnf =
-      ClusterConfiguration.fromProto(msg.getConfig(), this.serverId);
-    persistence.setLastSeenConfig(cnf);
-    Message ackCop = MessageBuilder.buildAckCop(cnf.getVersion());
-    sendMessage(this.serverId, ackCop);
-  }
-
   void checkFollowerLiveness() {
     long currentTime = System.nanoTime();
     long timeoutNs = this.config.getTimeout() * (long)1000000;
@@ -916,5 +910,23 @@ public class Leader extends Participant {
                                                disconnected));
       }
     }
+  }
+
+  /**
+   * Notify the clients of the changes for the quorum set. This happens
+   * when somebody gets disconnected, recovered, joined or removed.
+   */
+  private void notifyQuorumSetChange() {
+    this.stateMachine.leading(new HashSet<String>(this.quorumSet.keySet()));
+  }
+
+  private void addToQuorumSet(String serverId, PeerHandler ph) {
+    this.quorumSet.put(serverId, ph);
+    notifyQuorumSetChange();
+  }
+
+  private void removeFromQuorumSet(String serverId) {
+    this.quorumSet.remove(serverId);
+    notifyQuorumSetChange();
   }
 }

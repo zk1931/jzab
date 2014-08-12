@@ -1580,6 +1580,7 @@ public class QuorumZabTest extends TestBase  {
                                                 null,
                                                 getDirectory());
     QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    cb1.waitBroadcasting();
 
     QuorumZab.TestState state2 = new QuorumZab
                                      .TestState(server2,
