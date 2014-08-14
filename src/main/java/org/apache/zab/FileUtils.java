@@ -18,12 +18,13 @@
 
 package org.apache.zab;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.InputStreamReader;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.util.Properties;
 import org.slf4j.Logger;
@@ -59,8 +60,8 @@ public final class FileUtils {
     File temp = File.createTempFile(file.getName(), null,
                                     file.getAbsoluteFile().getParentFile());
     try (FileOutputStream fos = new FileOutputStream(temp);
-         DataOutputStream dos = new DataOutputStream(fos)) {
-      dos.writeInt(value);
+         PrintWriter pw = new PrintWriter(fos)) {
+      pw.print(Integer.toString(value));
       fos.getChannel().force(true);
     }
     Files.move(temp.toPath(), file.toPath(), ATOMIC_MOVE);
@@ -77,8 +78,8 @@ public final class FileUtils {
    */
   public static int readIntFromFile(File file) throws IOException {
     try (FileInputStream fis = new FileInputStream(file);
-        DataInputStream dis = new DataInputStream(fis)) {
-      int value = dis.readInt();
+         BufferedReader br = new BufferedReader(new InputStreamReader(fis))) {
+      int value = Integer.parseInt(br.readLine());
       return value;
     }
   }
