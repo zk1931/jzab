@@ -89,8 +89,12 @@ class ClusterConfiguration {
     String strPeers = prop.getProperty("peers");
     Zxid version = Zxid.fromSimpleString(prop.getProperty("version"));
     String serverId = prop.getProperty("serverId");
-    List<String> peerList =
-      new ArrayList<String>(Arrays.asList(strPeers.split(",")));
+    List<String> peerList;
+    if (strPeers.equals("")) {
+      peerList = new ArrayList<String>();
+    } else {
+      peerList = new ArrayList<String>(Arrays.asList(strPeers.split(",")));
+    }
     return new ClusterConfiguration(version, peerList, serverId);
   }
 
