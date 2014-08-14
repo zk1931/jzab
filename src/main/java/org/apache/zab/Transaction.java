@@ -19,6 +19,7 @@
 package org.apache.zab;
 
 import java.nio.ByteBuffer;
+import static org.apache.zab.proto.ZabMessage.Proposal.ProposalType;
 
 /**
  * Transaction.
@@ -28,18 +29,8 @@ public class Transaction {
   private final ByteBuffer body;
   private final int type;
 
-  /**
-   * Transaction for normal PROPOSAL.
-   */
-  public static final int PROPOSAL = 0;
-
-  /**
-   * Transaction of COP.
-   */
-  public static final int COP = 1;
-
   public Transaction(Zxid zxid, ByteBuffer body) {
-    this(zxid, PROPOSAL, body);
+    this(zxid, ProposalType.USER_REQUEST_VALUE, body);
   }
 
   public Transaction(Zxid zxid, int type, ByteBuffer body) {
@@ -66,6 +57,7 @@ public class Transaction {
     return this.body;
   }
 
+  @Override
   public String toString() {
     return this.zxid + " : " + this.body;
   }

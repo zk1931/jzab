@@ -38,6 +38,7 @@ import org.apache.zab.QuorumZab.StateChangeCallback;
 import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import static org.apache.zab.proto.ZabMessage.Proposal.ProposalType;
 
 /**
  * Participant.
@@ -415,7 +416,7 @@ public abstract class Participant {
     try (Log.LogIterator iter = log.getIterator(startZxid)) {
       while (iter.hasNext()) {
         Transaction txn = iter.next();
-        if (txn.getType() == Transaction.PROPOSAL) {
+        if (txn.getType() == ProposalType.USER_REQUEST_VALUE) {
           this.stateMachine.deliver(txn.getZxid(), txn.getBody(), null);
         } else {
           LOG.debug("Delivering COP!");

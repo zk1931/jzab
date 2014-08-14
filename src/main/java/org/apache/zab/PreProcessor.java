@@ -31,6 +31,7 @@ import java.util.Map;
 import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.Message.MessageType;
+import org.apache.zab.proto.ZabMessage.Proposal.ProposalType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -117,7 +118,7 @@ public class PreProcessor implements RequestProcessor,
           }
           this.clusterConfig.setVersion(zxid);
           ByteBuffer cop = this.clusterConfig.toByteBuffer();
-          Transaction txn = new Transaction(zxid, Transaction.COP, cop);
+          Transaction txn = new Transaction(zxid, ProposalType.COP_VALUE, cop);
           Message prop = MessageBuilder.buildProposal(txn);
           // Broadcasts COP.
           for (PeerHandler ph : quorumSet.values()) {
@@ -134,7 +135,7 @@ public class PreProcessor implements RequestProcessor,
           this.clusterConfig.removePeer(peerId);
           this.clusterConfig.setVersion(zxid);
           ByteBuffer cop = this.clusterConfig.toByteBuffer();
-          Transaction txn = new Transaction(zxid, Transaction.COP, cop);
+          Transaction txn = new Transaction(zxid, ProposalType.COP_VALUE, cop);
           Message prop = MessageBuilder.buildProposal(txn);
           // Broadcasts COP.
           for (PeerHandler ph : quorumSet.values()) {

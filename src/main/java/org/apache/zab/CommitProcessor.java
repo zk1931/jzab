@@ -35,6 +35,7 @@ import org.apache.zab.proto.ZabMessage.Message.MessageType;
 import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import static org.apache.zab.proto.ZabMessage.Proposal.ProposalType;
 
 /**
  * This class is used to deliver committed transaction.
@@ -128,10 +129,10 @@ public class CommitProcessor implements RequestProcessor,
             if(zxid.compareTo(txn.getZxid()) < 0) {
               break;
             }
-            if (txn.getType() == Transaction.PROPOSAL) {
+            if (txn.getType() == ProposalType.USER_REQUEST_VALUE) {
               LOG.debug("Delivering transaction {}.", txn.getZxid());
               stateMachine.deliver(txn.getZxid(), txn.getBody(), clientId);
-            } else if (txn.getType() == Transaction.COP) {
+            } else if (txn.getType() == ProposalType.COP_VALUE) {
               LOG.debug("Delivering COP {}.", txn.getZxid());
               ClusterConfiguration cnf =
                 ClusterConfiguration.fromByteBuffer(txn.getBody(), "");

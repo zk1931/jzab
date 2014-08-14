@@ -12,7 +12,6 @@ message Message {
     ACK_EPOCH = 3;
     NEW_LEADER = 4;
     ACK_LEADER = 5;
-    COMMIT_LEADER = 6;
     PROPOSE = 7;
     ACK = 8;
     COMMIT = 9;
@@ -88,14 +87,18 @@ message PullTxnReq {
 
 // Proposal contains transaction id and transaction data.
 message Proposal {
+  enum ProposalType {
+    USER_REQUEST = 0;
+    COP = 1;
+  }
   // Transaction id.
   required Zxid zxid = 1;
   // Transaction body.
   required bytes body = 2;
+  // The type for this proposal.
+  required ProposalType type = 3;
   // The id of the client who sends the request.
-  optional string clientId = 3;
-  // The type for this proposal. (0 : NORMAL PROPOSAL, 1 : COP).
-  required int32 type = 4;
+  optional string clientId = 4;
 }
 
 message Diff {
