@@ -641,9 +641,9 @@ public class Leader extends Participant {
                         TextFormat.shortDebugString(msg));
             }
             onDisconnected(tuple, preProcessor, ackProcessor);
-          } else if (msg.getType() == MessageType.LEAVE) {
+          } else if (msg.getType() == MessageType.REMOVE) {
             if (LOG.isDebugEnabled()) {
-              LOG.debug("Got message LEAVE {}",
+              LOG.debug("Got message REMOVE {}",
                         TextFormat.shortDebugString(msg));
             }
             if (pendingCopZxid != null) {
@@ -652,7 +652,7 @@ public class Leader extends Participant {
             }
             pendingCopZxid = getNextProposedZxid();
             tuple.setZxid(pendingCopZxid);
-            onLeave(tuple, preProcessor);
+            onRemove(tuple, preProcessor);
           } else if (msg.getType() == MessageType.SHUT_DOWN) {
             LOG.debug("Got SHUT_DOWN.");
             throw new LeftCluster("Left cluster");
@@ -836,11 +836,11 @@ public class Leader extends Participant {
     }
   }
 
-  void onLeave(MessageTuple tuple, PreProcessor preProcessor)
+  void onRemove(MessageTuple tuple, PreProcessor preProcessor)
       throws IOException {
-    // NOTE : For LEAVE message, we shouldn't remove server from quorumSet here,
-    // the leaving server will close the transport once the COP gets committed
-    // and then we'll remove it like normal DISCONNECTED server.
+    // NOTE : For REMOVE message, we shouldn't remove server from quorumSet
+    // here, the leaving server will close the transport once the COP gets
+    // committed and then we'll remove it like normal DISCONNECTED server.
     // this.quorumSet.remove(server);
     preProcessor.processRequest(tuple);
   }

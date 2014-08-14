@@ -128,8 +128,8 @@ public class PreProcessor implements RequestProcessor,
         } else if (msg.getType() == MessageType.ACK_EPOCH) {
           LOG.debug("Got ACK_EPOCH from {}.", source);
           addToQuorumSet(source);
-        } else if (msg.getType() == MessageType.LEAVE) {
-          String peerId = msg.getLeave().getServerId();
+        } else if (msg.getType() == MessageType.REMOVE) {
+          String peerId = msg.getRemove().getServerId();
           LOG.debug("Got LEAVE for {}.", peerId);
           this.clusterConfig.removePeer(peerId);
           this.clusterConfig.setVersion(zxid);

@@ -148,10 +148,12 @@ public class QuorumZab {
   }
 
   /**
-   * Leaves the cluster.
+   * Removes a peer from the cluster.
+   *
+   * @param peerId the id of the peer who will be removed from the cluster.
    */
-  public void leave() {
-    this.mainThread.enqueueLeave();
+  public void remove(String peerId) {
+    this.mainThread.enqueueRemove(peerId);
   }
 
   public void trimLogTo(Zxid zxid) {
@@ -530,8 +532,8 @@ public class QuorumZab {
       this.participantState.enqueueRequest(buffer);
     }
 
-    void enqueueLeave() {
-      this.participantState.enqueueLeave();
+    void enqueueRemove(String peerId) {
+      this.participantState.enqueueRemove(peerId);
     }
   }
 }

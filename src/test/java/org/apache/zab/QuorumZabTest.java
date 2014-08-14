@@ -1771,7 +1771,7 @@ public class QuorumZabTest extends TestBase  {
   }
 
   @Test(timeout=10000)
-  public void testLeaveCase1()
+  public void testRemoveCase1()
       throws IOException, InterruptedException {
     /**
      * Case 1 :
@@ -1780,7 +1780,7 @@ public class QuorumZabTest extends TestBase  {
      * 1. starts server1
      * 2. starts server2 join in server1
      * 3. send req1 to server1.
-     * 3. server2 leaves cluster.
+     * 3. server2 removes itself.
      * 4. send req2 to server1.
      *
      * server1 delivers both txn1 and txn2. server2 only delivers txn1.
@@ -1807,10 +1807,9 @@ public class QuorumZabTest extends TestBase  {
     cb1.waitCopCommit();
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
     st2.txnsCount.await();
-    zab2.leave();
+    zab2.remove(server2);
     // Waits server2's leaving commits.
     cb1.waitCopCommit();
-    // zab2.shutdown();
     cb2.waitExit();
     zab1.send(ByteBuffer.wrap("req2".getBytes()));
     // Waits for the transaction delivered.
@@ -1819,15 +1818,15 @@ public class QuorumZabTest extends TestBase  {
   }
 
   @Test(timeout=10000)
-  public void testLeaveCase2()
+  public void testRemoveCase2()
       throws IOException, InterruptedException {
     /**
-     * Case 1 :
-     * Leader is removed.
+     * Case 2 :
+     * Follower removes the leader from the cluster.
      *
      * 1. starts server1
      * 2. starts server2 join in server1
-     * 3. server1 leaves.
+     * 3. server2 removes server1.
      *
      */
     QuorumTestCallback cb1 = new QuorumTestCallback();
@@ -1851,12 +1850,52 @@ public class QuorumZabTest extends TestBase  {
     QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
     cb1.waitCopCommit();
     cb2.waitBroadcasting();
-    // Leader leaves current configuration.
-    zab1.leave();
+    // serve2 removes server1.
+    zab2.remove(server1);
+    // Waits old leader exits.
+    cb1.waitExit();
     // Waits for server2 goes back to broadcasting phase again.
     cb2.waitBroadcasting();
     zab1.shutdown();
     zab2.shutdown();
+  }
+
+  @Test(timeout=10000)
+  public void testRemoveCase3()
+      throws IOException, InterruptedException {
+    /**
+     * Case 3 :
+     * Leader remove follower from the cluster.
+     *
+     * 1. starts server1
+     * 2. starts server2 join in server1
+     * 3. server1 removes server1 from the cluster.
+     */
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    TestStateMachine st1 = new TestStateMachine(2);
+    TestStateMachine st2 = new TestStateMachine(1);
+    final String server1 = getUniqueHostPort();
+    final String server2 = getUniqueHostPort();
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState(server1,
+                                                null,
+                                                getDirectory());
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    cb1.waitBroadcasting();
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState(server2,
+                                                null,
+                                                getDirectory());
+    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    cb1.waitCopCommit();
+    zab1.remove(server2);
+    // Waits server2 exits.
+    cb2.waitExit();
+    zab2.shutdown();
+    zab1.shutdown();
   }
 
   @Test(timeout=10000)

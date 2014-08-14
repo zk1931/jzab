@@ -28,7 +28,6 @@ import org.apache.zab.proto.ZabMessage.Diff;
 import org.apache.zab.proto.ZabMessage.Disconnected;
 import org.apache.zab.proto.ZabMessage.Handshake;
 import org.apache.zab.proto.ZabMessage.InvalidMessage;
-import org.apache.zab.proto.ZabMessage.Leave;
 import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.NewEpoch;
 import org.apache.zab.proto.ZabMessage.NewLeader;
@@ -36,6 +35,7 @@ import org.apache.zab.proto.ZabMessage.Proposal;
 import org.apache.zab.proto.ZabMessage.ProposedEpoch;
 import org.apache.zab.proto.ZabMessage.PullTxnReq;
 import org.apache.zab.proto.ZabMessage.QueryReply;
+import org.apache.zab.proto.ZabMessage.Remove;
 import org.apache.zab.proto.ZabMessage.Request;
 import org.apache.zab.proto.ZabMessage.Snapshot;
 import org.apache.zab.proto.ZabMessage.Truncate;
@@ -447,15 +447,16 @@ public final class MessageBuilder {
   }
 
   /**
-   * Creats a LEAVE message.
+   * Creats a REMOVE message.
    *
-   * @param serverId the id of server who is leaving the current configuration.
+   * @param serverId the id of server who will be removed from the cluster
+   * configuration.
    * @return a protobuf message.
    */
-  public static Message buildLeave(String serverId) {
-    Leave leave = Leave.newBuilder().setServerId(serverId).build();
-    return Message.newBuilder().setType(MessageType.LEAVE)
-                               .setLeave(leave)
+  public static Message buildRemove(String serverId) {
+    Remove remove = Remove.newBuilder().setServerId(serverId).build();
+    return Message.newBuilder().setType(MessageType.REMOVE)
+                               .setRemove(remove)
                                .build();
   }
 

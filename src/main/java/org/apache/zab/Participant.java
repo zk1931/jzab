@@ -162,15 +162,6 @@ public abstract class Participant {
 
   protected abstract void join(String peer) throws Exception;
 
-  public void leave() {
-    if (!this.isBroadcasting) {
-      LOG.warn("Can leave the cluster only if you are in broadcasting phase.");
-      throw new RuntimeException("Leave cluster in recovering phase.");
-    }
-    Message msg = MessageBuilder.buildLeave(this.serverId);
-    sendMessage(this.electedLeader, msg);
-  }
-
   protected void send(ByteBuffer request) {
     if (!this.isBroadcasting) {
       throw new RuntimeException("Only can send in broadcasting phase.");

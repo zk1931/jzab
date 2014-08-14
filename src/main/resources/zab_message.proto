@@ -29,7 +29,7 @@ message Message {
     JOIN = 20;
     // The last message of synchronization. It contains cluster configuration.
     SYNC_END = 21;
-    LEAVE = 22;
+    REMOVE = 22;
     SHUT_DOWN = 23;
     INVALID_MESSAGE = 30;
   }
@@ -55,7 +55,7 @@ message Message {
   optional Disconnected disconnected = 15;
   optional QueryReply reply = 16;
   optional ClusterConfiguration config = 17;
-  optional Leave leave = 18;
+  optional Remove remove = 18;
   optional InvalidMessage invalid = 30;
 }
 
@@ -155,6 +155,6 @@ message QueryReply {
   required string leader = 1;
 }
 
-message Leave {
+message Remove {
   required string serverId = 1;
 }
