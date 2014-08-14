@@ -145,8 +145,8 @@ public class ParticipantState implements Transport.Receiver {
     this.requestQueue.add(new MessageTuple(this.serverId, msg));
   }
 
-  public void enqueueLeave() {
-    Message msg = MessageBuilder.buildLeave(this.serverId);
+  public void enqueueRemove(String peerId) {
+    Message msg = MessageBuilder.buildRemove(peerId);
     this.requestQueue.add(new MessageTuple(this.serverId, msg));
   }
 }

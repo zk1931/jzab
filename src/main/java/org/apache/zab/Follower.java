@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
+import java.util.HashSet;
 import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.Message.MessageType;
@@ -342,15 +343,18 @@ public class Follower extends Participant {
   void accepting()
       throws TimeoutException, InterruptedException, IOException,
       ExecutionException {
-    Log log = persistence.getLog();
     SyncProposalProcessor syncProcessor =
-      new SyncProposalProcessor(log, this.transport,
+      new SyncProposalProcessor(this.persistence, this.transport,
                                 SYNC_MAX_BATCH_SIZE);
     CommitProcessor commitProcessor
-      = new CommitProcessor(stateMachine, this.lastDeliveredZxid);
+      = new CommitProcessor(stateMachine, lastDeliveredZxid, serverId,
+                            transport);
     // The last time of HEARTBEAT message comes from leader.
     long lastHeartbeatTime = System.nanoTime();
     int ackEpoch = persistence.getAckEpoch();
+    stateMachine.clusterChange(new HashSet<String>(persistence
+                                                   .getLastSeenConfig()
+                                                   .getPeers()));
     this.stateMachine.following(this.electedLeader);
     // Starts thread to process request in request queue.
     SendRequestTask sendTask = new SendRequestTask(this.electedLeader);
@@ -409,15 +413,9 @@ public class Follower extends Participant {
           // Replies HEARTBEAT message to leader.
           Message heartbeatReply = MessageBuilder.buildHeartbeat();
           sendMessage(source, heartbeatReply);
-        } else if (msg.getType() == MessageType.COP) {
-          if (LOG.isDebugEnabled()) {
-            LOG.debug("Got COP {}", TextFormat.shortDebugString(msg));
-          }
-          onCop(tuple);
-          if (!persistence.getLastSeenConfig().contains(this.serverId)) {
-            LOG.debug("{} has been removed from the cluster.", this.serverId);
-            throw new LeftCluster("Server has been removed from the cluster");
-          }
+        } else if (msg.getType() == MessageType.SHUT_DOWN) {
+          LOG.debug("Got SHUT_DOWN");
+          throw new LeftCluster("Left cluster!");
         } else {
           if (LOG.isWarnEnabled()) {
             LOG.warn("Unexpected messgae : {} from {}",

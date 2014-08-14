@@ -23,19 +23,14 @@ message Message {
     SNAPSHOT = 14;
     REQUEST = 15;
     HANDSHAKE = 16;
-    FLUSH_PREPROCESSOR = 18;
-    FLUSH_SYNCPROCESSOR = 19;
-    ADD_FOLLOWER = 20;
-    DISCONNECTED = 21;
-    REMOVE_FOLLOWER = 22;
-    QUERY_LEADER = 23;
-    QUERY_LEADER_REPLY = 24;
-    JOIN = 25;
-    COP = 26;
+    DISCONNECTED = 17;
+    QUERY_LEADER = 18;
+    QUERY_LEADER_REPLY = 19;
+    JOIN = 20;
     // The last message of synchronization. It contains cluster configuration.
-    SYNC_END = 27;
-    LEAVE = 28;
-    ACK_COP = 29;
+    SYNC_END = 21;
+    REMOVE = 22;
+    SHUT_DOWN = 23;
     INVALID_MESSAGE = 30;
   }
 
@@ -57,15 +52,10 @@ message Message {
   optional Request request = 12;
   optional Commit commit = 13;
   optional Handshake handshake = 14;
-  optional FlushPreProcessor flush_pre_processor = 16;
-  optional FlushSyncProcessor flush_sync_processor = 17;
-  optional AddFollower add_follower = 18;
-  optional Disconnected disconnected = 19;
-  optional RemoveFollower removeFollower = 20;
-  optional QueryReply reply = 21;
-  optional ClusterConfiguration config = 22;
-  optional Leave leave = 23;
-  optional AckCop ack_cop = 24;
+  optional Disconnected disconnected = 15;
+  optional QueryReply reply = 16;
+  optional ClusterConfiguration config = 17;
+  optional Remove remove = 18;
   optional InvalidMessage invalid = 30;
 }
 
@@ -104,6 +94,8 @@ message Proposal {
   required bytes body = 2;
   // The id of the client who sends the request.
   optional string clientId = 3;
+  // The type for this proposal. (0 : NORMAL PROPOSAL, 1 : COP).
+  required int32 type = 4;
 }
 
 message Diff {
@@ -148,34 +140,10 @@ message Handshake {
   required string node_id = 1;
 }
 
-// Used to flush PreProcessor.
-message FlushPreProcessor {
-  required string followerId = 1;
-}
-
-// Used to flush SyncProposalProcessor.
-message FlushSyncProcessor {
-  required string followerId = 1;
-  optional Zxid lastAppendedZxid = 2;
-}
-
-
-// Used to ask PreProcessor and AckProcessor adding new joined followers to
-// quorumSet.
-message AddFollower {
-  required string followerId = 1;
-}
-
 // Once onDisconnected callback is called, passe this message to main thread to
 // let it handles the disconnection. This message will not go through network.
 message Disconnected {
   required string serverId = 1;
-}
-
-// Used to ask PreProcessor and AckProcessor remove disconnected followers from
-// quorumSet.
-message RemoveFollower {
-  required string followerId = 1;
 }
 
 message ClusterConfiguration {
@@ -187,10 +155,6 @@ message QueryReply {
   required string leader = 1;
 }
 
-message Leave {
+message Remove {
   required string serverId = 1;
-}
-
-message AckCop {
-  required Zxid version = 1;
 }

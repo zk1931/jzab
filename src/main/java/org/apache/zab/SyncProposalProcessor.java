@@ -18,6 +18,7 @@
 
 package org.apache.zab;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
@@ -26,7 +27,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
-import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.Message.MessageType;
 import org.apache.zab.transport.Transport;
@@ -41,6 +41,8 @@ public class SyncProposalProcessor implements RequestProcessor,
                                               Callable<Void> {
 
   private final Log log;
+
+  private final PersistentState persistence;
 
   private final BlockingQueue<MessageTuple> proposalQueue =
       new LinkedBlockingQueue<MessageTuple>();
@@ -57,17 +59,23 @@ public class SyncProposalProcessor implements RequestProcessor,
   // the leader.
   private final int maxBatchSize;
 
+  private final String serverId;
+
   /**
    * Constructs a SyncProposalProcessor object.
    *
-   * @param log the log which the transaction will be synchronized to.
+   * @param persistence the persistent variables.
    * @param transport used to send acknowledgment.
    * @param maxBatchSize the maximum batch size.
+   * @throws IOException in case of IO failure.
    */
-  public SyncProposalProcessor(Log log, Transport transport, int maxBatchSize) {
-    this.log = log;
+  public SyncProposalProcessor(PersistentState persistence, Transport transport,
+                               int maxBatchSize) throws IOException {
+    this.persistence = persistence;
+    this.log = persistence.getLog();
     this.transport = transport;
     this.maxBatchSize = maxBatchSize;
+    this.serverId = persistence.getLastSeenConfig().getServerId();
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
     ft = es.submit(this);
@@ -89,7 +97,6 @@ public class SyncProposalProcessor implements RequestProcessor,
   public Void call() throws Exception {
     try {
       LOG.debug("Batched SyncRequestProcessor gets started.");
-      Zxid lastAppendedZxid = this.log.getLatestZxid();
       MessageTuple lastReq = null;
       // Number of transactions batched so far.
       int batchCount = 0;
@@ -102,8 +109,7 @@ public class SyncProposalProcessor implements RequestProcessor,
           req = this.proposalQueue.poll();
           if (req == null ||
               batchCount == maxBatchSize ||
-              req == MessageTuple.REQUEST_OF_DEATH ||
-              req.getMessage().getType() == MessageType.FLUSH_SYNCPROCESSOR) {
+              req == MessageTuple.REQUEST_OF_DEATH) {
             // Sync to disk and send ACK to leader.
             this.log.sync();
             Zxid zxid = MessageBuilder
@@ -121,29 +127,27 @@ public class SyncProposalProcessor implements RequestProcessor,
           lastReq = null;
           continue;
         }
-        if (req.getMessage().getType() == MessageType.FLUSH_SYNCPROCESSOR) {
-          // It's FLUSH_SYNCPROCESSOR message.
-          ZabMessage.FlushSyncProcessor flush =
-            req.getMessage().getFlushSyncProcessor();
-
-          String followerId = flush.getFollowerId();
-
-          Message flushSync = MessageBuilder
-                              .buildFlushSyncProcessor(followerId,
-                                                       lastAppendedZxid);
-
-          ByteBuffer buffer = ByteBuffer.wrap(flushSync.toByteArray());
-          this.transport.send(req.getServerId(), buffer);
-          lastReq = null;
-        } else if (req.getMessage().getType() == MessageType.PROPOSAL) {
+        if (req.getMessage().getType() == MessageType.PROPOSAL) {
           // It's PROPOSAL, sync to disk.
+          Message msg = req.getMessage();
           Transaction txn = MessageBuilder
-                            .fromProposal(req.getMessage().getProposal());
+                            .fromProposal(msg.getProposal());
+          // TODO : avoid this?
+          ByteBuffer body = txn.getBody().asReadOnlyBuffer();
           LOG.debug("Syncing transaction {} to disk.", txn.getZxid());
           this.log.append(txn);
-          lastAppendedZxid = txn.getZxid();
           batchCount++;
           lastReq = req;
+          if (txn.getType() == Transaction.COP) {
+            // If it's COP, we should also update cluster_config file.
+            ClusterConfiguration cnf =
+              ClusterConfiguration.fromByteBuffer(body, this.serverId);
+            persistence.setLastSeenConfig(cnf);
+            // If it's COP, we shouldn't batch it, send ACK immediatly.
+            sendAck(req.getServerId(), txn.getZxid());
+            batchCount = 0;
+            lastReq = null;
+          }
         }
       }
     } catch (Exception e) {

@@ -162,15 +162,6 @@ public abstract class Participant {
 
   protected abstract void join(String peer) throws Exception;
 
-  public void leave() {
-    if (!this.isBroadcasting) {
-      LOG.warn("Can leave the cluster only if you are in broadcasting phase.");
-      throw new RuntimeException("Leave cluster in recovering phase.");
-    }
-    Message msg = MessageBuilder.buildLeave(this.serverId);
-    sendMessage(this.electedLeader, msg);
-  }
-
   protected void send(ByteBuffer request) {
     if (!this.isBroadcasting) {
       throw new RuntimeException("Only can send in broadcasting phase.");
@@ -424,20 +415,14 @@ public abstract class Participant {
     try (Log.LogIterator iter = log.getIterator(startZxid)) {
       while (iter.hasNext()) {
         Transaction txn = iter.next();
-        this.stateMachine.deliver(txn.getZxid(), txn.getBody(), null);
+        if (txn.getType() == Transaction.PROPOSAL) {
+          this.stateMachine.deliver(txn.getZxid(), txn.getBody(), null);
+        } else {
+          LOG.debug("Delivering COP!");
+        }
         this.lastDeliveredZxid = txn.getZxid();
       }
     }
-  }
-
-  void onCop(MessageTuple tuple) throws IOException {
-    Message msg = tuple.getMessage();
-    ClusterConfiguration cnf =
-      ClusterConfiguration.fromProto(msg.getConfig(), this.serverId);
-    persistence.setLastSeenConfig(cnf);
-    Message ackCop = MessageBuilder.buildAckCop(cnf.getVersion());
-    sendMessage(this.electedLeader, ackCop);
-    this.stateMachine.clusterChange(new HashSet<String>(cnf.getPeers()));
   }
 
   /**

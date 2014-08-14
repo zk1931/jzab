@@ -26,14 +26,20 @@ import org.apache.zab.proto.ZabMessage.Message;
 public class MessageTuple {
   private final String serverId;
   private final Message message;
+  private Zxid zxid;
 
   public static final MessageTuple REQUEST_OF_DEATH =
       new MessageTuple(null, null);
   public static final MessageTuple GO_BACK = new MessageTuple(null, null);
 
   public MessageTuple(String serverId, Message message) {
+    this(serverId, message, null);
+  }
+
+  public MessageTuple(String serverId, Message message, Zxid zxid) {
     this.serverId = serverId;
     this.message = message;
+    this.zxid = zxid;
   }
 
   public String getServerId() {
@@ -42,5 +48,13 @@ public class MessageTuple {
 
   public Message getMessage() {
     return this.message;
+  }
+
+  public void setZxid(Zxid z) {
+    this.zxid = z;
+  }
+
+  public Zxid getZxid() {
+    return this.zxid;
   }
 }

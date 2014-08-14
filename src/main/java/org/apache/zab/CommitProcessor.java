@@ -18,6 +18,8 @@
 
 package org.apache.zab;
 
+import java.nio.ByteBuffer;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
@@ -30,6 +32,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.Message.MessageType;
+import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,6 +55,10 @@ public class CommitProcessor implements RequestProcessor,
   private final List<ZabMessage.Proposal> pendingTxns =
       new LinkedList<ZabMessage.Proposal>();
 
+  private final String serverId;
+
+  private final Transport transport;
+
   Future<Void> ft;
 
   /**
@@ -62,11 +69,17 @@ public class CommitProcessor implements RequestProcessor,
    * @param stateMachine the state machine of application.
    * @param lastDeliveredZxid the last delivered zxid, CommitProcessor won't
    * deliver any transactions which are smaller or equal than this zxid.
+   * @param serverId the id of the Participant.
+   * @param transport the Transport object.
    */
   public CommitProcessor(StateMachine stateMachine,
-                         Zxid lastDeliveredZxid) {
+                         Zxid lastDeliveredZxid,
+                         String serverId,
+                         Transport transport) {
     this.stateMachine = stateMachine;
     this.lastDeliveredZxid = lastDeliveredZxid;
+    this.serverId = serverId;
+    this.transport = transport;
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
     ft = es.submit(this);
@@ -115,8 +128,25 @@ public class CommitProcessor implements RequestProcessor,
             if(zxid.compareTo(txn.getZxid()) < 0) {
               break;
             }
-            LOG.debug("Delivering transaction {}.", txn.getZxid());
-            this.stateMachine.deliver(txn.getZxid(), txn.getBody(), clientId);
+            if (txn.getType() == Transaction.PROPOSAL) {
+              LOG.debug("Delivering transaction {}.", txn.getZxid());
+              stateMachine.deliver(txn.getZxid(), txn.getBody(), clientId);
+            } else if (txn.getType() == Transaction.COP) {
+              LOG.debug("Delivering COP {}.", txn.getZxid());
+              ClusterConfiguration cnf =
+                ClusterConfiguration.fromByteBuffer(txn.getBody(), "");
+              stateMachine.clusterChange(new HashSet<String>(cnf.getPeers()));
+              if (!cnf.contains(this.serverId)) {
+                // If the new configuration doesn't contain this server, we'll
+                // enqueue SHUT_DOWN message to main thread to let it quit.
+                LOG.debug("The new configuration doesn't contain {}", serverId);
+                Message shutdown = MessageBuilder.buildShutDown();
+                this.transport.send(this.serverId,
+                                    ByteBuffer.wrap(shutdown.toByteArray()));
+              }
+            } else {
+              LOG.warn("Unknown proposal type.");
+            }
             this.lastDeliveredZxid = txn.getZxid();
           }
           // Removes the delivered transactions.

@@ -105,6 +105,7 @@ public class SimpleLog implements Log {
       ByteBuffer buf = txn.getBody();
       this.logStream.writeInt(txn.getZxid().getEpoch());
       this.logStream.writeInt(txn.getZxid().getXid());
+      this.logStream.writeInt(txn.getType());
       this.logStream.writeInt(buf.remaining());
       // Write the data of ByteBuffer to stream.
       while (buf.hasRemaining()) {
@@ -266,21 +267,22 @@ public class SimpleLog implements Log {
       if(!hasNext()) {
         throw new NoSuchElementException();
       }
-
       DataInputStream in = new DataInputStream(logStream);
       int epoch, xid;
+      int type;
       epoch = in.readInt();
       xid = in.readInt();
+      type = in.readInt();
       Zxid zxid = new Zxid(epoch, xid);
       // Reads the length of the transaction body.
       int bodyLength = in.readInt();
       byte[] bodyBuffer = new byte[bodyLength];
       // Reads the data of the transaction body.
       in.readFully(bodyBuffer, 0, bodyLength);
-      this.lastTransactionLength = Zxid.getZxidLength() + 4 + bodyLength;
+      this.lastTransactionLength = Zxid.getZxidLength() + 4 + 4 + bodyLength;
       // Updates the position of file.
       this.position += this.lastTransactionLength;
-      return new Transaction(zxid, ByteBuffer.wrap(bodyBuffer));
+      return new Transaction(zxid, type, ByteBuffer.wrap(bodyBuffer));
     }
 
     // Moves the transaction log backward to last transaction.
