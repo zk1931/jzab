@@ -29,6 +29,7 @@ import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.transport.NettyTransport;
 import org.apache.zab.transport.Transport;
 import org.junit.Assert;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -128,7 +129,7 @@ public class SyncProposalProcessorTest extends TestBase {
     transport.shutdown();
   }
 
-  @Test
+  @Ignore @Test
   public void testPerformance() throws Exception {
     benchmark(0, 1024, 1000, 1);
     benchmark(1, 128, 100000, 1000);
