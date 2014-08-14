@@ -28,7 +28,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeoutException;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Message;
@@ -383,7 +382,6 @@ public abstract class Participant {
                                        this.serverId);
     LOG.debug("Got SYNC_END {} from {}", cnf, peerId);
     this.persistence.setLastSeenConfig(cnf);
-    this.stateMachine.clusterChange(new HashSet<String>(cnf.getPeers()));
   }
 
   /**

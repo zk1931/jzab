@@ -1930,4 +1930,231 @@ public class QuorumZabTest extends TestBase  {
     zab1.shutdown();
     zab2.shutdown();
   }
+
+  @Test(timeout=10000)
+  public void testCallback() throws Exception {
+    // Tests the clients' callback.
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    TestStateMachine st1 = new TestStateMachine(2);
+    TestStateMachine st2 = new TestStateMachine(2);
+    final String server1 = getUniqueHostPort();
+    final String server2 = getUniqueHostPort();
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState(server1,
+                                                null,
+                                                getDirectory());
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    // Waits for clusterChange and leading callback.
+    st1.waitBroadcasting();
+    st1.waitClusterChange();
+    // Make sure first config contains itself.
+    Assert.assertTrue(st1.clusters.contains(server1));
+    // The cluster size should be 1.
+    Assert.assertEquals(1, st1.clusters.size());
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState(server2,
+                                                null,
+                                                getDirectory());
+    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    st2.waitBroadcasting();
+    st2.waitClusterChange();
+    // Make sure first config contains itself.
+    Assert.assertTrue(st2.clusters.contains(server1));
+    // The cluster size should be 2.
+    Assert.assertEquals(2, st2.clusters.size());
+    // Now the callback will be called again.
+    st1.waitBroadcasting();
+    st1.waitClusterChange();
+    // Make sure first config contains itself.
+    Assert.assertTrue(st1.clusters.contains(server1));
+    // The cluster size should be 1.
+    Assert.assertEquals(2, st1.clusters.size());
+    zab1.shutdown();
+    zab2.shutdown();
+  }
+
+  @Test(timeout=10000)
+  public void testSendingWhileJoining() throws Exception {
+    // Tests keep sending request while someone joins in, in the end two
+    // servers should have the same state.
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    TestStateMachine st1 = new TestStateMachine(100);
+    TestStateMachine st2 = new TestStateMachine(100);
+    final String server1 = getUniqueHostPort();
+    final String server2 = getUniqueHostPort();
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState(server1,
+                                                null,
+                                                getDirectory());
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    cb1.waitBroadcasting();
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState(server2,
+                                                null,
+                                                getDirectory());
+    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    // While server2 is joining, we start sending 100 requests.
+    for (int i = 0; i < 100; ++i) {
+      Thread.sleep(5);
+      zab1.send(ByteBuffer.wrap("txn".getBytes()));
+    }
+    st1.txnsCount.await();
+    st2.txnsCount.await();
+    // Consistency check.
+    for (int i = 0; i < 100; ++i) {
+      Assert.assertEquals(st1.deliveredTxns.get(i).getZxid(),
+                          st2.deliveredTxns.get(i).getZxid());
+    }
+    zab1.shutdown();
+    zab2.shutdown();
+  }
+
+  @Test(timeout=10000)
+  public void testSendingWhileRemoving() throws Exception {
+    // Tests keep sending request while someone is removed.
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    TestStateMachine st1 = new TestStateMachine(101);
+    TestStateMachine st2 = new TestStateMachine(1);
+    final String server1 = getUniqueHostPort();
+    final String server2 = getUniqueHostPort();
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState(server1,
+                                                null,
+                                                getDirectory());
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    cb1.waitBroadcasting();
+    // Send first request.
+    zab1.send(ByteBuffer.wrap("txn".getBytes()));
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState(server2,
+                                                null,
+                                                getDirectory());
+    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    cb2.waitBroadcasting();
+    // First transaction should be delivered on server2.
+    st2.txnsCount.await();
+    // Server 2 removes itself from current configuration.
+    zab2.remove(server2);
+    // While server2 is removing, we start sending 100 requests.
+    for (int i = 0; i < 100; ++i) {
+      Thread.sleep(5);
+      zab1.send(ByteBuffer.wrap("txn".getBytes()));
+    }
+    // Waits server 1 delivers all the 101 transactions.
+    st1.txnsCount.await();
+    // Server 2 should exit eventually.
+    cb2.waitExit();
+    zab1.shutdown();
+    zab2.shutdown();
+  }
+
+  @Test(timeout=10000)
+  public void testContinuousConfig() throws Exception {
+    // Tests continuous reconfiguration.
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    TestStateMachine st1 = new TestStateMachine();
+    final String server1 = getUniqueHostPort();
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState(server1,
+                                                null,
+                                                getDirectory());
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    cb1.waitBroadcasting();
+    for (int i = 0; i < 10; ++i) {
+      // For each iteration, a new server joins in and then gets removed.
+      QuorumTestCallback cb = new QuorumTestCallback();
+      TestStateMachine st = new TestStateMachine();
+      String server = getUniqueHostPort();
+      QuorumZab.TestState state = new QuorumZab
+                                      .TestState(server,
+                                                 null,
+                                                 getDirectory());
+      QuorumZab zab = new QuorumZab(st, cb, null, state, server1);
+      // Waits for reconfig completes.
+      cb1.waitCopCommit();
+      st1.waitClusterChange();
+      st.waitClusterChange();
+      // Make sure first config contains itself.
+      Assert.assertTrue(st.clusters.contains(server));
+      // Remove new joined server.
+      zab1.remove(server);
+      // Waits for reconfig completes.
+      cb1.waitCopCommit();
+      st1.waitClusterChange();
+      cb.waitExit();
+    }
+    // Finally, the server1 has the configuration of single server.
+    Assert.assertEquals(1, st1.clusters.size());
+    Assert.assertTrue(st1.clusters.contains(server1));
+  }
+
+  @Test(timeout=10000)
+  public void testLeaderExit() throws Exception {
+    /**
+     * Starts server1.
+     * server2 joins server1.
+     * server3 joins server1
+     * server1 gets removed.
+     *
+     * Expecting server2 and server3 forms a new quorum and the configuration
+     * should be only server2 and server..
+     */
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    QuorumTestCallback cb3 = new QuorumTestCallback();
+    TestStateMachine st1 = new TestStateMachine();
+    TestStateMachine st2 = new TestStateMachine();
+    TestStateMachine st3 = new TestStateMachine();
+    final String server1 = getUniqueHostPort();
+    final String server2 = getUniqueHostPort();
+    final String server3 = getUniqueHostPort();
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState(server1,
+                                                null,
+                                                getDirectory());
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    // Waits for clusterChange and leading callback.
+    st1.waitClusterChange();
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState(server2,
+                                                null,
+                                                getDirectory());
+    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    st2.waitBroadcasting();
+    st2.waitClusterChange();
+    st1.waitClusterChange();
+
+    QuorumZab.TestState state3 = new QuorumZab
+                                     .TestState(server3,
+                                                null,
+                                                getDirectory());
+    QuorumZab zab3 = new QuorumZab(st3, cb3, null, state3, server1);
+    st3.waitBroadcasting();
+    st3.waitClusterChange();
+    st2.waitClusterChange();
+    st1.waitClusterChange();
+    // Server1 exits.
+    zab1.remove(server1);
+    st3.waitClusterChange();
+    st2.waitClusterChange();
+    st1.waitClusterChange();
+    // Waits server1 exit.
+    cb1.waitExit();
+    // server2 and server3 should go back recovery and form a new quorum.
+    st3.waitBroadcasting();
+    st2.waitBroadcasting();
+    // The cluster size should be 2.
+    Assert.assertEquals(2, st2.clusters.size());
+    Assert.assertEquals(2, st3.clusters.size());
+    zab1.shutdown();
+    zab2.shutdown();
+    zab3.shutdown();
+  }
 }

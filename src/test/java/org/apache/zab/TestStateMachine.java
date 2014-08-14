@@ -20,6 +20,7 @@ package org.apache.zab;
 
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Semaphore;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
@@ -32,6 +33,11 @@ import org.slf4j.LoggerFactory;
  */
 class TestStateMachine implements StateMachine {
   ArrayList<Transaction> deliveredTxns = new ArrayList<Transaction>();
+  Semaphore semBroadcasting = new Semaphore(0);
+  Semaphore semClusterChange = new Semaphore(0);
+  Set<String> clusters = null;
+  Set<String> activeFollowers = null;
+  String leader;
 
   private static final Logger LOG =
       LoggerFactory.getLogger(TestStateMachine.class);
@@ -82,14 +88,31 @@ class TestStateMachine implements StateMachine {
   }
 
   @Override
-  public void leading(Set<String> activeFollowers) {
+  public void leading(Set<String> followers) {
+    this.activeFollowers = followers;
+    LOG.debug("LEADING.");
+    semBroadcasting.release();
   }
 
   @Override
-  public void following(String leader) {
+  public void following(String ld) {
+    this.leader = ld;
+    LOG.debug("FOLLOWING.");
+    semBroadcasting.release();
   }
 
   @Override
   public void clusterChange(Set<String> servers) {
+    this.clusters = servers;
+    LOG.debug("CLUSTER_CHANGE.");
+    semClusterChange.release();
+  }
+
+  void waitBroadcasting() throws InterruptedException {
+    semBroadcasting.acquire();
+  }
+
+  void waitClusterChange() throws InterruptedException {
+    semClusterChange.acquire();
   }
 }
