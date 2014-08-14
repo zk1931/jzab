@@ -73,7 +73,7 @@ public class Follower extends Participant {
         Message msg = tuple.getMessage();
         String peerId = msg.getDisconnected().getServerId();
         if (LOG.isDebugEnabled()) {
-          LOG.debug("Got DISCONNECTED in getMessage().",
+          LOG.debug("Got message {}.",
                     TextFormat.shortDebugString(msg));
         }
         // FOLLOWING state.
@@ -292,9 +292,9 @@ public class Follower extends Participant {
     Message msg = tuple.getMessage();
     String source = tuple.getServerId();
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Got NEW_LEADER message from {} : {}.",
-                source,
-                TextFormat.shortDebugString(msg));
+      LOG.debug("Got message {} from {}.",
+                TextFormat.shortDebugString(msg),
+                source);
     }
     ZabMessage.NewLeader nl = msg.getNewLeader();
     int epoch = nl.getEpoch();
@@ -388,10 +388,11 @@ public class Follower extends Participant {
             continue;
           }
         }
+        if (msg.getType() != MessageType.HEARTBEAT && LOG.isDebugEnabled()) {
+          LOG.debug("Got message {} from {}",
+                    TextFormat.shortDebugString(msg), source);
+        }
         if (msg.getType() == MessageType.PROPOSAL) {
-          if (LOG.isDebugEnabled()) {
-            LOG.debug("Got PROPOSAL {}.", TextFormat.shortDebugString(msg));
-          }
           Transaction txn = MessageBuilder.fromProposal(msg.getProposal());
           Zxid zxid = txn.getZxid();
           if (zxid.getEpoch() == ackEpoch) {
@@ -404,9 +405,6 @@ public class Follower extends Participant {
             throw new RuntimeException("The proposal has wrong epoch number.");
           }
         } else if (msg.getType() == MessageType.COMMIT) {
-          if (LOG.isDebugEnabled()) {
-            LOG.debug("Got COMMIT {}.", TextFormat.shortDebugString(msg));
-          }
           commitProcessor.processRequest(tuple);
         } else if (msg.getType() == MessageType.HEARTBEAT) {
           LOG.trace("Got HEARTBEAT from {}.", source);
@@ -414,7 +412,6 @@ public class Follower extends Participant {
           Message heartbeatReply = MessageBuilder.buildHeartbeat();
           sendMessage(source, heartbeatReply);
         } else if (msg.getType() == MessageType.SHUT_DOWN) {
-          LOG.debug("Got SHUT_DOWN");
           throw new LeftCluster("Left cluster!");
         } else {
           if (LOG.isWarnEnabled()) {
