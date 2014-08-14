@@ -817,12 +817,13 @@ public class Leader extends Participant {
     PeerHandler ph = new PeerHandler(source, transport, config.getTimeout()/3);
     ph.setLastZxid(lastPeerZxid);
     ph.setLastSyncedZxid(zxid);
+    // Add to the quorum set of main thread.
     addToQuorumSet(source, ph);
-    // Adds the pending set also.
+    // Add to the pending set also.
     this.pendingPeers.put(source, ph);
-    // Add new joined follower to PreProcessor.
+    // Add new recovered follower to PreProcessor.
     preProcessor.processRequest(tuple);
-    // Add new joined follower to AckProcessor.
+    // Add new recovered follower to AckProcessor.
     ackProcessor.processRequest(tuple);
     if (lastAckedZxid.compareTo(zxid) >= 0) {
       // If current last proposed zxid is already in log, starts synchronization
@@ -842,6 +843,9 @@ public class Leader extends Participant {
     // here, the leaving server will close the transport once the COP gets
     // committed and then we'll remove it like normal DISCONNECTED server.
     // this.quorumSet.remove(server);
+    // But we still need to remove the server from PreProcessor since logically
+    // all the proposals after COP will not be the responsibilities of removed
+    // server.
     preProcessor.processRequest(tuple);
   }
 

@@ -130,7 +130,7 @@ public class PreProcessor implements RequestProcessor,
           addToQuorumSet(source);
         } else if (msg.getType() == MessageType.REMOVE) {
           String peerId = msg.getRemove().getServerId();
-          LOG.debug("Got LEAVE for {}.", peerId);
+          LOG.debug("Got REMOVE for {}.", peerId);
           this.clusterConfig.removePeer(peerId);
           this.clusterConfig.setVersion(zxid);
           ByteBuffer cop = this.clusterConfig.toByteBuffer();
