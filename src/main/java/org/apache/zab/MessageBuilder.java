@@ -40,6 +40,7 @@ import org.apache.zab.proto.ZabMessage.Request;
 import org.apache.zab.proto.ZabMessage.Snapshot;
 import org.apache.zab.proto.ZabMessage.Truncate;
 import static org.apache.zab.proto.ZabMessage.Message.MessageType;
+import static org.apache.zab.proto.ZabMessage.Proposal.ProposalType;
 
 /**
  * Helper class used for creating protobuf messages.
@@ -83,7 +84,7 @@ public final class MessageBuilder {
   public static Transaction fromProposal(Proposal prop) {
     Zxid zxid = fromProtoZxid(prop.getZxid());
     ByteBuffer buffer = prop.getBody().asReadOnlyByteBuffer();
-    return new Transaction(zxid, prop.getType(), buffer);
+    return new Transaction(zxid, prop.getType().getNumber(), buffer);
   }
 
   /**
@@ -96,7 +97,7 @@ public final class MessageBuilder {
     ZabMessage.Zxid zxid = toProtoZxid(txn.getZxid());
     ByteString bs = ByteString.copyFrom(txn.getBody());
     return Proposal.newBuilder().setZxid(zxid).setBody(bs)
-                   .setType(txn.getType()).build();
+                   .setType(ProposalType.values()[txn.getType()]).build();
   }
 
   /**
@@ -207,7 +208,7 @@ public final class MessageBuilder {
     Proposal prop = Proposal.newBuilder()
                             .setZxid(zxid)
                             .setBody(ByteString.copyFrom(txn.getBody()))
-                            .setType(txn.getType())
+                            .setType(ProposalType.values()[txn.getType()])
                             .build();
 
     return Message.newBuilder().setType(MessageType.PROPOSAL)
@@ -228,7 +229,7 @@ public final class MessageBuilder {
                             .setZxid(zxid)
                             .setBody(ByteString.copyFrom(txn.getBody()))
                             .setClientId(clientId)
-                            .setType(txn.getType())
+                            .setType(ProposalType.values()[txn.getType()])
                             .build();
 
     return Message.newBuilder().setType(MessageType.PROPOSAL)

@@ -29,6 +29,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.Message.MessageType;
+import org.apache.zab.proto.ZabMessage.Proposal.ProposalType;
 import org.apache.zab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -138,7 +139,7 @@ public class SyncProposalProcessor implements RequestProcessor,
           this.log.append(txn);
           batchCount++;
           lastReq = req;
-          if (txn.getType() == Transaction.COP) {
+          if (txn.getType() == ProposalType.COP_VALUE) {
             // If it's COP, we should also update cluster_config file.
             ClusterConfiguration cnf =
               ClusterConfiguration.fromByteBuffer(body, this.serverId);
