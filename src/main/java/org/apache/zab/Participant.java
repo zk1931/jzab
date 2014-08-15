@@ -305,7 +305,7 @@ public abstract class Participant {
     if (msg.getType() == MessageType.DIFF) {
       // DIFF message.
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Got DIFF : {}",
+        LOG.debug("Got message {}",
                   TextFormat.shortDebugString(msg));
       }
       ZabMessage.Diff diff = msg.getDiff();
@@ -321,7 +321,7 @@ public abstract class Participant {
       // Participant, just trucate this Participant's history up to the
       // last prefix zxid.
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Got TRUNCATE: {}",
+        LOG.debug("Got message {}",
                   TextFormat.shortDebugString(msg));
       }
       ZabMessage.Truncate trunc = msg.getTruncate();
@@ -333,7 +333,7 @@ public abstract class Participant {
     } else {
       // SNAPSHOT message.
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Got SNAPSHOT: {}",
+        LOG.debug("Got message {}",
                  TextFormat.shortDebugString(msg));
       }
       ZabMessage.Snapshot snap = msg.getSnapshot();
@@ -351,8 +351,8 @@ public abstract class Participant {
       msg = tuple.getMessage();
       source = tuple.getServerId();
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Got PROPOSAL from {} : {}", source,
-                  TextFormat.shortDebugString(msg));
+        LOG.debug("Got message {} from {}", TextFormat.shortDebugString(msg),
+                  source);
       }
       ZabMessage.Proposal prop = msg.getProposal();
       Zxid zxid = MessageBuilder.fromProtoZxid(prop.getZxid());

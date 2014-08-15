@@ -105,7 +105,7 @@ public class Leader extends Participant {
         Message msg = tuple.getMessage();
         String peerId = msg.getDisconnected().getServerId();
         if (LOG.isDebugEnabled()) {
-          LOG.debug("Got DISCONNECTED in getMessage().",
+          LOG.debug("Got message {}.",
                     TextFormat.shortDebugString(msg));
         }
         if (this.quorumSet.containsKey(peerId)) {
@@ -596,31 +596,21 @@ public class Leader extends Participant {
             }
             continue;
           }
+          if (msg.getType() != MessageType.HEARTBEAT && LOG.isDebugEnabled()) {
+            LOG.debug("Got message {} from {}",
+                      TextFormat.shortDebugString(msg), source);
+          }
           if (msg.getType() == MessageType.ACK) {
-            if (LOG.isDebugEnabled()) {
-              LOG.debug("Got ACK {} from {}.",
-                        TextFormat.shortDebugString(msg),
-                        source);
-            }
             onAck(tuple, ackProcessor);
           } else if (msg.getType() == MessageType.REQUEST) {
-            LOG.debug("Got REQUEST from {}.", source);
             tuple.setZxid(getNextProposedZxid());
             preProcessor.processRequest(tuple);
           } else if (msg.getType() == MessageType.HEARTBEAT) {
             LOG.trace("Got HEARTBEAT replies from {}", source);
           } else if (msg.getType() == MessageType.PROPOSAL) {
-            if (LOG.isDebugEnabled()) {
-              LOG.debug("Got PROPOSAL message {}",
-                       TextFormat.shortDebugString(msg));
-            }
             syncProcessor.processRequest(tuple);
             commitProcessor.processRequest(tuple);
           } else if (msg.getType() == MessageType.COMMIT) {
-            if (LOG.isDebugEnabled()) {
-              LOG.debug("Got COMMIT message {}",
-                       TextFormat.shortDebugString(msg));
-            }
             lastCommittedZxid = MessageBuilder
                                 .fromProtoZxid(msg.getCommit().getZxid());
             // If there's a pending COP, we need to find out whether it can be
@@ -636,16 +626,8 @@ public class Leader extends Participant {
             }
             onCommit(tuple, commitProcessor);
           } else if (msg.getType() == MessageType.DISCONNECTED) {
-            if (LOG.isDebugEnabled()) {
-              LOG.debug("Got DISCONNECTED message {}",
-                        TextFormat.shortDebugString(msg));
-            }
             onDisconnected(tuple, preProcessor, ackProcessor);
           } else if (msg.getType() == MessageType.REMOVE) {
-            if (LOG.isDebugEnabled()) {
-              LOG.debug("Got message REMOVE {}",
-                        TextFormat.shortDebugString(msg));
-            }
             if (pendingCopZxid != null) {
               LOG.warn("There's a pending reconfiguration still in progress.");
               continue;
@@ -654,7 +636,6 @@ public class Leader extends Participant {
             tuple.setZxid(pendingCopZxid);
             onRemove(tuple, preProcessor);
           } else if (msg.getType() == MessageType.SHUT_DOWN) {
-            LOG.debug("Got SHUT_DOWN.");
             throw new LeftCluster("Left cluster");
           } else {
             if (LOG.isWarnEnabled()) {
@@ -710,7 +691,7 @@ public class Leader extends Participant {
       // If there're any new joined but uncommitted followers. Check if we can
       // send out first COMMIT message to them.
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Got COMMIT {} and there're pending peers.",
+        LOG.debug("Got message {} and there're pending peers.",
                   TextFormat.shortDebugString(msg));
       }
       Zxid zxidCommit = MessageBuilder.fromProtoZxid(msg.getCommit().getZxid());
@@ -762,7 +743,7 @@ public class Leader extends Participant {
       // This is the ACK sent from the peer at the end of the synchronization.
       PeerHandler ph = pendingPeers.get(source);
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Got first ACK {} from pending peer {}.",
+        LOG.debug("Got first {} from pending peer {}.",
                   TextFormat.shortDebugString(msg),
                   source);
       }
