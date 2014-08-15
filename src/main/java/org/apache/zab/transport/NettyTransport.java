@@ -37,11 +37,16 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.codec.LengthFieldPrepender;
+import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.timeout.ReadTimeoutHandler;
 import io.netty.util.AttributeKey;
 import io.netty.util.ReferenceCountUtil;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.net.UnknownHostException;
+import java.security.GeneralSecurityException;
+import java.security.KeyStore;
 import java.util.Map;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.Callable;
@@ -50,6 +55,11 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.RejectedExecutionException;
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.TrustManagerFactory;
 import org.apache.zab.MessageBuilder;
 import org.apache.zab.proto.ZabMessage.Message;
 import org.slf4j.Logger;
@@ -68,14 +78,52 @@ public class NettyTransport extends Transport {
   private final EventLoopGroup bossGroup = new NioEventLoopGroup();
   private final EventLoopGroup workerGroup = new NioEventLoopGroup();
   final Channel channel;
+  private final File keyStore;
+  private final char[] keyStorePassword;
+  private final File trustStore;
+  private final char[] trustStorePassword;
+  private SSLContext clientContext;
+  private SSLContext serverContext;
 
   // remote id => sender map.
   ConcurrentMap<String, Sender> senders =
     new ConcurrentHashMap<String, Sender>();
 
   public NettyTransport(String hostPort, final Receiver receiver)
-      throws InterruptedException, UnknownHostException {
+      throws InterruptedException, GeneralSecurityException, IOException {
+    this(hostPort, receiver, null, null, null, null);
+  }
+
+  /**
+   * Constructs a NettyTransport object.
+   *
+   * @param hostPort "hostname:port" string. The netty transport binds to the
+   *                 port specified in the string.
+   * @param receiver receiver callback.
+   * @param keyStore keystore file that contains the private key and
+   *                 corresponding certificate chain.
+   * @param keyStorePassword password for the keystore, or null if the password
+   *                         is not set.
+   * @param trustStore truststore file that contains trusted CA certificates.
+   * @param trustStorePassword password for the truststore, or null if the
+   *                           password is not set.
+   */
+  public NettyTransport(String hostPort, final Receiver receiver,
+                        final File keyStore, final String keyStorePassword,
+                        final File trustStore,
+                        final String trustStorePassword)
+      throws InterruptedException, GeneralSecurityException, IOException {
     super(receiver);
+    this.keyStore = keyStore;
+    this.trustStore = trustStore;
+    this.keyStorePassword =keyStorePassword != null ?
+                           keyStorePassword.toCharArray() : null;
+    this.trustStorePassword = trustStorePassword != null ?
+                              trustStorePassword.toCharArray() : null;
+    if (isSslEnabled()) {
+      initSsl();
+    }
+
     this.hostPort = hostPort;
     String[] address = hostPort.split(":", 2);
     int port = Integer.parseInt(address[1]);
@@ -89,6 +137,12 @@ public class NettyTransport extends Transport {
       .childHandler(new ChannelInitializer<SocketChannel>() {
         @Override
         public void initChannel(SocketChannel ch) throws Exception {
+          if (isSslEnabled()) {
+            SSLEngine engine = serverContext.createSSLEngine();
+            engine.setUseClientMode(false);
+            engine.setNeedClientAuth(true);
+            ch.pipeline().addLast(new SslHandler(engine));
+          }
           // Incoming handlers
           ch.pipeline().addLast(
             new LengthFieldBasedFrameDecoder(Integer.MAX_VALUE, 0, 4, 0, 4));
@@ -101,6 +155,32 @@ public class NettyTransport extends Transport {
       });
     channel = b.bind(port).sync().channel();
     LOG.info("Server started: {}", hostPort);
+  }
+
+  private boolean isSslEnabled() {
+    return keyStore != null && trustStore != null;
+  }
+
+  private void initSsl() throws IOException, GeneralSecurityException {
+    String kmAlgorithm = KeyManagerFactory.getDefaultAlgorithm();
+    String tmAlgorithm = TrustManagerFactory.getDefaultAlgorithm();
+    // TODO make the protocol and keystore type configurable.
+    String protocol = "TLS";
+    KeyStore ks = KeyStore.getInstance("JKS");
+    KeyStore ts = KeyStore.getInstance("JKS");
+    try (FileInputStream keyStoreStream = new FileInputStream(keyStore);
+         FileInputStream trustStoreStream = new FileInputStream(trustStore)) {
+      ks.load(keyStoreStream, keyStorePassword);
+      ts.load(trustStoreStream, trustStorePassword);
+    }
+    KeyManagerFactory kmf = KeyManagerFactory.getInstance(kmAlgorithm);
+    TrustManagerFactory tmf = TrustManagerFactory.getInstance(tmAlgorithm);
+    kmf.init(ks, keyStorePassword);
+    tmf.init(ts);
+    serverContext = SSLContext.getInstance(protocol);
+    clientContext = SSLContext.getInstance(protocol);
+    serverContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
+    clientContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
   }
 
   /**
@@ -287,6 +367,11 @@ public class NettyTransport extends Transport {
       bootstrap.handler(new ChannelInitializer<SocketChannel>() {
         @Override
         public void initChannel(SocketChannel ch) throws Exception {
+          if (isSslEnabled()) {
+            SSLEngine engine = serverContext.createSSLEngine();
+            engine.setUseClientMode(true);
+            ch.pipeline().addLast(new SslHandler(engine));
+          }
           // Inbound handlers.
           ch.pipeline().addLast(new ReadTimeoutHandler(2));
           ch.pipeline().addLast(
@@ -374,6 +459,8 @@ public class NettyTransport extends Transport {
         if (channel != null) {
           channel.close().syncUninterruptibly();
         }
+      } catch (RejectedExecutionException ex) {
+        LOG.debug("Ignoring rejected execution exception", ex);
       } finally {
         workerGroup.shutdownGracefully();
       }

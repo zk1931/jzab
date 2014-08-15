@@ -126,7 +126,7 @@
         <executions>
           <execution>
             <id>auto-clean</id>
-            <phase>process-test-resources</phase>
+            <phase>initialize</phase>
             <goals>
               <goal>clean</goal>
             </goals>
@@ -135,6 +135,7 @@
              <filesets>
                 <fileset>
                   <directory>target/data</directory>
+                  <directory>target/generated-resources</directory>
                 </fileset>
               </filesets>
             </configuration>
@@ -157,6 +158,22 @@
                 </exec>
               </tasks>
               <sourceRoot>target/generated-sources</sourceRoot>
+            </configuration>
+            <goals>
+              <goal>run</goal>
+            </goals>
+          </execution>
+          <!-- Generate keystore/truststore for netty ssl test -->
+          <execution>
+            <id>generate-test-resources</id>
+            <phase>generate-test-resources</phase>
+            <configuration>
+              <tasks>
+                <mkdir dir="target/generated-resources/ssl"/>
+                <exec executable="src/test/resources/generate-test-certificates">
+                  <arg value="target/generated-resources/ssl"/>
+                </exec>
+              </tasks>
             </configuration>
             <goals>
               <goal>run</goal>

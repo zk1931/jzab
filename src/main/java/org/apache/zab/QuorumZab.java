@@ -21,6 +21,7 @@ package org.apache.zab;
 import java.io.IOException;
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.security.GeneralSecurityException;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -432,7 +433,8 @@ public class QuorumZab {
      */
     private ParticipantState participantState;
 
-    private void init() throws IOException, InterruptedException {
+    private void init() throws IOException, InterruptedException,
+                               GeneralSecurityException {
       PersistentState persistence = new PersistentState(config.getLogDir(),
                                                         testState.getLog());
       if (this.joinPeer != null) {

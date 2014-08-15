@@ -19,10 +19,12 @@ package org.apache.zab.transport;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
+import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.apache.zab.TestBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -472,6 +474,72 @@ public class NettyTransportTest extends TestBase {
     latchA.await();
     latchB.await();
     latchC.await();
+    transportA.shutdown();
+    transportB.shutdown();
+    transportC.shutdown();
+  }
+
+  @Test(timeout=10000)
+  public void testSsl() throws Exception {
+    String peerA = getUniqueHostPort();
+    String peerB = getUniqueHostPort();
+    String peerC = getUniqueHostPort();
+    String peerD = getUniqueHostPort();
+    final CountDownLatch latchA = new CountDownLatch(1);
+    Transport.Receiver receiverA = new Transport.Receiver() {
+      public void onReceived(String source, ByteBuffer message) {
+        latchA.countDown();
+      }
+      public void onDisconnected(String source) {
+      }
+    };
+    Transport.Receiver receiverB = new Transport.Receiver() {
+      public void onReceived(String source, ByteBuffer message) {
+      }
+      public void onDisconnected(String source) {
+      }
+    };
+    Transport.Receiver receiverC = new Transport.Receiver() {
+      public void onReceived(String source, ByteBuffer message) {
+      }
+      public void onDisconnected(String source) {
+      }
+    };
+    Transport.Receiver receiverD = new Transport.Receiver() {
+      public void onReceived(String source, ByteBuffer message) {
+      }
+      public void onDisconnected(String source) {
+      }
+    };
+    String password = "pa55w0rd";
+    String sslDir = "target" + File.separator + "generated-resources" +
+                    File.separator + "ssl";
+
+    File trustStore = new File(sslDir, "truststore.jks");
+    File keyStoreA = new File(sslDir, "keystore_a.jks");
+    File keyStoreB = new File(sslDir, "keystore_b.jks");
+    File keyStoreC = new File(sslDir, "keystore_c.jks");
+
+    NettyTransport transportA = new NettyTransport(peerA, receiverA, keyStoreA,
+                                    password, trustStore, password);
+    NettyTransport transportB = new NettyTransport(peerB, receiverB, keyStoreB,
+                                    password, trustStore, password);
+    NettyTransport transportC = new NettyTransport(peerC, receiverC, keyStoreC,
+                                    password, trustStore, password);
+    NettyTransport transportD = new NettyTransport(peerD, receiverD);
+
+    // D doesn't use SSL
+    transportD.send(peerA, createByteBuffer(0));
+    Assert.assertFalse(latchA.await(2, TimeUnit.SECONDS));
+
+    // C uses untrusted cert
+    transportC.send(peerA, createByteBuffer(0));
+    Assert.assertFalse(latchA.await(2, TimeUnit.SECONDS));
+
+    // B uses trusted cert
+    transportB.send(peerA, createByteBuffer(0));
+    latchA.await();
+
     transportA.shutdown();
     transportB.shutdown();
     transportC.shutdown();

@@ -21,6 +21,7 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.TextFormat;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.security.GeneralSecurityException;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.zab.proto.ZabMessage.Message;
@@ -74,7 +75,7 @@ public class ParticipantState implements Transport.Receiver {
     LoggerFactory.getLogger(ParticipantState.class);
 
   ParticipantState(PersistentState persistence, String serverId)
-      throws InterruptedException, IOException {
+      throws InterruptedException, IOException , GeneralSecurityException {
     this.persistence = persistence;
     this.serverId = serverId;
     this.transport = new NettyTransport(this.serverId, this);
