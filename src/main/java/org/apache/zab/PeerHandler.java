@@ -120,6 +120,10 @@ public class PeerHandler {
    */
   protected Future<Void> ftBroad = null;
 
+  /**
+   * If this peer needs to be synchronized, this records the zxid of last
+   * transaction in the synchronization.
+   */
   private Zxid lastSyncedZxid = null;
 
   private static final Logger LOG = LoggerFactory.getLogger(PeerHandler.class);

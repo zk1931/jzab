@@ -531,9 +531,9 @@ public class Leader extends Participant {
     // Gets the initial configuration at the beginning of broadcasting.
     ClusterConfiguration clusterConfig = persistence.getLastSeenConfig();
     PreProcessor preProcessor =
-      new PreProcessor(stateMachine, quorumSet, clusterConfig);
-    AckProcessor ackProcessor = new AckProcessor(quorumSet, persistence,
-                                                 lastZxid);
+      new PreProcessor(stateMachine, quorumSet, clusterConfig.clone());
+    AckProcessor ackProcessor =
+      new AckProcessor(quorumSet, clusterConfig.clone(), lastZxid);
     SyncProposalProcessor syncProcessor =
         new SyncProposalProcessor(persistence, transport, SYNC_MAX_BATCH_SIZE);
     CommitProcessor commitProcessor =
@@ -551,7 +551,7 @@ public class Leader extends Participant {
     this.lastProposedZxid = lastZxid;
     this.lastAckedZxid = lastZxid;
     try {
-      while (this.quorumSet.size() >= getQuorumSize()) {
+      while (this.quorumSet.size() >= 0/*getQuorumSize()*/) {
         MessageTuple tuple = getMessage();
         Message msg = tuple.getMessage();
         String source = tuple.getServerId();
@@ -634,7 +634,7 @@ public class Leader extends Participant {
             }
             pendingCopZxid = getNextProposedZxid();
             tuple.setZxid(pendingCopZxid);
-            onRemove(tuple, preProcessor);
+            onRemove(tuple, preProcessor, ackProcessor);
           } else if (msg.getType() == MessageType.SHUT_DOWN) {
             throw new LeftCluster("Left cluster");
           } else {
@@ -818,8 +818,8 @@ public class Leader extends Participant {
     }
   }
 
-  void onRemove(MessageTuple tuple, PreProcessor preProcessor)
-      throws IOException {
+  void onRemove(MessageTuple tuple, PreProcessor preProcessor,
+                AckProcessor ackProcessor) throws IOException {
     // NOTE : For REMOVE message, we shouldn't remove server from quorumSet
     // here, the leaving server will close the transport once the COP gets
     // committed and then we'll remove it like normal DISCONNECTED server.
@@ -828,6 +828,7 @@ public class Leader extends Participant {
     // all the proposals after COP will not be the responsibilities of removed
     // server.
     preProcessor.processRequest(tuple);
+    ackProcessor.processRequest(tuple);
   }
 
   void checkFollowerLiveness() {

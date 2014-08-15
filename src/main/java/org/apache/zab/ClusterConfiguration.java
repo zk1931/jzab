@@ -137,4 +137,9 @@ class ClusterConfiguration {
   public int getQuorumSize() {
     return this.getPeers().size() / 2 + 1;
   }
+
+  public ClusterConfiguration clone() {
+    return new ClusterConfiguration(version, new ArrayList<String>(peers),
+                                    serverId);
+  }
 }
