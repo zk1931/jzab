@@ -205,7 +205,7 @@ public class NettyTransport extends Transport {
   /**
    * Handles server-side handshake.
    */
-  public class ServerHandshakeHandler extends ChannelInboundHandlerAdapter {
+  private class ServerHandshakeHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg)
         throws Exception {
@@ -258,7 +258,7 @@ public class NettyTransport extends Transport {
    * This handler converts incoming messages to ByteBuffer and calls
    * Transport.Receiver.onReceived() method.
    */
-  public class ByteBufferHandler extends ChannelInboundHandlerAdapter {
+  private class ByteBufferHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
       ByteBuf bb = (ByteBuf)msg;
@@ -279,7 +279,7 @@ public class NettyTransport extends Transport {
   /**
    * Handles errors.
    */
-  public class ErrorHandler extends ChannelInboundHandlerAdapter {
+  private class ErrorHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
       String remoteId = ctx.channel().attr(NettyTransport.REMOTE_ID).get();
@@ -343,7 +343,7 @@ public class NettyTransport extends Transport {
   /**
    * sender thread.
    */
-  public class Sender implements Callable<Void> {
+  private class Sender implements Callable<Void> {
     private final String destination;
     private Bootstrap bootstrap = null;
     private Channel channel;
