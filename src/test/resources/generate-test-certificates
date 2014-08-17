@@ -1,0 +1,16 @@
+#!/bin/bash
+#
+# - Generate 3 key pairs keystore_a.jks, keystore_b.jks, and keystore_c.jks.
+# - Import certificates from keystore_a.jks and keystore_b.jks to a truststore.
+#
+OUTDIR=$1
+PASS=pa55w0rd
+DNAME='CN=Unknown, OU=Unknown, O=Unknown, L=Unknown, ST=Unknown, C=Unknown'
+keytool -keystore $OUTDIR/keystore_a.jks -genkey -alias javazab -keypass $PASS -storepass $PASS -dname "$DNAME"
+keytool -keystore $OUTDIR/keystore_b.jks -genkey -alias javazab -keypass $PASS -storepass $PASS -dname "$DNAME"
+keytool -keystore $OUTDIR/keystore_c.jks -genkey -alias javazab -keypass $PASS -storepass $PASS -dname "$DNAME"
+
+keytool -exportcert -rfc -alias javazab -storepass $PASS -keystore $OUTDIR/keystore_a.jks -file $OUTDIR/cert_a.pem
+keytool -exportcert -rfc -alias javazab -storepass $PASS -keystore $OUTDIR/keystore_b.jks -file $OUTDIR/cert_b.pem
+keytool -import -file $OUTDIR/cert_a.pem -alias cert_a -keystore $OUTDIR/truststore.jks -storepass $PASS -noprompt
+keytool -import -file $OUTDIR/cert_b.pem -alias cert_b -keystore $OUTDIR/truststore.jks -storepass $PASS -noprompt
