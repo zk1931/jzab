@@ -64,11 +64,11 @@ public class PersistentState {
     this(dir, null);
   }
 
-  public PersistentState(String dir, Log dummyLog) throws IOException {
-    this(new File(dir), dummyLog);
+  public PersistentState(String dir, Log log) throws IOException {
+    this(new File(dir), log);
   }
 
-  public PersistentState(File dir, Log dummyLog) throws IOException {
+  public PersistentState(File dir, Log log) throws IOException {
     this.logDir = dir;
     LOG.debug("Trying to create log directory {}", logDir.getAbsolutePath());
     if (!logDir.mkdir()) {
@@ -79,8 +79,8 @@ public class PersistentState {
     this.fProposedEpoch = new File(logDir, "proposed_epoch");
     this.fLastSeenConfig = new File(logDir, "cluster_config");
     File logFile = new File(logDir, "transaction.log");
-    if (dummyLog != null) {
-      this.log = dummyLog;
+    if (log != null) {
+      this.log = log;
     } else {
       this.log = new SimpleLog(logFile);
     }

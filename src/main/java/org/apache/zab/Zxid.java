@@ -111,11 +111,11 @@ public class Zxid implements Comparable<Zxid> {
   }
 
   public String toSimpleString() {
-    return this.epoch + " " + this.xid;
+    return String.format("%010d_%010d", this.epoch, this.xid);
   }
 
   public static Zxid fromSimpleString(String zxid) {
-    String []str = zxid.split(" ");
+    String []str = zxid.split("_");
     if (str.length != 2) {
       throw new RuntimeException("Can't convert string to zxid, wrong format.");
     }
