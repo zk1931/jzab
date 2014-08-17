@@ -99,21 +99,28 @@ public class AckProcessor implements RequestProcessor,
   // configuration.
   private Zxid getCommittedZxid(ClusterConfiguration cnf) {
     ArrayList<Zxid> zxids = new ArrayList<Zxid>();
+    LOG.debug("Getting zxid can be committd for cluster configuration {}",
+              cnf.getVersion());
     for (PeerHandler ph : quorumSet.values()) {
-      LOG.debug("Last zxid of {} is {}",
-                ph.getServerId(),
-                ph.getLastAckedZxid());
       Zxid ackZxid = ph.getLastAckedZxid();
-      if (ackZxid != null && cnf.contains(ph.getServerId())) {
-        // Add to list only if it's in the given cluster configuration and it
-        // has sent at least one ACK to leader.
-        zxids.add(ph.getLastAckedZxid());
+      if (cnf.contains(ph.getServerId())) {
+        // Only consider the peer who is in the given configuration.
+        if (ackZxid != null) {
+          // Ignores those who haven't acknowledged.
+          zxids.add(ackZxid);
+        }
+        LOG.debug(" - {}'s last acked zxid {}", ph.getServerId(), ackZxid);
       }
     }
     int quorumSize = cnf.getQuorumSize();
+    if (quorumSize == 0) {
+      // In one case, there's only one server in cluster, and the server is
+      // removed. Commit it directly.
+      return cnf.getVersion();
+    }
     if (zxids.size() < quorumSize) {
       // It's impossible to be committed.
-      return this.lastCommittedZxid;
+      return Zxid.ZXID_NOT_EXIST;
     }
     // Sorts the last ACK zxid of each peer to find one transaction which
     // can be committed safely.
@@ -144,10 +151,13 @@ public class AckProcessor implements RequestProcessor,
             // Find out the last transaction which can be committed for pending
             // configuration.
             zxidCanCommit = getCommittedZxid(this.pendingConfig);
-            LOG.debug("Pending configuration can COMMIT {}", zxidCanCommit);
+            LOG.debug("Zxid can be committed for pending configuration is {}.",
+                      zxidCanCommit);
             if (zxidCanCommit.compareTo(pendingConfig.getVersion()) >= 0) {
               // The pending configuration is just committed, make it becomes
               // current configuration.
+              LOG.debug("Pending configuration {} is committed, turn it into" +
+                  " current configuration.", pendingConfig.getVersion());
               this.clusterConfig = this.pendingConfig;
               this.pendingConfig = null;
             } else {
@@ -168,6 +178,8 @@ public class AckProcessor implements RequestProcessor,
               zxidCanCommit =
                 new Zxid(version.getEpoch(), version.getXid() - 1);
             }
+            LOG.debug("Zxid can be committed for current configuration is {}",
+                      zxidCanCommit);
           }
           LOG.debug("Can COMMIT : {}", zxidCanCommit);
           if (zxidCanCommit.compareTo(this.lastCommittedZxid) > 0) {

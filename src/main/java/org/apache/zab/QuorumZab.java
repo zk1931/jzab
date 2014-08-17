@@ -484,6 +484,7 @@ public class QuorumZab {
           join(this.joinPeer);
         }
         while (true) {
+          stateMachine.recovering();
           PersistentState persistence = participantState.getPersistence();
           String leader = electionAlg.electLeader(persistence);
           LOG.debug("Select {} as leader.", leader);

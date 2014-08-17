@@ -71,6 +71,11 @@ public class Leader extends Participant {
    */
   private int establishedEpoch = -1;
 
+  /**
+   * The zxid for pending COP, or null if there's no pending COP.
+   */
+  private Zxid pendingCopZxid = null;
+
   private static final Logger LOG = LoggerFactory.getLogger(Leader.class);
 
   public Leader(ParticipantState participantState,
@@ -545,13 +550,11 @@ public class Leader extends Participant {
     notifyQuorumSetChange();
     // Starts thread to process request in request queue.
     SendRequestTask sendTask = new SendRequestTask(this.serverId);
-    // The zxid for pending COP, it's null if there's no pending COP.
-    Zxid pendingCopZxid = null;
     this.lastCommittedZxid = lastZxid;
     this.lastProposedZxid = lastZxid;
     this.lastAckedZxid = lastZxid;
     try {
-      while (this.quorumSet.size() >= 0/*getQuorumSize()*/) {
+      while (this.quorumSet.size() >= getQuorumSize()) {
         MessageTuple tuple = getMessage();
         Message msg = tuple.getMessage();
         String source = tuple.getServerId();
@@ -611,19 +614,6 @@ public class Leader extends Participant {
             syncProcessor.processRequest(tuple);
             commitProcessor.processRequest(tuple);
           } else if (msg.getType() == MessageType.COMMIT) {
-            lastCommittedZxid = MessageBuilder
-                                .fromProtoZxid(msg.getCommit().getZxid());
-            // If there's a pending COP, we need to find out whether it can be
-            // committed.
-            if (pendingCopZxid != null &&
-                lastCommittedZxid.compareTo(pendingCopZxid) >= 0) {
-              LOG.debug("COP of {} has been committed.", pendingCopZxid);
-              // Reset it to null to allow for next reconfiguration.
-              pendingCopZxid = null;
-              if (stateChangeCallback != null) {
-                stateChangeCallback.commitCop();
-              }
-            }
             onCommit(tuple, commitProcessor);
           } else if (msg.getType() == MessageType.DISCONNECTED) {
             onDisconnected(tuple, preProcessor, ackProcessor);
@@ -684,24 +674,37 @@ public class Leader extends Participant {
     ackProcessor.processRequest(tuple);
   }
 
-  void onCommit(MessageTuple tuple,
-                CommitProcessor commitProcessor) {
+  void onCommit(MessageTuple tuple, CommitProcessor commitProcessor) {
     Message msg = tuple.getMessage();
+    this.lastCommittedZxid =
+      MessageBuilder.fromProtoZxid(msg.getCommit().getZxid());
+    // If there's a pending COP we need to find out whether it can be committed.
+    if (pendingCopZxid != null &&
+        lastCommittedZxid.compareTo(this.pendingCopZxid) >= 0) {
+      LOG.debug("COP of {} has been committed.", pendingCopZxid);
+      // Resets it to null to allow for next reconfiguration.
+      pendingCopZxid = null;
+      if (stateChangeCallback != null) {
+        stateChangeCallback.commitCop();
+      }
+    }
     if (!pendingPeers.isEmpty()) {
-      // If there're any new joined but uncommitted followers. Check if we can
-      // send out first COMMIT message to them.
+      // If there're any pending followers who are waiting for synchronization
+      // complete we need to checkout whether we can send out the first COMMIT
+      // message to them.
       if (LOG.isDebugEnabled()) {
         LOG.debug("Got message {} and there're pending peers.",
                   TextFormat.shortDebugString(msg));
       }
-      Zxid zxidCommit = MessageBuilder.fromProtoZxid(msg.getCommit().getZxid());
-      Iterator<Map.Entry<String, PeerHandler>> iter = pendingPeers.entrySet()
-                                                                  .iterator();
+      Zxid zxidCommit = this.lastCommittedZxid;
+      Iterator<Map.Entry<String, PeerHandler>> iter =
+        pendingPeers.entrySet().iterator();
       while (iter.hasNext()) {
         PeerHandler ph = iter.next().getValue();
         Zxid ackZxid = ph.getLastAckedZxid();
         if (ackZxid != null && zxidCommit.compareTo(ackZxid) >= 0) {
-          LOG.debug("COMMIT >= last acked zxid of pending peer. Send COMMIT.");
+          LOG.debug("COMMIT >= last acked zxid {} of pending peer. Send COMMIT",
+                    ackZxid);
           Message commit = MessageBuilder.buildCommit(ackZxid);
           sendMessage(ph.getServerId(), commit);
           ph.startBroadcastingTask();

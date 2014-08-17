@@ -332,4 +332,28 @@ public class AckProcessorTest extends TestBase {
     Assert.assertEquals(1, receiver1.committedZxids.size());
     Assert.assertEquals(1, receiver2.committedZxids.size());
   }
+
+  @Test(timeout=3000)
+  public void testRemoveItself() throws Exception {
+    // The cluster has only one server, and the server removes itself from the
+    // cluster.
+    String server1 = getUniqueHostPort();
+    TestReceiver receiver1 = new TestReceiver(1);
+    NettyTransport transport1 = new NettyTransport(server1, receiver1);
+    PeerHandler ph1 = new PeerHandler(server1, transport1, 10000);
+    ph1.startBroadcastingTask();
+    List<String> peers = new ArrayList<String>();
+    peers.add(server1);
+    HashMap<String, PeerHandler> quorumSet = new HashMap<String, PeerHandler>();
+    quorumSet.put(server1, ph1);
+    ClusterConfiguration cnf =
+      new ClusterConfiguration(Zxid.ZXID_NOT_EXIST, peers, server1);
+    AckProcessor ackProcessor =
+      new AckProcessor(quorumSet, cnf, Zxid.ZXID_NOT_EXIST);
+    Zxid z1 = new Zxid(0, 0);
+    ackProcessor.processRequest(createRemove(server1, z1));
+    ackProcessor.processRequest(createAck(server1, z1));
+    // Waits COMMIT is sent to both servers.
+    receiver1.latch.await();
+  }
 }
