@@ -67,8 +67,10 @@ public class SyncProposalProcessorTest extends TestBase {
     this.fileName = fileName;
   }
 
-  Log getLog() throws Exception {
-    File f = new File(getDirectory(), this.fileName);
+  Log getLog(String subdir) throws Exception {
+    File fSub = new File(getDirectory(), subdir);
+    fSub.mkdir();
+    File f = new File(fSub, this.fileName);
     if (logClass == RollingLog.class) {
       // For testing purpose, set the rolling size be small.
       return (Log)logClass.getConstructor(File.class, Long.TYPE)
@@ -115,8 +117,8 @@ public class SyncProposalProcessorTest extends TestBase {
       public void onDisconnected(String source) {
       }
     }
-
-    Log log = getLog();
+    Log log = getLog(String.format("%d_%d_%d_%d", epoch, transactionSize,
+                                   numTransactions, batchSize));
     PersistentState persistence = new PersistentState(getDirectory(), log);
     TestReceiver receiver = new TestReceiver();
     Transport transport = new NettyTransport(leader, receiver);
