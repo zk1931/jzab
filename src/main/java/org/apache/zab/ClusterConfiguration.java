@@ -135,6 +135,16 @@ class ClusterConfiguration {
    * Gets the minimal quorum size.
    */
   public int getQuorumSize() {
-    return this.getPeers().size() / 2 + 1;
+    int clusterSize = this.getPeers().size();
+    if (clusterSize == 0) {
+      return 0;
+    } else {
+      return clusterSize / 2 + 1;
+    }
+  }
+
+  public ClusterConfiguration clone() {
+    return new ClusterConfiguration(version, new ArrayList<String>(peers),
+                                    serverId);
   }
 }

@@ -45,11 +45,25 @@ public class AckProcessor implements RequestProcessor,
   private final BlockingQueue<MessageTuple> ackQueue =
       new LinkedBlockingQueue<MessageTuple>();
 
+  /**
+   * The quorum set in main thread.
+   */
   private final Map<String, PeerHandler> quorumSetOriginal;
 
+  /**
+   * The quorum set for AckProcessor.
+   */
   private final Map<String, PeerHandler> quorumSet;
 
-  private final PersistentState persistence;
+  /**
+   * Current cluster configuration.
+   */
+  private ClusterConfiguration clusterConfig;
+
+  /**
+   * The pending configuration which has not been committed yet.
+   */
+  private ClusterConfiguration pendingConfig;
 
   private static final Logger LOG =
       LoggerFactory.getLogger(AckProcessor.class);
@@ -63,11 +77,11 @@ public class AckProcessor implements RequestProcessor,
   private Zxid lastCommittedZxid;
 
   public AckProcessor(Map<String, PeerHandler> quorumSet,
-                      PersistentState persistence,
+                      ClusterConfiguration cnf,
                       Zxid lastCommittedZxid) {
     this.quorumSetOriginal = quorumSet;
     this.quorumSet = new HashMap<String, PeerHandler>(quorumSet);
-    this.persistence = persistence;
+    this.clusterConfig = cnf;
     this.lastCommittedZxid = lastCommittedZxid;
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
@@ -78,6 +92,40 @@ public class AckProcessor implements RequestProcessor,
   @Override
   public void processRequest(MessageTuple request) {
     this.ackQueue.add(request);
+  }
+
+  // Given a cluster configuration and the quorum set, find out the last zxid of
+  // the transactions which could be committed for the given cluster
+  // configuration.
+  private Zxid getCommittedZxid(ClusterConfiguration cnf) {
+    ArrayList<Zxid> zxids = new ArrayList<Zxid>();
+    LOG.debug("Getting zxid can be committd for cluster configuration {}",
+              cnf.getVersion());
+    for (PeerHandler ph : quorumSet.values()) {
+      Zxid ackZxid = ph.getLastAckedZxid();
+      if (cnf.contains(ph.getServerId())) {
+        // Only consider the peer who is in the given configuration.
+        if (ackZxid != null) {
+          // Ignores those who haven't acknowledged.
+          zxids.add(ackZxid);
+        }
+        LOG.debug(" - {}'s last acked zxid {}", ph.getServerId(), ackZxid);
+      }
+    }
+    int quorumSize = cnf.getQuorumSize();
+    if (quorumSize == 0) {
+      // In one case, there's only one server in cluster, and the server is
+      // removed. Commit it directly.
+      return cnf.getVersion();
+    }
+    if (zxids.size() < quorumSize) {
+      // It's impossible to be committed.
+      return Zxid.ZXID_NOT_EXIST;
+    }
+    // Sorts the last ACK zxid of each peer to find one transaction which
+    // can be committed safely.
+    Collections.sort(zxids);
+    return zxids.get(zxids.size() - quorumSize);
   }
 
   @Override
@@ -94,28 +142,46 @@ public class AckProcessor implements RequestProcessor,
         if (msg.getType() == MessageType.ACK) {
           ZabMessage.Ack ack = request.getMessage().getAck();
           Zxid zxid = MessageBuilder.fromProtoZxid(ack.getZxid());
+          LOG.debug("Got ACK {} from {}", zxid, source);
           this.quorumSet.get(source).setLastAckedZxid(zxid);
-          ArrayList<Zxid> zxids = new ArrayList<Zxid>();
-          for (PeerHandler ph : quorumSet.values()) {
-            LOG.debug("Last zxid of {} is {}",
-                      ph.getServerId(),
-                      ph.getLastAckedZxid());
-            Zxid ackZxid = ph.getLastAckedZxid();
-            if (ackZxid != null) {
-              // Add acknowledged zxid to zxids only.
-              zxids.add(ph.getLastAckedZxid());
+          // The zxid of last transaction which could be committed.
+          Zxid zxidCanCommit = null;
+          // Check if there's a pending reconfiguration.
+          if (this.pendingConfig != null) {
+            // Find out the last transaction which can be committed for pending
+            // configuration.
+            zxidCanCommit = getCommittedZxid(this.pendingConfig);
+            LOG.debug("Zxid can be committed for pending configuration is {}.",
+                      zxidCanCommit);
+            if (zxidCanCommit.compareTo(pendingConfig.getVersion()) >= 0) {
+              // The pending configuration is just committed, make it becomes
+              // current configuration.
+              LOG.debug("Pending configuration {} is committed, turn it into" +
+                  " current configuration.", pendingConfig.getVersion());
+              this.clusterConfig = this.pendingConfig;
+              this.pendingConfig = null;
+            } else {
+              // Still hasn't been committed yet.
+              zxidCanCommit = null;
             }
           }
-          int quorumSize = persistence.getLastSeenConfig().getQuorumSize();
-          if (zxids.size() < quorumSize) {
-            continue;
+          if (zxidCanCommit == null) {
+            // Find out the last transaction which can be committed for current
+            // configuration.
+            zxidCanCommit = getCommittedZxid(this.clusterConfig);
+            if (pendingConfig != null &&
+                zxidCanCommit.compareTo(pendingConfig.getVersion()) >= 0) {
+              // We still shouldn't commit any transaction after COP if they
+              // are just acknowledged by a quorum of old configuration.
+              Zxid version = pendingConfig.getVersion();
+              // Then commit the transactions up to the one before COP.
+              zxidCanCommit =
+                new Zxid(version.getEpoch(), version.getXid() - 1);
+            }
+            LOG.debug("Zxid can be committed for current configuration is {}",
+                      zxidCanCommit);
           }
-          // Sorts the last ACK zxid of each peer to find one transaction which
-          // can be committed safely.
-          Collections.sort(zxids);
-          Zxid zxidCanCommit = zxids.get(zxids.size() - quorumSize);
-          LOG.debug("CAN COMMIT : {}", zxidCanCommit);
-
+          LOG.debug("Can COMMIT : {}", zxidCanCommit);
           if (zxidCanCommit.compareTo(this.lastCommittedZxid) > 0) {
             // Avoid sending duplicated COMMIT message.
             LOG.debug("Will send commit {} to quorumSet.", zxidCanCommit);
@@ -131,10 +197,32 @@ public class AckProcessor implements RequestProcessor,
           if (ph != null) {
             this.quorumSet.put(source, ph);
           }
+          if (msg.getType() == MessageType.JOIN) {
+            LOG.debug("Got JOIN({}) from {}", request.getZxid(), source);
+            if (pendingConfig != null) {
+              LOG.error("A pending reconfig is still in progress, a bug?");
+              throw new RuntimeException("Still has pending reconfiguration");
+            }
+            this.pendingConfig = this.clusterConfig.clone();
+            this.pendingConfig.addPeer(source);
+            // Update zxid for this reconfiguration.
+            this.pendingConfig.setVersion(request.getZxid());
+          }
         } else if (msg.getType() == MessageType.DISCONNECTED) {
           String peerId = msg.getDisconnected().getServerId();
           LOG.debug("Got DISCONNECTED from {}.", peerId);
           this.quorumSet.remove(peerId);
+        } else if (msg.getType() == MessageType.REMOVE) {
+          String serverId = msg.getRemove().getServerId();
+          LOG.debug("Got REMOVE({})for {}", request.getZxid(), serverId);
+          if (pendingConfig != null) {
+            LOG.error("A pending reconfig is still in progress, a bug?");
+            throw new RuntimeException("Still has pending reconfiguration");
+          }
+          this.pendingConfig = this.clusterConfig.clone();
+          this.pendingConfig.removePeer(serverId);
+          // Update zxid for this reconfiguration.
+          this.pendingConfig.setVersion(request.getZxid());
         } else {
           LOG.warn("Got unexpected message.");
         }

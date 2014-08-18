@@ -71,6 +71,11 @@ public class Leader extends Participant {
    */
   private int establishedEpoch = -1;
 
+  /**
+   * The zxid for pending COP, or null if there's no pending COP.
+   */
+  private Zxid pendingCopZxid = null;
+
   private static final Logger LOG = LoggerFactory.getLogger(Leader.class);
 
   public Leader(ParticipantState participantState,
@@ -531,9 +536,9 @@ public class Leader extends Participant {
     // Gets the initial configuration at the beginning of broadcasting.
     ClusterConfiguration clusterConfig = persistence.getLastSeenConfig();
     PreProcessor preProcessor =
-      new PreProcessor(stateMachine, quorumSet, clusterConfig);
-    AckProcessor ackProcessor = new AckProcessor(quorumSet, persistence,
-                                                 lastZxid);
+      new PreProcessor(stateMachine, quorumSet, clusterConfig.clone());
+    AckProcessor ackProcessor =
+      new AckProcessor(quorumSet, clusterConfig.clone(), lastZxid);
     SyncProposalProcessor syncProcessor =
         new SyncProposalProcessor(persistence, transport, SYNC_MAX_BATCH_SIZE);
     CommitProcessor commitProcessor =
@@ -545,8 +550,6 @@ public class Leader extends Participant {
     notifyQuorumSetChange();
     // Starts thread to process request in request queue.
     SendRequestTask sendTask = new SendRequestTask(this.serverId);
-    // The zxid for pending COP, it's null if there's no pending COP.
-    Zxid pendingCopZxid = null;
     this.lastCommittedZxid = lastZxid;
     this.lastProposedZxid = lastZxid;
     this.lastAckedZxid = lastZxid;
@@ -611,19 +614,6 @@ public class Leader extends Participant {
             syncProcessor.processRequest(tuple);
             commitProcessor.processRequest(tuple);
           } else if (msg.getType() == MessageType.COMMIT) {
-            lastCommittedZxid = MessageBuilder
-                                .fromProtoZxid(msg.getCommit().getZxid());
-            // If there's a pending COP, we need to find out whether it can be
-            // committed.
-            if (pendingCopZxid != null &&
-                lastCommittedZxid.compareTo(pendingCopZxid) >= 0) {
-              LOG.debug("COP of {} has been committed.", pendingCopZxid);
-              // Reset it to null to allow for next reconfiguration.
-              pendingCopZxid = null;
-              if (stateChangeCallback != null) {
-                stateChangeCallback.commitCop();
-              }
-            }
             onCommit(tuple, commitProcessor);
           } else if (msg.getType() == MessageType.DISCONNECTED) {
             onDisconnected(tuple, preProcessor, ackProcessor);
@@ -634,7 +624,7 @@ public class Leader extends Participant {
             }
             pendingCopZxid = getNextProposedZxid();
             tuple.setZxid(pendingCopZxid);
-            onRemove(tuple, preProcessor);
+            onRemove(tuple, preProcessor, ackProcessor);
           } else if (msg.getType() == MessageType.SHUT_DOWN) {
             throw new LeftCluster("Left cluster");
           } else {
@@ -684,24 +674,37 @@ public class Leader extends Participant {
     ackProcessor.processRequest(tuple);
   }
 
-  void onCommit(MessageTuple tuple,
-                CommitProcessor commitProcessor) {
+  void onCommit(MessageTuple tuple, CommitProcessor commitProcessor) {
     Message msg = tuple.getMessage();
+    this.lastCommittedZxid =
+      MessageBuilder.fromProtoZxid(msg.getCommit().getZxid());
+    // If there's a pending COP we need to find out whether it can be committed.
+    if (pendingCopZxid != null &&
+        lastCommittedZxid.compareTo(this.pendingCopZxid) >= 0) {
+      LOG.debug("COP of {} has been committed.", pendingCopZxid);
+      // Resets it to null to allow for next reconfiguration.
+      pendingCopZxid = null;
+      if (stateChangeCallback != null) {
+        stateChangeCallback.commitCop();
+      }
+    }
     if (!pendingPeers.isEmpty()) {
-      // If there're any new joined but uncommitted followers. Check if we can
-      // send out first COMMIT message to them.
+      // If there're any pending followers who are waiting for synchronization
+      // complete we need to checkout whether we can send out the first COMMIT
+      // message to them.
       if (LOG.isDebugEnabled()) {
         LOG.debug("Got message {} and there're pending peers.",
                   TextFormat.shortDebugString(msg));
       }
-      Zxid zxidCommit = MessageBuilder.fromProtoZxid(msg.getCommit().getZxid());
-      Iterator<Map.Entry<String, PeerHandler>> iter = pendingPeers.entrySet()
-                                                                  .iterator();
+      Zxid zxidCommit = this.lastCommittedZxid;
+      Iterator<Map.Entry<String, PeerHandler>> iter =
+        pendingPeers.entrySet().iterator();
       while (iter.hasNext()) {
         PeerHandler ph = iter.next().getValue();
         Zxid ackZxid = ph.getLastAckedZxid();
         if (ackZxid != null && zxidCommit.compareTo(ackZxid) >= 0) {
-          LOG.debug("COMMIT >= last acked zxid of pending peer. Send COMMIT.");
+          LOG.debug("COMMIT >= last acked zxid {} of pending peer. Send COMMIT",
+                    ackZxid);
           Message commit = MessageBuilder.buildCommit(ackZxid);
           sendMessage(ph.getServerId(), commit);
           ph.startBroadcastingTask();
@@ -818,8 +821,8 @@ public class Leader extends Participant {
     }
   }
 
-  void onRemove(MessageTuple tuple, PreProcessor preProcessor)
-      throws IOException {
+  void onRemove(MessageTuple tuple, PreProcessor preProcessor,
+                AckProcessor ackProcessor) throws IOException {
     // NOTE : For REMOVE message, we shouldn't remove server from quorumSet
     // here, the leaving server will close the transport once the COP gets
     // committed and then we'll remove it like normal DISCONNECTED server.
@@ -828,6 +831,7 @@ public class Leader extends Participant {
     // all the proposals after COP will not be the responsibilities of removed
     // server.
     preProcessor.processRequest(tuple);
+    ackProcessor.processRequest(tuple);
   }
 
   void checkFollowerLiveness() {
