@@ -71,6 +71,14 @@ public interface Log extends AutoCloseable {
   void sync() throws IOException;
 
   /**
+   * Trim the log up to the transaction of zxid inclusively.
+   *
+   * @param zxid the last zxid(inclusive) which will be trimed to.
+   * @throws IOException in case of IO failures
+   */
+  void trim(Zxid zxid) throws IOException;
+
+  /**
    * Closes the log file and release the resource.
    *
    * @throws IOException in case of IO failures

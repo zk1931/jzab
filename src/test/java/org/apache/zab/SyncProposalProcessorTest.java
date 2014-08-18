@@ -47,29 +47,41 @@ public class SyncProposalProcessorTest extends TestBase {
   static {
     LOG.setLevel(Level.INFO);
   }
-  public Log log;
 
-  public SyncProposalProcessorTest(Log log) {
-    this.log = log;
-  }
+  Class logClass;
+
+  String fileName;
 
   @Parameterized.Parameters
   public static Collection<Object[]> instancesToTest() throws Exception {
-    // hardcode the directory for now.
-    String dirName = "target" + File.separator + "data" + File.separator +
-                     "LogTest";
-    File dir = new File(dirName);
-    dir.mkdirs();
     return Arrays.asList(
       new Object[][] {
-        {new SimpleLog(new File(dir, "txn.log"))}
+        {SimpleLog.class, "transaction.log"},
+        {RollingLog.class, ""}
       });
+  }
+
+  public SyncProposalProcessorTest(Class logClass, String fileName) {
+    LOG.debug("Testting impelementation of {}", logClass.getName());
+    this.logClass = logClass;
+    this.fileName = fileName;
+  }
+
+  Log getLog() throws Exception {
+    File f = new File(getDirectory(), this.fileName);
+    if (logClass == RollingLog.class) {
+      // For testing purpose, set the rolling size be small.
+      return (Log)logClass.getConstructor(File.class, Long.TYPE)
+                          .newInstance(f, 10 * 1024 * 1024);
+    } else {
+      return (Log)logClass.getConstructor(File.class).newInstance(f);
+    }
   }
 
   public void benchmark(int epoch, int transactionSize, int numTransactions,
                         int batchSize)
       throws Exception {
-    LOG.info("Starting the test for {}", log.getClass().getName());
+    LOG.info("Starting the test for {}", this.logClass.getName());
     LOG.info("epoch       = {}", epoch);
     LOG.info("txn size    = {}", transactionSize);
     LOG.info("num_ops     = {}", numTransactions);
@@ -104,7 +116,8 @@ public class SyncProposalProcessorTest extends TestBase {
       }
     }
 
-    PersistentState persistence = new PersistentState(getDirectory());
+    Log log = getLog();
+    PersistentState persistence = new PersistentState(getDirectory(), log);
     TestReceiver receiver = new TestReceiver();
     Transport transport = new NettyTransport(leader, receiver);
     ClusterConfiguration cnf =

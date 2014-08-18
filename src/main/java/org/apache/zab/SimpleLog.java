@@ -67,12 +67,19 @@ public class SimpleLog implements Log {
    * @throws IOException in case of IO failure
    */
   public SimpleLog(File logFile) throws IOException {
+    this(logFile, null);
+  }
+
+  SimpleLog(File logFile, Zxid lastSeenZxid) throws IOException {
     this.logFile = logFile;
     this.fout = new FileOutputStream(logFile, true);
     this.logStream = new DataOutputStream(
                      new BufferedOutputStream(fout));
-    // Initializes the last seen zxid to the last zxid in file.
-    this.lastSeenZxid = getLatestZxid();
+    if (lastSeenZxid != null) {
+      this.lastSeenZxid = lastSeenZxid;
+    } else {
+      this.lastSeenZxid = getLatestZxid();
+    }
     LOG.debug("SimpleLog constructed. The lastSeenZxid is {}.",
               this.lastSeenZxid);
   }
@@ -209,6 +216,25 @@ public class SimpleLog implements Log {
   }
 
   /**
+   * Trim the log up to the transaction with Zxid zxid inclusively.
+   *
+   * @param zxid the last zxid(inclusive) which will be trimed to.
+   * @throws IOException in case of IO failures
+   */
+  @Override
+  public void trim(Zxid zxid) throws IOException {
+    throw new UnsupportedOperationException("Not supported");
+  }
+
+  long length() {
+    return this.logFile.length();
+  }
+
+  String getName() {
+    return this.logFile.getName();
+  }
+
+  /**
    * An implementation of iterator for iterating the log.
    */
   public static class SimpleLogIterator implements Log.LogIterator {
@@ -286,7 +312,7 @@ public class SimpleLog implements Log {
     }
 
     // Moves the transaction log backward to last transaction.
-    private void backward() throws IOException {
+    void backward() throws IOException {
       this.position -= this.lastTransactionLength;
       this.fin.getChannel().position(this.position);
       this.lastTransactionLength = 0;

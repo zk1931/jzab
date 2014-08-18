@@ -94,6 +94,10 @@ public class DummyLog implements Log {
   }
 
   @Override
+  public void trim(Zxid zxid) {
+  }
+
+  @Override
   public void close() {
     // Do nothing.
   }
