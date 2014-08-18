@@ -33,8 +33,7 @@ import org.slf4j.LoggerFactory;
  */
 class TestStateMachine implements StateMachine {
   ArrayList<Transaction> deliveredTxns = new ArrayList<Transaction>();
-  Semaphore semBroadcasting = new Semaphore(0);
-  Semaphore semClusterChange = new Semaphore(0);
+  Semaphore semMembership = new Semaphore(0);
   Set<String> clusters = null;
   Set<String> activeFollowers = null;
   String leader;
@@ -65,7 +64,6 @@ class TestStateMachine implements StateMachine {
     // Add the delivered message to list.
     LOG.debug("Delivers txn {}. Origin : {}", zxid, clientId);
     this.deliveredTxns.add(new Transaction(zxid, stateUpdate));
-
     if (txnsCount != null) {
       txnsCount.countDown();
     }
@@ -88,31 +86,22 @@ class TestStateMachine implements StateMachine {
   }
 
   @Override
-  public void leading(Set<String> followers) {
+  public void leading(Set<String> followers, Set<String> clusterMembers) {
     this.activeFollowers = followers;
-    LOG.debug("LEADING.");
-    semBroadcasting.release();
+    this.clusters = clusterMembers;
+    LOG.debug("Leader got membership callback");
+    semMembership.release();
   }
 
   @Override
-  public void following(String ld) {
+  public void following(String ld, Set<String> clusterMembers) {
     this.leader = ld;
-    LOG.debug("FOLLOWING.");
-    semBroadcasting.release();
+    this.clusters = clusterMembers;
+    LOG.debug("Follower got membership callback");
+    semMembership.release();
   }
 
-  @Override
-  public void clusterChange(Set<String> servers) {
-    this.clusters = servers;
-    LOG.debug("CLUSTER_CHANGE.");
-    semClusterChange.release();
-  }
-
-  void waitBroadcasting() throws InterruptedException {
-    semBroadcasting.acquire();
-  }
-
-  void waitClusterChange() throws InterruptedException {
-    semClusterChange.acquire();
+  void waitMembershipChanged() throws InterruptedException {
+    semMembership.acquire();
   }
 }

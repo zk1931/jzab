@@ -1947,8 +1947,7 @@ public class QuorumZabTest extends TestBase  {
                                                 getDirectory());
     QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
     // Waits for clusterChange and leading callback.
-    st1.waitBroadcasting();
-    st1.waitClusterChange();
+    st1.waitMembershipChanged();
     // Make sure first config contains itself.
     Assert.assertTrue(st1.clusters.contains(server1));
     // The cluster size should be 1.
@@ -1958,15 +1957,13 @@ public class QuorumZabTest extends TestBase  {
                                                 null,
                                                 getDirectory());
     QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
-    st2.waitBroadcasting();
-    st2.waitClusterChange();
+    st2.waitMembershipChanged();
     // Make sure first config contains itself.
     Assert.assertTrue(st2.clusters.contains(server1));
     // The cluster size should be 2.
     Assert.assertEquals(2, st2.clusters.size());
     // Now the callback will be called again.
-    st1.waitBroadcasting();
-    st1.waitClusterChange();
+    st1.waitMembershipChanged();
     // Make sure first config contains itself.
     Assert.assertTrue(st1.clusters.contains(server1));
     // The cluster size should be 1.
@@ -2077,15 +2074,15 @@ public class QuorumZabTest extends TestBase  {
       QuorumZab zab = new QuorumZab(st, cb, null, state, server1);
       // Waits for reconfig completes.
       cb1.waitCopCommit();
-      st1.waitClusterChange();
-      st.waitClusterChange();
+      st1.waitMembershipChanged();
+      st.waitMembershipChanged();
       // Make sure first config contains itself.
       Assert.assertTrue(st.clusters.contains(server));
       // Remove new joined server.
       zab1.remove(server);
       // Waits for reconfig completes.
       cb1.waitCopCommit();
-      st1.waitClusterChange();
+      st1.waitMembershipChanged();
       cb.waitExit();
     }
     // Finally, the server1 has the configuration of single server.
@@ -2119,37 +2116,37 @@ public class QuorumZabTest extends TestBase  {
                                                 null,
                                                 getDirectory());
     QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
-    // Waits for clusterChange and leading callback.
-    st1.waitClusterChange();
+    // Waits for leader goes into broadcasting phase.
+    st1.waitMembershipChanged();
 
     QuorumZab.TestState state2 = new QuorumZab
                                      .TestState(server2,
                                                 null,
                                                 getDirectory());
     QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
-    st2.waitBroadcasting();
-    st2.waitClusterChange();
-    st1.waitClusterChange();
+    st2.waitMembershipChanged();
+    st1.waitMembershipChanged();
+    cb2.waitBroadcasting();
 
     QuorumZab.TestState state3 = new QuorumZab
                                      .TestState(server3,
                                                 null,
                                                 getDirectory());
     QuorumZab zab3 = new QuorumZab(st3, cb3, null, state3, server1);
-    st3.waitBroadcasting();
-    st3.waitClusterChange();
-    st2.waitClusterChange();
-    st1.waitClusterChange();
+    st1.waitMembershipChanged();
+    st2.waitMembershipChanged();
+    st3.waitMembershipChanged();
+    cb3.waitBroadcasting();
+
     // Server1 exits.
     zab1.remove(server1);
-    st3.waitClusterChange();
-    st2.waitClusterChange();
-    st1.waitClusterChange();
     // Waits server1 exit.
     cb1.waitExit();
     // server2 and server3 should go back recovery and form a new quorum.
-    st3.waitBroadcasting();
-    st2.waitBroadcasting();
+    cb3.waitBroadcasting();
+    cb2.waitBroadcasting();
+    st2.waitMembershipChanged();
+    st3.waitMembershipChanged();
     // The cluster size should be 2.
     Assert.assertEquals(2, st2.clusters.size());
     Assert.assertEquals(2, st3.clusters.size());

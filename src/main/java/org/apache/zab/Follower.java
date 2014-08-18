@@ -343,19 +343,18 @@ public class Follower extends Participant {
   void accepting()
       throws TimeoutException, InterruptedException, IOException,
       ExecutionException {
+    ClusterConfiguration clusterConfig = persistence.getLastSeenConfig();
     SyncProposalProcessor syncProcessor =
-      new SyncProposalProcessor(this.persistence, this.transport,
-                                SYNC_MAX_BATCH_SIZE);
+      new SyncProposalProcessor(persistence, transport, SYNC_MAX_BATCH_SIZE);
     CommitProcessor commitProcessor
       = new CommitProcessor(stateMachine, lastDeliveredZxid, serverId,
-                            transport);
+                            transport, null, clusterConfig, electedLeader);
     // The last time of HEARTBEAT message comes from leader.
     long lastHeartbeatTime = System.nanoTime();
     int ackEpoch = persistence.getAckEpoch();
-    stateMachine.clusterChange(new HashSet<String>(persistence
-                                                   .getLastSeenConfig()
-                                                   .getPeers()));
-    this.stateMachine.following(this.electedLeader);
+    // Notifies the client current configuration.
+    stateMachine.following(electedLeader,
+                           new HashSet<String>(clusterConfig.getPeers()));
     // Starts thread to process request in request queue.
     SendRequestTask sendTask = new SendRequestTask(this.electedLeader);
     try {
