@@ -103,4 +103,16 @@ public class ZabConfig {
   public String getJoinPeer() {
     return this.prop.getProperty("joinPeer");
   }
+
+  /**
+   * The threshold for taking snapshot.
+   *
+   * @return long integer of threshold, we'll take snapshot once this number of
+   * bytes transactions are delivered to application since last snapshot. If
+   * it's set to -1, then we won't take snapshot.
+   */
+  public long getSnapshotThreshold() {
+    return Long.parseLong(this.prop.getProperty("snapshot_threshold_bytes",
+                                                "-1"));
+  }
 }

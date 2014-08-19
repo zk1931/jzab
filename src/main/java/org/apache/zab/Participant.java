@@ -18,6 +18,8 @@
 package org.apache.zab;
 
 import com.google.protobuf.TextFormat;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.BlockingQueue;
@@ -114,6 +116,17 @@ public abstract class Participant {
    */
   protected final ParticipantState participantState;
 
+  /**
+   * The maximum number of transactions can be appended to log before taking
+   * snapshot.
+   */
+  protected final long snapshotThreshold;
+
+  /**
+   * Total number of bytes of delivered transactions since last snapshot.
+   */
+  protected long numDeliveredBytes = 0;
+
   private static final Logger LOG = LoggerFactory.getLogger(Participant.class);
 
   protected enum Phase {
@@ -157,6 +170,7 @@ public abstract class Participant {
     this.serverId = participantState.getServerId();
     this.messageQueue = participantState.getMessageQueue();
     this.stateMachine = stateMachine;
+    this.snapshotThreshold = config.getSnapshotThreshold();
     this.config = config;
   }
 
@@ -402,24 +416,43 @@ public abstract class Participant {
   }
 
   /**
+   * Restores the state of user's application from snapshot file.
+   */
+  void restoreFromSnapshot() throws IOException {
+    Zxid snapshotZxid = persistence.getSnapshotZxid();
+    LOG.debug("The last applied zxid in snapshot is {}", snapshotZxid);
+    if (snapshotZxid != Zxid.ZXID_NOT_EXIST &&
+        lastDeliveredZxid == Zxid.ZXID_NOT_EXIST) {
+      // Restores from snapshot only if the lastDeliveredZxid == ZXID_NOT_EXIST,
+      // which means it's the application's first time recovery.
+      File snapshot = persistence.getSnapshotFile();
+      try (FileInputStream fin = new FileInputStream(snapshot)) {
+        LOG.debug("Restoring application's state from snapshot {}", snapshot);
+        stateMachine.restore(fin);
+        lastDeliveredZxid = snapshotZxid;
+      }
+    }
+  }
+
+  /**
    * Delivers all the transactions in the log after last delivered zxid.
    *
    * @throws IOException in case of IO failures.
    */
   void deliverUndeliveredTxns() throws IOException {
-    Zxid startZxid = new Zxid(this.lastDeliveredZxid.getEpoch(),
-                              this.lastDeliveredZxid.getXid() + 1);
-    LOG.debug("Begins delivering all txns after {}", this.lastDeliveredZxid);
-    Log log = this.persistence.getLog();
+    LOG.debug("Delivering all the undelivered txns after {}",
+              lastDeliveredZxid);
+    Zxid startZxid =
+      new Zxid(lastDeliveredZxid.getEpoch(), lastDeliveredZxid.getXid() + 1);
+    Log log = persistence.getLog();
     try (Log.LogIterator iter = log.getIterator(startZxid)) {
       while (iter.hasNext()) {
         Transaction txn = iter.next();
         if (txn.getType() == ProposalType.USER_REQUEST_VALUE) {
-          this.stateMachine.deliver(txn.getZxid(), txn.getBody(), null);
-        } else {
-          LOG.debug("Delivering COP!");
+          // Only delivers REQUEST proposal, ignores COP.
+          stateMachine.deliver(txn.getZxid(), txn.getBody(), null);
         }
-        this.lastDeliveredZxid = txn.getZxid();
+        lastDeliveredZxid = txn.getZxid();
       }
     }
   }
@@ -431,6 +464,28 @@ public abstract class Participant {
    * @throws IOException in case of IO failure.
    */
   protected abstract void changePhase(Phase phase) throws IOException;
+
+  /**
+   * Handled the DELIVERED message comes from CommitProcessor.
+   */
+  protected void onDelivered(Message msg, SnapshotProcessor snapProcessor) {
+    // Updates last delivered zxid.
+    this.lastDeliveredZxid =
+      MessageBuilder.fromProtoZxid(msg.getDelivered().getZxid());
+    // Gets number of bytes delivered for last commit message.
+    long nBytes = msg.getDelivered().getNumBytes();
+    this.numDeliveredBytes += nBytes;
+    if (snapshotThreshold > 0 &&
+      numDeliveredBytes  >= snapshotThreshold) {
+      // Reaches the threshold, going to take snashot.
+      LOG.debug("Delivered {} bytes to application since last " +
+          "snapshot, going to take snapshot.", numDeliveredBytes);
+      Message snap = MessageBuilder.buildSnapshot(lastDeliveredZxid);
+      snapProcessor.processRequest(new MessageTuple(null, snap));
+      // Resets it to zero.
+      numDeliveredBytes = 0;
+    }
+  }
 
   /**
    * Synchronizes server's history to peer based on the last zxid of peer.

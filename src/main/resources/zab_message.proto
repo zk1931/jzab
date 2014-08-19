@@ -30,6 +30,7 @@ message Message {
     SYNC_END = 21;
     REMOVE = 22;
     SHUT_DOWN = 23;
+    DELIVERED = 24;
     INVALID_MESSAGE = 30;
   }
 
@@ -55,6 +56,7 @@ message Message {
   optional QueryReply reply = 16;
   optional ClusterConfiguration config = 17;
   optional Remove remove = 18;
+  optional Delivered delivered = 19;
   optional InvalidMessage invalid = 30;
 }
 
@@ -160,4 +162,9 @@ message QueryReply {
 
 message Remove {
   required string serverId = 1;
+}
+
+message Delivered {
+  required Zxid zxid = 1;
+  required int64 num_bytes = 2;
 }

@@ -70,13 +70,13 @@ class TestStateMachine implements StateMachine {
   }
 
   @Override
-  public void getState(OutputStream os) {
+  public void save(OutputStream os) {
     throw new UnsupportedOperationException("This implementation"
         + "doesn't support getState operation");
   }
 
   @Override
-  public void setState(InputStream is) {
+  public void restore(InputStream is) {
     throw new UnsupportedOperationException("This implementation"
         + "doesn't support setState operation");
   }

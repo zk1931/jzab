@@ -64,7 +64,7 @@ public final class FileUtils {
       pw.print(Integer.toString(value));
       fos.getChannel().force(true);
     }
-    Files.move(temp.toPath(), file.toPath(), ATOMIC_MOVE);
+    atomicMove(temp, file);
     LOG.debug("Atomically moved {} to {}", temp, file);
   }
 
@@ -104,7 +104,7 @@ public final class FileUtils {
       prop.store(fos, "");
       fos.getChannel().force(true);
     }
-    Files.move(temp.toPath(), file.toPath(), ATOMIC_MOVE);
+    atomicMove(temp, file);
     LOG.debug("Atomically moved {} to {}", temp, file);
   }
 
@@ -124,5 +124,16 @@ public final class FileUtils {
       prop.load(fis);
       return prop;
     }
+  }
+
+  /**
+   * Atomically move one file to another file.
+   *
+   * @param source the source file.
+   * @param dest the destination file.
+   * @throws IOException if an I/O error occurs.
+   */
+  public static void atomicMove(File source, File dest) throws IOException {
+    Files.move(source.toPath(), dest.toPath(), ATOMIC_MOVE);
   }
 }

@@ -53,23 +53,19 @@ public interface StateMachine {
 
   /**
    * Upcall to serialize the application state using an OutputStream. Upon a
-   * call to getState, the application writes its state to os. getState must
-   * be called from a different thread of the one that calls deliver to avoid
-   * blocking the delivery of the message.
+   * call to save, the application writes its state to os.
    *
    * @param os the output stream
    */
-  void getState(OutputStream os);
+  void save(OutputStream os);
 
   /**
    * Deserializes the state of the application from the InputStream. Once this
-   * callback is called. The app restores the state using the input stream. This
-   * method must be called from the same thread of the one calls deliver to
-   * avoid ending up in inconsistent state.
+   * callback is called. The app restores the state using the input stream.
    *
    * @param is the input stream
    */
-  void setState(InputStream is);
+  void restore(InputStream is);
 
   /**
    * Upcall to notify the server it's in recovering phase. Servers in recovering
