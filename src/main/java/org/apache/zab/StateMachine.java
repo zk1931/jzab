@@ -72,14 +72,6 @@ public interface StateMachine {
   void setState(InputStream is);
 
   /**
-   * Upcall to notify all the servers the cluster configuration changes. This
-   * happens when the server receives COP message.
-   *
-   * @param servers the servers in new configuration.
-   */
-  void clusterChange(Set<String> servers);
-
-  /**
    * Upcall to notify the server it's in recovering phase. Servers in recovering
    * phase shouldn't issue or process any requests.
    */
@@ -87,19 +79,24 @@ public interface StateMachine {
 
   /**
    * Upcall to notify the application who is running on the leader role of ZAB
-   * instance. This callback will be called once ZAB enters broadcasting phase
-   * or the membership of active followers is changed.
+   * instance the membership changes of Zab cluster. The membership changes
+   * include the detection of recovered members or disconnected members in
+   * current configuration or new configuration after some one joined or be
+   * removed from current configuration.
    *
    * @param activeFollowers current alive followers.
+   * @param clusterMembers the members of new configuration.
    */
-  void leading(Set<String> activeFollowers);
+  void leading(Set<String> activeFollowers, Set<String> clusterMembers);
 
   /**
-   * Upcall to notify the application who is running on follower role of ZAB
-   * instance. This callback will be called once the ZAB enters the broadcasting
-   * phase.
+   * Upcall to notify the application who is running on the follower role of ZAB
+   * instance the membership changes of Zab cluster. The membership changes
+   * include the detection of the leader or the new cluster configuration after
+   * some servers are joined or removed.
    *
-   * @param leader the elected leader for this follower.
+   * @param leader current leader.
+   * @param clusterMembers the members of new configuration.
    */
-  void following(String leader);
+  void following(String leader, Set<String> clusterMembers);
 }

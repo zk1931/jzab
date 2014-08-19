@@ -18,10 +18,12 @@
 
 package org.apache.zab;
 
+import com.google.protobuf.TextFormat;
 import java.nio.ByteBuffer;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -60,6 +62,12 @@ public class CommitProcessor implements RequestProcessor,
 
   private final Transport transport;
 
+  private final Set<String> quorumSet;
+
+  private ClusterConfiguration clusterConfig;
+
+  private final String leader;
+
   Future<Void> ft;
 
   /**
@@ -72,15 +80,24 @@ public class CommitProcessor implements RequestProcessor,
    * deliver any transactions which are smaller or equal than this zxid.
    * @param serverId the id of the Participant.
    * @param transport the Transport object.
+   * @param quorumSet the initial quorum set. It's null on follower's side.
+   * @param clusterConfig the initial cluster configurations.
+   * @param leader the current established leader.
    */
   public CommitProcessor(StateMachine stateMachine,
                          Zxid lastDeliveredZxid,
                          String serverId,
-                         Transport transport) {
+                         Transport transport,
+                         Set<String> quorumSet,
+                         ClusterConfiguration clusterConfig,
+                         String leader) {
     this.stateMachine = stateMachine;
     this.lastDeliveredZxid = lastDeliveredZxid;
     this.serverId = serverId;
     this.transport = transport;
+    this.quorumSet = quorumSet;
+    this.clusterConfig = clusterConfig;
+    this.leader = leader;
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
     ft = es.submit(this);
@@ -102,21 +119,19 @@ public class CommitProcessor implements RequestProcessor,
           break;
         }
         Message msg = request.getMessage();
+        String source = request.getServerId();
         if (msg.getType() == MessageType.PROPOSAL) {
           // Puts the proposal in queue.
+          LOG.debug("Got proposal.");
           this.pendingTxns.add(msg.getProposal());
-          LOG.debug("Got proposal from request queue!");
         } else if (msg.getType() == MessageType.COMMIT) {
           ZabMessage.Commit commit = request.getMessage().getCommit();
           Zxid zxid = MessageBuilder.fromProtoZxid(commit.getZxid());
-          LOG.debug("Received a commit request {}, last {}.",
-                    zxid,
-                    this.lastDeliveredZxid);
+          LOG.debug("Received a commit request {}.", zxid);
           if (zxid.compareTo(this.lastDeliveredZxid) <= 0) {
             // The leader may send duplicate committed zxids. Avoid delivering
-            //duplicate transactions even though transactions are idempotent.
-            LOG.debug("{} is duplicated COMMIT message with last {}",
-                      zxid,
+            // duplicate transactions even though transactions are idempotent.
+            LOG.debug("{} is duplicated COMMIT message with last {}", zxid,
                       this.lastDeliveredZxid);
             continue;
           }
@@ -136,7 +151,10 @@ public class CommitProcessor implements RequestProcessor,
               LOG.debug("Delivering COP {}.", txn.getZxid());
               ClusterConfiguration cnf =
                 ClusterConfiguration.fromByteBuffer(txn.getBody(), "");
-              stateMachine.clusterChange(new HashSet<String>(cnf.getPeers()));
+              // Updates current cluster configuration.
+              clusterConfig = cnf;
+              // Notifies client the updated cluster configuration.
+              notifyClient();
               if (!cnf.contains(this.serverId)) {
                 // If the new configuration doesn't contain this server, we'll
                 // enqueue SHUT_DOWN message to main thread to let it quit.
@@ -150,8 +168,26 @@ public class CommitProcessor implements RequestProcessor,
             }
             this.lastDeliveredZxid = txn.getZxid();
           }
-          // Removes the delivered transactions.
+          // Removes the delivered transactions from the list.
           this.pendingTxns.subList(startIdx, endIdx).clear();
+        } else if (msg.getType() == MessageType.ACK_EPOCH) {
+          LOG.debug("Got ACK_EPOCH from {}", source);
+          quorumSet.add(source);
+          // Notifies clients of updated current active members.
+          notifyClient();
+        } else if (msg.getType() == MessageType.DISCONNECTED) {
+          LOG.debug("Got DISCONNECTED from {}", source);
+          String peerId = msg.getDisconnected().getServerId();
+          quorumSet.remove(peerId);
+          // Notifies clients of updated current active members.
+          notifyClient();
+        } else if (msg.getType() == MessageType.JOIN) {
+          LOG.debug("Got JOIN from {}", source);
+          quorumSet.add(source);
+        } else {
+          if (LOG.isWarnEnabled()) {
+            LOG.warn("Unexpected message {}", TextFormat.shortDebugString(msg));
+          }
         }
       }
     } catch (RuntimeException e) {
@@ -160,6 +196,18 @@ public class CommitProcessor implements RequestProcessor,
     }
     LOG.debug("CommitProcessor has been shut down.");
     return null;
+  }
+
+  void notifyClient() {
+    if (quorumSet == null) {
+      // Means it's folower.
+      stateMachine.following(this.leader,
+                             new HashSet<String>(clusterConfig.getPeers()));
+    } else {
+      // Means it's leader.
+      stateMachine.leading(new HashSet<String>(quorumSet),
+                           new HashSet<String>(clusterConfig.getPeers()));
+    }
   }
 
   @Override
