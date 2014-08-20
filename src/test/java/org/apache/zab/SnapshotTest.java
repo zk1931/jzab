@@ -200,4 +200,43 @@ public class SnapshotTest extends TestBase {
     zab1.shutdown();
     zab2.shutdown();
   }
+
+  @Test
+  public void testSnapshotSynchronization() throws Exception {
+    // Starts server1, sends transactions txn1,txn2 ... txnn.
+    // Starts server2 joins server1, the snapshot will be used to synchronize
+    // server2. In the end, we verify the two state machines have the same state
+    final int nTxns = 50;
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    SnapshotStateMachine st1 = new SnapshotStateMachine(nTxns);
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    SnapshotStateMachine st2 = new SnapshotStateMachine(nTxns);
+    String server1 = getUniqueHostPort();
+    String server2 = getUniqueHostPort();
+    Properties prop1 = new Properties();
+    // For testing purpose, set the threshold to 64 bytes..
+    prop1.setProperty("snapshot_threshold_bytes", "64");
+    prop1.setProperty("serverId", server1);
+    prop1.setProperty("logdir",
+                      getDirectory().getPath() + File.separator + server1);
+    Properties prop2 = new Properties();
+    // For testing purpose, set the threshold to 32 bytes..
+    prop2.setProperty("serverId", server2);
+    prop2.setProperty("logdir",
+                      getDirectory().getPath() + File.separator + server2);
+    QuorumZab zab1 = new QuorumZab(st1, prop1, server1);
+    st1.waitMemberChanged();
+    for (int i = 0; i < nTxns; ++i) {
+      zab1.send(ByteBuffer.wrap(("txns" + i).getBytes()));
+      // Sleep a while to avoid all the transactions batch together.
+      Thread.sleep(20);
+    }
+    st1.txnsCount.await();
+    // Server2 joins in.
+    QuorumZab zab2 = new QuorumZab(st2, prop2, server1);
+    st2.waitMemberChanged();
+    Assert.assertEquals(st1.state, st2.state);
+    zab1.shutdown();
+    zab2.shutdown();
+  }
 }

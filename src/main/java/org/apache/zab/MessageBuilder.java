@@ -256,20 +256,20 @@ public final class MessageBuilder {
   /**
    * Creates a TRUNCATE  message.
    *
-   * @param lastPrefixZxid truncate receiver's log from lastPrefixZxid.
-   * (not including it)
+   * @param lastPrefixZxid truncate receiver's log from lastPrefixZxid
+   * exclusively.
+   * @param lastZxid the last zxid for the synchronization.
    * @return a protobuf message.
    */
-  public static Message buildTruncate(Zxid lastPrefixZxid) {
+  public static Message buildTruncate(Zxid lastPrefixZxid, Zxid lastZxid) {
     ZabMessage.Zxid lpz = toProtoZxid(lastPrefixZxid);
-
+    ZabMessage.Zxid lz = toProtoZxid(lastZxid);
     Truncate trunc = Truncate.newBuilder().setLastPrefixZxid(lpz)
+                                          .setLastZxid(lz)
                                           .build();
-
     return Message.newBuilder().setType(MessageType.TRUNCATE)
                                .setTruncate(trunc)
                                .build();
-
   }
 
   /**
@@ -307,6 +307,27 @@ public final class MessageBuilder {
     ZabMessage.Zxid zxid = toProtoZxid(lastZxid);
     Snapshot snapshot = Snapshot.newBuilder().setLastZxid(zxid).build();
 
+    return Message.newBuilder().setType(MessageType.SNAPSHOT)
+                               .setSnapshot(snapshot)
+                               .build();
+  }
+
+  /**
+   * Creates a SNAPSHOT message.
+   *
+   * @param lastZxid the last zxid of the sender.
+   * @param snapZxid the last guaranteed applied zxid in snapshot.
+   * @param data the snapshot data.
+   * @return a protobuf message.
+   */
+  public static Message buildSnapshot(Zxid lastZxid, Zxid snapZxid,
+                                      ByteBuffer data) {
+    ZabMessage.Zxid lZxid = toProtoZxid(lastZxid);
+    ZabMessage.Zxid sZxid = toProtoZxid(snapZxid);
+    Snapshot snapshot = Snapshot.newBuilder().setLastZxid(lZxid)
+                                             .setSnapZxid(sZxid)
+                                             .setData(ByteString.copyFrom(data))
+                                             .build();
     return Message.newBuilder().setType(MessageType.SNAPSHOT)
                                .setSnapshot(snapshot)
                                .build();

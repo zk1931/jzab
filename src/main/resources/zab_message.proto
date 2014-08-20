@@ -109,10 +109,13 @@ message Diff {
 
 message Truncate {
   required Zxid last_prefix_zxid = 1;
+  required Zxid last_zxid = 2;
 }
 
 message Snapshot {
   required Zxid last_zxid = 1;
+  optional Zxid snap_zxid = 2;
+  optional bytes data = 3;
 }
 
 message Zxid {
