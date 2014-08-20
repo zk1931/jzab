@@ -202,6 +202,8 @@ public class Follower extends Participant {
       waitForSync(this.electedLeader);
       waitForNewLeaderMessage();
       waitForCommitMessage();
+      // See if it can be restored from the snapshot file.
+      restoreFromSnapshot();
       // Delivers all transactions in log before entering broadcasting phase.
       deliverUndeliveredTxns();
 
@@ -349,6 +351,8 @@ public class Follower extends Participant {
     CommitProcessor commitProcessor
       = new CommitProcessor(stateMachine, lastDeliveredZxid, serverId,
                             transport, null, clusterConfig, electedLeader);
+    SnapshotProcessor snapProcessor =
+      new SnapshotProcessor(stateMachine, persistence);
     // The last time of HEARTBEAT message comes from leader.
     long lastHeartbeatTime = System.nanoTime();
     int ackEpoch = persistence.getAckEpoch();
@@ -412,6 +416,8 @@ public class Follower extends Participant {
           sendMessage(source, heartbeatReply);
         } else if (msg.getType() == MessageType.SHUT_DOWN) {
           throw new LeftCluster("Left cluster!");
+        } else if (msg.getType() == MessageType.DELIVERED) {
+          onDelivered(msg, snapProcessor);
         } else {
           if (LOG.isWarnEnabled()) {
             LOG.warn("Unexpected messgae : {} from {}",
@@ -424,6 +430,7 @@ public class Follower extends Participant {
       sendTask.shutdown();
       commitProcessor.shutdown();
       syncProcessor.shutdown();
+      snapProcessor.shutdown();
       this.lastDeliveredZxid = commitProcessor.getLastDeliveredZxid();
       this.participantState.updateLastDeliveredZxid(this.lastDeliveredZxid);
     }

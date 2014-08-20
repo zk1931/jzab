@@ -246,6 +246,8 @@ public class Leader extends Participant {
       Message commit = MessageBuilder
                        .buildCommit(persistence.getLog().getLatestZxid());
       broadcast(this.quorumSet.keySet().iterator(), commit);
+      // See if it can be restored from the snapshot file.
+      restoreFromSnapshot();
       // Delivers all the txns in log before entering broadcasting phase.
       deliverUndeliveredTxns();
 
@@ -545,6 +547,8 @@ public class Leader extends Participant {
         new CommitProcessor(stateMachine, lastDeliveredZxid, serverId,
                             transport, new HashSet<String>(quorumSet.keySet()),
                             clusterConfig, electedLeader);
+    SnapshotProcessor snapProcessor =
+      new SnapshotProcessor(stateMachine, persistence);
     // First time notifies the client active members and cluster configuration.
     stateMachine.leading(new HashSet<String>(quorumSet.keySet()),
                          new HashSet<String>(clusterConfig.getPeers()));
@@ -627,6 +631,8 @@ public class Leader extends Participant {
             onRemove(tuple, preProcessor, ackProcessor);
           } else if (msg.getType() == MessageType.SHUT_DOWN) {
             throw new LeftCluster("Left cluster");
+          } else if (msg.getType() == MessageType.DELIVERED) {
+            onDelivered(msg, snapProcessor);
           } else {
             if (LOG.isWarnEnabled()) {
               LOG.warn("Unexpected messgae : {} from {}",
@@ -650,6 +656,7 @@ public class Leader extends Participant {
       preProcessor.shutdown();
       commitProcessor.shutdown();
       syncProcessor.shutdown();
+      snapProcessor.shutdown();
       this.lastDeliveredZxid = commitProcessor.getLastDeliveredZxid();
       this.participantState.updateLastDeliveredZxid(this.lastDeliveredZxid);
     }
@@ -813,7 +820,7 @@ public class Leader extends Participant {
     preProcessor.processRequest(tuple);
     // Add new recovered follower to AckProcessor.
     ackProcessor.processRequest(tuple);
-    // Also ask CommitProcessor to notify the clients of member ship changes.
+    // Also ask CommitProcessor to notify the clients of membership changes.
     commitProcessor.processRequest(tuple);
     if (lastAckedZxid.compareTo(zxid) >= 0) {
       // If current last proposed zxid is already in log, starts synchronization

@@ -20,6 +20,9 @@ package org.apache.zab;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Properties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -182,6 +185,66 @@ public class PersistentState {
    */
   boolean isEmpty() {
     return this.logDir.listFiles().length == 1;
+  }
+
+  /**
+   * Turns a temporary snapshot file into a valid snapshot file.
+   *
+   * @param tempFile the temporary file which stores current state.
+   * @param zxid the last applied zxid for state machine.
+   */
+  void setSnapshotFile(File tempFile, Zxid zxid) throws IOException {
+    File snapshot =
+      new File(logDir, String.format("snapshot.%s", zxid.toSimpleString()));
+    LOG.debug("Atomically move snapshot file to {}", snapshot);
+    FileUtils.atomicMove(tempFile, snapshot);
+  }
+
+  /**
+   * Gets the last snapshot file.
+   *
+   * @return the last snapshot file.
+   */
+  File getSnapshotFile() {
+    // There're probably a list of snapshot files, pick the last one.
+    List<File> snapshotFiles = new ArrayList<File>();
+    for (File file : this.logDir.listFiles()) {
+      if (!file.isDirectory() &&
+          file.getName().matches("snapshot\\.\\d+_\\d+")) {
+        // Only consider those with valid name.
+        snapshotFiles.add(file);
+      }
+    }
+    if (!snapshotFiles.isEmpty()) {
+      // Picks the last one.
+      Collections.sort(snapshotFiles);
+      return snapshotFiles.get(snapshotFiles.size() - 1);
+    }
+    return null;
+  }
+
+  /**
+   * Gets the last zxid of transaction which is guaranteed in snapshot.
+   *
+   * @return the last zxid of transaction which is guarantted to be applied.
+   */
+  Zxid getSnapshotZxid() {
+    File snapshot = getSnapshotFile();
+    if (snapshot == null) {
+      return Zxid.ZXID_NOT_EXIST;
+    }
+    String fileName = snapshot.getName();
+    String strZxid = fileName.substring(fileName.indexOf('.') + 1);
+    return Zxid.fromSimpleString(strZxid);
+  }
+
+  /**
+   * Creates a temporary file in log directory with given prefix.
+   *
+   * @param prefix the prefix of the file.
+   */
+  File createTempFile(String prefix) throws IOException {
+    return File.createTempFile(prefix, "", this.logDir);
   }
 }
 

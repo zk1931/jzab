@@ -464,4 +464,13 @@ public final class MessageBuilder {
   public static Message buildShutDown() {
     return Message.newBuilder().setType(MessageType.SHUT_DOWN).build();
   }
+
+  public static Message buildDelivered(Zxid deliveredZxid, long numBytes) {
+    ZabMessage.Zxid zxid = toProtoZxid(deliveredZxid);
+    ZabMessage.Delivered delivered = ZabMessage.Delivered.newBuilder()
+                                                         .setNumBytes(numBytes)
+                                                         .setZxid(zxid).build();
+    return Message.newBuilder().setType(MessageType.DELIVERED)
+                               .setDelivered(delivered).build();
+  }
 }

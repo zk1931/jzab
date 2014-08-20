@@ -109,6 +109,10 @@ public class CommitProcessor implements RequestProcessor,
     this.commitQueue.add(request);
   }
 
+  void sendMessage(Message msg) {
+    this.transport.send(this.serverId, ByteBuffer.wrap(msg.toByteArray()));
+  }
+
   @Override
   public Void call() throws Exception {
     LOG.debug("CommitProcessor gets started.");
@@ -125,6 +129,8 @@ public class CommitProcessor implements RequestProcessor,
           LOG.debug("Got proposal.");
           this.pendingTxns.add(msg.getProposal());
         } else if (msg.getType() == MessageType.COMMIT) {
+          // Number of bytes delivered to application for this COMMIT.
+          long numBytes = 0;
           ZabMessage.Commit commit = request.getMessage().getCommit();
           Zxid zxid = MessageBuilder.fromProtoZxid(commit.getZxid());
           LOG.debug("Received a commit request {}.", zxid);
@@ -147,6 +153,7 @@ public class CommitProcessor implements RequestProcessor,
             if (txn.getType() == ProposalType.USER_REQUEST_VALUE) {
               LOG.debug("Delivering transaction {}.", txn.getZxid());
               stateMachine.deliver(txn.getZxid(), txn.getBody(), clientId);
+              numBytes += txn.getBody().capacity();
             } else if (txn.getType() == ProposalType.COP_VALUE) {
               LOG.debug("Delivering COP {}.", txn.getZxid());
               ClusterConfiguration cnf =
@@ -160,16 +167,24 @@ public class CommitProcessor implements RequestProcessor,
                 // enqueue SHUT_DOWN message to main thread to let it quit.
                 LOG.debug("The new configuration doesn't contain {}", serverId);
                 Message shutdown = MessageBuilder.buildShutDown();
-                this.transport.send(this.serverId,
-                                    ByteBuffer.wrap(shutdown.toByteArray()));
+                sendMessage(shutdown);
               }
+              numBytes += txn.getBody().capacity();
             } else {
               LOG.warn("Unknown proposal type.");
+              continue;
             }
             this.lastDeliveredZxid = txn.getZxid();
           }
-          // Removes the delivered transactions from the list.
+          if (!zxid.equals(lastDeliveredZxid)) {
+            LOG.error("a bug?");
+            throw new RuntimeException("Potential bug found");
+          }
+          // Removes the delivered transactions.
           this.pendingTxns.subList(startIdx, endIdx).clear();
+          Message delivered =
+            MessageBuilder.buildDelivered(lastDeliveredZxid, numBytes);
+          sendMessage(delivered);
         } else if (msg.getType() == MessageType.ACK_EPOCH) {
           LOG.debug("Got ACK_EPOCH from {}", source);
           quorumSet.add(source);
