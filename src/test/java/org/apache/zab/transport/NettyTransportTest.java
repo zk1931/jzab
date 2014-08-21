@@ -19,13 +19,21 @@ package org.apache.zab.transport;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import org.apache.zab.MessageBuilder;
 import org.apache.zab.TestBase;
+import org.apache.zab.proto.ZabMessage.Message;
+import org.apache.zab.proto.ZabMessage.Message.MessageType;
+import org.apache.zab.Zxid;
 import org.junit.Assert;
 import org.junit.Test;
 import org.slf4j.Logger;
@@ -40,7 +48,7 @@ public class NettyTransportTest extends TestBase {
 
   private static final Transport.Receiver NOOP = new Transport.Receiver() {
     @Override
-    public void onReceived(String source, ByteBuffer message) {
+    public void onReceived(String source, Message message) {
     }
 
     @Override
@@ -55,12 +63,17 @@ public class NettyTransportTest extends TestBase {
     return bb;
   }
 
+  public static Message createAck(Zxid zxid) {
+    return MessageBuilder.buildAck(zxid);
+  }
+
   /**
    * Make sure the constructor fails when the port is invalid.
    */
   @Test(timeout=5000, expected=IllegalArgumentException.class)
   public void testInvalidPort() throws Exception {
-    NettyTransport transport = new NettyTransport(getHostPort(-1), NOOP);
+    NettyTransport transport = new NettyTransport(getHostPort(-1), NOOP,
+                                                  getDirectory());
   }
 
   @Test(timeout=1000)
@@ -68,27 +81,29 @@ public class NettyTransportTest extends TestBase {
     final String localId = getUniqueHostPort();
 
     // receiver simply appends messages to a list.
-    final LinkedList<ByteBuffer> messages = new LinkedList<>();
+    final LinkedList<Zxid> messages = new LinkedList<>();
     Transport.Receiver receiver = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
         Assert.assertEquals(localId, source);
-        messages.add(message);
+        Zxid zxid = MessageBuilder.fromProtoZxid(message.getAck().getZxid());
+        messages.add(zxid);
       }
       public void onDisconnected(String source) {
       }
     };
 
     // send messages to itself.
-    NettyTransport transport = new NettyTransport(localId, receiver);
+    NettyTransport transport = new NettyTransport(localId, receiver,
+                                                  getDirectory());
     for (int i = 0; i < 20; i++) {
-      transport.send(localId, createByteBuffer(i));
+      transport.send(localId, createAck(new Zxid(0, i)));
     }
 
     // receive messages.
     for (int i = 0; i < 20; i++) {
-      int message = messages.pop().getInt();
-      LOG.debug("Received a message: {}", message);
-      Assert.assertEquals(i, message);
+      Zxid zxid = messages.pop();
+      LOG.debug("Received a message: {}", zxid);
+      Assert.assertEquals(new Zxid(0, i), zxid);
     }
     Assert.assertTrue(messages.isEmpty());
   }
@@ -99,14 +114,15 @@ public class NettyTransportTest extends TestBase {
     final String peerB = getUniqueHostPort();
     final CountDownLatch disconnected = new CountDownLatch(1);
     Transport.Receiver receiverA = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
       }
       public void onDisconnected(String source) {
         disconnected.countDown();
       }
     };
-    NettyTransport transportA = new NettyTransport(peerA, receiverA);
-    transportA.send(peerB, createByteBuffer(0));
+    NettyTransport transportA = new NettyTransport(peerA, receiverA,
+                                                   getDirectory());
+    transportA.send(peerB, createAck(new Zxid(0, 0)));
     disconnected.await();
   }
 
@@ -117,55 +133,59 @@ public class NettyTransportTest extends TestBase {
 
     // receiver simply appends messages to a list.
     int messageCount = 20;
-    final LinkedList<ByteBuffer> messagesA = new LinkedList<>();
-    final LinkedList<ByteBuffer> messagesB = new LinkedList<>();
+    final LinkedList<Zxid> messagesA = new LinkedList<>();
+    final LinkedList<Zxid> messagesB = new LinkedList<>();
 
     final CountDownLatch latchA = new CountDownLatch(messageCount);
     final CountDownLatch latchB = new CountDownLatch(messageCount);
 
     Transport.Receiver receiverA = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
         Assert.assertEquals(peerB, source);
-        messagesA.add(message);
+        Zxid zxid = MessageBuilder.fromProtoZxid(message.getAck().getZxid());
+        messagesA.add(zxid);
         latchA.countDown();
       }
       public void onDisconnected(String source) {
       }
     };
     Transport.Receiver receiverB = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
         Assert.assertEquals(peerA, source);
-        messagesB.add(message);
+        Zxid zxid = MessageBuilder.fromProtoZxid(message.getAck().getZxid());
+        messagesB.add(zxid);
         latchB.countDown();
       }
       public void onDisconnected(String source) {
       }
     };
 
-    NettyTransport transportA = new NettyTransport(peerA, receiverA);
-    NettyTransport transportB = new NettyTransport(peerB, receiverB);
+    NettyTransport transportA = new NettyTransport(peerA, receiverA,
+                                                   getDirectory());
+    NettyTransport transportB = new NettyTransport(peerB, receiverB,
+                                                   getDirectory());
 
     // send messages from A to B.
     for (int i = 0; i < messageCount; i++) {
-      transportA.send(peerB, createByteBuffer(i));
+      transportA.send(peerB, createAck(new Zxid(0, i)));
     }
     latchB.await();
     for (int i = 0; i < messageCount; i++) {
-      int message = messagesB.pop().getInt();
-      LOG.debug("Received a message: {}", message);
-      Assert.assertEquals(i, message);
+      Zxid zxid  = messagesB.pop();
+      LOG.debug("Received a message: {}", zxid);
+      Assert.assertEquals(new Zxid(0, i), zxid);
     }
     Assert.assertTrue(messagesB.isEmpty());
 
     // send messages from B to A.
     for (int i = 0; i < messageCount; i++) {
-      transportB.send(peerA, createByteBuffer(i));
+      transportB.send(peerA, createAck(new Zxid(0, i)));
     }
     latchA.await();
     for (int i = 0; i < messageCount; i++) {
-      int message = messagesA.pop().getInt();
-      LOG.debug("Received a message: {}", message);
-      Assert.assertEquals(i, message);
+      Zxid zxid  = messagesA.pop();
+      LOG.debug("Received a message: {}", zxid);
+      Assert.assertEquals(new Zxid(0, i), zxid);
     }
     Assert.assertTrue(messagesA.isEmpty());
     transportA.shutdown();
@@ -182,7 +202,7 @@ public class NettyTransportTest extends TestBase {
 
     // receiver simply decrement the latch.
     Transport.Receiver receiverA = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
         Assert.assertEquals(peerB, source);
         latchA.countDown();
       }
@@ -190,7 +210,7 @@ public class NettyTransportTest extends TestBase {
       }
     };
     Transport.Receiver receiverB = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
         Assert.assertEquals(peerA, source);
         latchB.countDown();
       }
@@ -198,11 +218,13 @@ public class NettyTransportTest extends TestBase {
         disconnectedB.countDown();
       }
     };
-    NettyTransport transportA = new NettyTransport(peerA, receiverA);
-    NettyTransport transportB = new NettyTransport(peerB, receiverB);
+    NettyTransport transportA =
+      new NettyTransport(peerA, receiverA, getDirectory());
+    NettyTransport transportB =
+      new NettyTransport(peerB, receiverB, getDirectory());
 
     // A initiates a handshake.
-    transportA.send(peerB, createByteBuffer(0));
+    transportA.send(peerB, createAck(new Zxid(0, 0)));
     latchB.await();
 
     // shutdown A and make sure B removes the channel to A.
@@ -222,25 +244,27 @@ public class NettyTransportTest extends TestBase {
 
     // receiver simply decrement the latch.
     Transport.Receiver receiverA = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
       }
       public void onDisconnected(String source) {
         latchA.countDown();
       }
     };
     Transport.Receiver receiverB = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
         Assert.assertEquals(peerA, source);
         latchB.countDown();
       }
       public void onDisconnected(String source) {
       }
     };
-    NettyTransport transportA = new NettyTransport(peerA, receiverA);
-    NettyTransport transportB = new NettyTransport(peerB, receiverB);
+    NettyTransport transportA =
+      new NettyTransport(peerA, receiverA, getDirectory());
+    NettyTransport transportB =
+      new NettyTransport(peerB, receiverB, getDirectory());
 
     // A initiates a handshake.
-    transportA.send(peerB, createByteBuffer(0));
+    transportA.send(peerB, createAck(new Zxid(0, 0)));
     latchB.await();
 
     // shutdown B and make sure A removes the channel to B.
@@ -261,7 +285,7 @@ public class NettyTransportTest extends TestBase {
     final CountDownLatch disconnectedB = new CountDownLatch(1);
 
     Transport.Receiver receiverA = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
         Assert.fail("Handshake should have failed");
       }
       public void onDisconnected(String source) {
@@ -270,7 +294,7 @@ public class NettyTransportTest extends TestBase {
       }
     };
     Transport.Receiver receiverB = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
         Assert.fail("Handshake should have failed");
       }
       public void onDisconnected(String source) {
@@ -279,21 +303,23 @@ public class NettyTransportTest extends TestBase {
       }
     };
 
-    final NettyTransport transportA = new NettyTransport(peerA, receiverA);
-    final NettyTransport transportB = new NettyTransport(peerB, receiverB);
+    final NettyTransport transportA =
+      new NettyTransport(peerA, receiverA, getDirectory());
+    final NettyTransport transportB =
+      new NettyTransport(peerB, receiverB, getDirectory());
     transportB.channel.pipeline().addFirst(
       new ChannelInboundHandlerAdapter() {
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
           // B initiates another handshake before responding to A's handshake.
-          transportB.send(peerA, createByteBuffer(0));
+          transportB.send(peerA, createAck(new Zxid(0, 0)));
           ctx.pipeline().remove(this);
           ctx.fireChannelRead(msg);
         }
       });
 
     // A initiates a handshake.
-    transportA.send(peerB, createByteBuffer(0));
+    transportA.send(peerB, createAck(new Zxid(0, 0)));
     disconnectedA.await();
     disconnectedB.await();
     transportA.shutdown();
@@ -309,13 +335,13 @@ public class NettyTransportTest extends TestBase {
     final CountDownLatch disconnectedB = new CountDownLatch(1);
 
     Transport.Receiver receiverA = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
       }
       public void onDisconnected(String source) {
       }
     };
     Transport.Receiver receiverB = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
         Assert.assertEquals(peerA, source);
         latchB.countDown();
         LOG.debug("Received a message from {}: {}: {}", source, message,
@@ -327,11 +353,13 @@ public class NettyTransportTest extends TestBase {
       }
     };
 
-    final NettyTransport transportA = new NettyTransport(peerA, receiverA);
-    final NettyTransport transportB = new NettyTransport(peerB, receiverB);
+    final NettyTransport transportA =
+      new NettyTransport(peerA, receiverA, getDirectory());
+    final NettyTransport transportB =
+      new NettyTransport(peerB, receiverB, getDirectory());
 
     for (int i = 0; i < messageCount; i++) {
-      transportA.send(peerB, createByteBuffer(i));
+      transportA.send(peerB, createAck(new Zxid(0, i)));
     }
     latchB.await();
 
@@ -356,7 +384,7 @@ public class NettyTransportTest extends TestBase {
     final CountDownLatch disconnectedB = new CountDownLatch(1);
 
     Transport.Receiver receiverA = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
       }
       public void onDisconnected(String source) {
         LOG.debug("Got disconnected from {}", source);
@@ -364,7 +392,7 @@ public class NettyTransportTest extends TestBase {
       }
     };
     Transport.Receiver receiverB = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
         Assert.assertEquals(peerA, source);
         latchB.countDown();
         LOG.debug("Received a message from {}: {}: {}", source, message,
@@ -374,11 +402,13 @@ public class NettyTransportTest extends TestBase {
       }
     };
 
-    final NettyTransport transportA = new NettyTransport(peerA, receiverA);
-    final NettyTransport transportB = new NettyTransport(peerB, receiverB);
+    final NettyTransport transportA =
+      new NettyTransport(peerA, receiverA, getDirectory());
+    final NettyTransport transportB =
+      new NettyTransport(peerB, receiverB, getDirectory());
 
     for (int i = 0; i < messageCount; i++) {
-      transportA.send(peerB, createByteBuffer(i));
+      transportA.send(peerB, createAck(new Zxid(0, i)));
     }
     latchB.await();
 
@@ -401,7 +431,7 @@ public class NettyTransportTest extends TestBase {
     final CountDownLatch disconnectedA = new CountDownLatch(1);
 
     Transport.Receiver receiverA = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
       }
       public void onDisconnected(String source) {
         LOG.debug("Got disconnected from {}", source);
@@ -409,14 +439,16 @@ public class NettyTransportTest extends TestBase {
       }
     };
     Transport.Receiver receiverB = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
       }
       public void onDisconnected(String source) {
       }
     };
 
-    final NettyTransport transportA = new NettyTransport(peerA, receiverA);
-    final NettyTransport transportB = new NettyTransport(peerB, receiverB);
+    final NettyTransport transportA =
+      new NettyTransport(peerA, receiverA, getDirectory());
+    final NettyTransport transportB =
+      new NettyTransport(peerB, receiverB, getDirectory());
 
     // Discard the handshake message.
     transportB.channel.pipeline().addFirst(
@@ -427,7 +459,7 @@ public class NettyTransportTest extends TestBase {
         }
       });
 
-    transportA.send(peerB, createByteBuffer(0));
+    transportA.send(peerB, createAck(new Zxid(0, 0)));
     disconnectedA.await();
     transportA.shutdown();
     transportB.shutdown();
@@ -443,33 +475,36 @@ public class NettyTransportTest extends TestBase {
     final CountDownLatch latchB = new CountDownLatch(messageCount);
     final CountDownLatch latchC = new CountDownLatch(messageCount);
     Transport.Receiver receiverA = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
         latchA.countDown();
       }
       public void onDisconnected(String source) {
       }
     };
     Transport.Receiver receiverB = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
         latchB.countDown();
       }
       public void onDisconnected(String source) {
       }
     };
     Transport.Receiver receiverC = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
         latchC.countDown();
       }
       public void onDisconnected(String source) {
       }
     };
-    final NettyTransport transportA = new NettyTransport(peerA, receiverA);
-    final NettyTransport transportB = new NettyTransport(peerB, receiverB);
-    final NettyTransport transportC = new NettyTransport(peerC, receiverC);
+    final NettyTransport transportA =
+      new NettyTransport(peerA, receiverA, getDirectory());
+    final NettyTransport transportB =
+      new NettyTransport(peerB, receiverB, getDirectory());
+    final NettyTransport transportC =
+      new NettyTransport(peerC, receiverC, getDirectory());
 
     for (int i = 0; i < messageCount; i++) {
       transportA.broadcast(Arrays.asList(peerA, peerB, peerC).listIterator(),
-                           createByteBuffer(i));
+                           createAck(new Zxid(0, 0)));
     }
     latchA.await();
     latchB.await();
@@ -487,26 +522,26 @@ public class NettyTransportTest extends TestBase {
     String peerD = getUniqueHostPort();
     final CountDownLatch latchA = new CountDownLatch(1);
     Transport.Receiver receiverA = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
         latchA.countDown();
       }
       public void onDisconnected(String source) {
       }
     };
     Transport.Receiver receiverB = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
       }
       public void onDisconnected(String source) {
       }
     };
     Transport.Receiver receiverC = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
       }
       public void onDisconnected(String source) {
       }
     };
     Transport.Receiver receiverD = new Transport.Receiver() {
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message message) {
       }
       public void onDisconnected(String source) {
       }
@@ -520,28 +555,152 @@ public class NettyTransportTest extends TestBase {
     File keyStoreB = new File(sslDir, "keystore_b.jks");
     File keyStoreC = new File(sslDir, "keystore_c.jks");
 
-    NettyTransport transportA = new NettyTransport(peerA, receiverA, keyStoreA,
-                                    password, trustStore, password);
-    NettyTransport transportB = new NettyTransport(peerB, receiverB, keyStoreB,
-                                    password, trustStore, password);
-    NettyTransport transportC = new NettyTransport(peerC, receiverC, keyStoreC,
-                                    password, trustStore, password);
-    NettyTransport transportD = new NettyTransport(peerD, receiverD);
+    NettyTransport transportA =
+      new NettyTransport(peerA, receiverA, keyStoreA, password, trustStore,
+                         password, getDirectory());
+    NettyTransport transportB =
+      new NettyTransport(peerB, receiverB, keyStoreB, password, trustStore,
+                         password, getDirectory());
+    NettyTransport transportC =
+      new NettyTransport(peerC, receiverC, keyStoreC, password, trustStore,
+                         password, getDirectory());
+    NettyTransport transportD =
+      new NettyTransport(peerD, receiverD, getDirectory());
 
     // D doesn't use SSL
-    transportD.send(peerA, createByteBuffer(0));
+    transportD.send(peerA, createAck(new Zxid(0, 0)));
     Assert.assertFalse(latchA.await(2, TimeUnit.SECONDS));
 
     // C uses untrusted cert
-    transportC.send(peerA, createByteBuffer(0));
+    transportC.send(peerA, createAck(new Zxid(0, 0)));
     Assert.assertFalse(latchA.await(2, TimeUnit.SECONDS));
 
     // B uses trusted cert
-    transportB.send(peerA, createByteBuffer(0));
+    transportB.send(peerA, createAck(new Zxid(0, 0)));
     latchA.await();
 
     transportA.shutdown();
     transportB.shutdown();
     transportC.shutdown();
+  }
+
+  @Test(timeout=5000)
+  public void testSendFile() throws Exception {
+    int messageCount = 3;
+    final String peerA = getUniqueHostPort();
+    final String peerB = getUniqueHostPort();
+    final CountDownLatch latchA = new CountDownLatch(messageCount);
+    final CountDownLatch latchB = new CountDownLatch(messageCount);
+    final ArrayList<File> receivedFiles = new ArrayList<>();
+
+    Transport.Receiver receiverA = new Transport.Receiver() {
+      public void onReceived(String source, Message message) {
+        LOG.debug("onReceived {}", message);
+        latchA.countDown();
+      }
+      public void onDisconnected(String source) {
+      }
+    };
+    Transport.Receiver receiverB = new Transport.Receiver() {
+      public void onReceived(String source, Message message) {
+        if (message.getType() == MessageType.FILE_RECEIVED) {
+          receivedFiles.add(new File(message.getFileReceived().getFullPath()));
+        }
+        LOG.debug("onReceived {}", message);
+        latchB.countDown();
+      }
+      public void onDisconnected(String source) {
+      }
+    };
+    final NettyTransport transportA =
+      new NettyTransport(peerA, receiverA, getDirectory());
+    final NettyTransport transportB =
+      new NettyTransport(peerB, receiverB, getDirectory());
+
+    transportA.send(peerB, createAck(new Zxid(0, 0)));
+    File file = new File("./pom.xml");
+    transportA.send(peerB, file);
+    transportA.send(peerB, createAck(new Zxid(0, 1)));
+    latchB.await();
+
+    Assert.assertTrue(compareFiles(file, receivedFiles.get(0)));
+    transportA.shutdown();
+    transportB.shutdown();
+  }
+
+  @Test(timeout=5000)
+  public void testSendFileSsl() throws Exception {
+    int messageCount = 3;
+    final String peerA = getUniqueHostPort();
+    final String peerB = getUniqueHostPort();
+    final CountDownLatch latchA = new CountDownLatch(messageCount);
+    final CountDownLatch latchB = new CountDownLatch(messageCount);
+    final ArrayList<File> receivedFiles = new ArrayList<>();
+
+    String password = "pa55w0rd";
+    String sslDir = "target" + File.separator + "generated-resources" +
+                    File.separator + "ssl";
+    File trustStore = new File(sslDir, "truststore.jks");
+    File keyStoreA = new File(sslDir, "keystore_a.jks");
+    File keyStoreB = new File(sslDir, "keystore_b.jks");
+
+    Transport.Receiver receiverA = new Transport.Receiver() {
+      public void onReceived(String source, Message message) {
+        LOG.debug("onReceived {}", message);
+        latchA.countDown();
+      }
+      public void onDisconnected(String source) {
+      }
+    };
+    Transport.Receiver receiverB = new Transport.Receiver() {
+      public void onReceived(String source, Message message) {
+        if (message.getType() == MessageType.FILE_RECEIVED) {
+          receivedFiles.add(new File(message.getFileReceived().getFullPath()));
+        }
+        LOG.debug("onReceived {}", message);
+        latchB.countDown();
+      }
+      public void onDisconnected(String source) {
+      }
+    };
+    NettyTransport transportA = new NettyTransport(peerA, receiverA, keyStoreA,
+                                    password, trustStore, password,
+                                    getDirectory());
+    NettyTransport transportB = new NettyTransport(peerB, receiverB, keyStoreB,
+                                    password, trustStore, password,
+                                    getDirectory());
+    transportA.send(peerB, createAck(new Zxid(0, 0)));
+    File file = new File("./pom.xml");
+    transportA.send(peerB, file);
+    transportA.send(peerB, createAck(new Zxid(0, 1)));
+    latchB.await();
+
+    Assert.assertTrue(compareFiles(file, receivedFiles.get(0)));
+    transportA.shutdown();
+    transportB.shutdown();
+  }
+
+  // Compare if two files are same.
+  static boolean compareFiles(File file1, File file2) throws Exception {
+    Assert.assertTrue(file1.exists());
+    Assert.assertTrue(file2.exists());
+    if (file1.length() != file2.length()) {
+      return false;
+    }
+    try (FileInputStream fin1 = new FileInputStream(file1);
+         FileInputStream fin2 = new FileInputStream(file2)) {
+      BufferedReader reader = new BufferedReader(new InputStreamReader(fin1));
+      StringBuilder sb1 = new StringBuilder();
+      String line = null;
+      while ((line = reader.readLine()) != null) {
+        sb1.append(line);
+      }
+      StringBuilder sb2 = new StringBuilder();
+      reader = new BufferedReader(new InputStreamReader(fin2));
+      while ((line = reader.readLine()) != null) {
+        sb2.append(line);
+      }
+      return sb1.toString().equals(sb2.toString());
+    }
   }
 }

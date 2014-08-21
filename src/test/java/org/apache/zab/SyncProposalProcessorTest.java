@@ -97,11 +97,8 @@ public class SyncProposalProcessorTest extends TestBase {
     class TestReceiver implements Transport.Receiver {
       int ackCount = 0;
       @Override
-      public void onReceived(String source, ByteBuffer message) {
+      public void onReceived(String source, Message msg) {
         try {
-          byte[] buffer = new byte[message.remaining()];
-          message.get(buffer);
-          Message msg = Message.parseFrom(buffer);
           Zxid zxid = MessageBuilder.fromProtoZxid(msg.getAck().getZxid());
           ackCount++;
           if (zxid.equals(expectedZxid)) {
@@ -113,6 +110,7 @@ public class SyncProposalProcessorTest extends TestBase {
           Assert.fail("Unexpected exception: " + ex.getMessage());
         }
       }
+
       @Override
       public void onDisconnected(String source) {
       }
@@ -121,7 +119,7 @@ public class SyncProposalProcessorTest extends TestBase {
                                    numTransactions, batchSize));
     PersistentState persistence = new PersistentState(getDirectory(), log);
     TestReceiver receiver = new TestReceiver();
-    Transport transport = new NettyTransport(leader, receiver);
+    Transport transport = new NettyTransport(leader, receiver, getDirectory());
     ClusterConfiguration cnf =
       new ClusterConfiguration(Zxid.ZXID_NOT_EXIST,
                                new ArrayList<String>(), "");

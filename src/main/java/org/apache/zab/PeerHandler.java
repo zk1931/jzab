@@ -20,7 +20,6 @@ package org.apache.zab;
 
 import com.google.protobuf.TextFormat;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -221,7 +220,7 @@ public class PeerHandler {
 
   synchronized void sendMessage(Message msg) {
     if (!this.disableSending) {
-      this.transport.send(this.serverId, ByteBuffer.wrap(msg.toByteArray()));
+      this.transport.send(this.serverId, msg);
     }
   }
 

@@ -22,7 +22,6 @@ import java.io.File;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.apache.zab.transport.DummyTransport;
 import org.junit.Rule;
 import org.junit.rules.TestName;
 import org.junit.rules.TestWatcher;
@@ -48,7 +47,6 @@ public class TestBase {
   public TestWatcher watchman= new TestWatcher() {
     @Override
     protected void starting(Description description) {
-      DummyTransport.clearMessageQueue();
       LOG.info("STARTING: {}", description);
       LOG.debug("Before {} : Number of threads {}",
                 description,

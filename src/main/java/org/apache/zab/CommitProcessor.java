@@ -19,7 +19,6 @@
 package org.apache.zab;
 
 import com.google.protobuf.TextFormat;
-import java.nio.ByteBuffer;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
@@ -109,10 +108,6 @@ public class CommitProcessor implements RequestProcessor,
     this.commitQueue.add(request);
   }
 
-  void sendMessage(Message msg) {
-    this.transport.send(this.serverId, ByteBuffer.wrap(msg.toByteArray()));
-  }
-
   @Override
   public Void call() throws Exception {
     LOG.debug("CommitProcessor gets started.");
@@ -167,7 +162,7 @@ public class CommitProcessor implements RequestProcessor,
                 // enqueue SHUT_DOWN message to main thread to let it quit.
                 LOG.debug("The new configuration doesn't contain {}", serverId);
                 Message shutdown = MessageBuilder.buildShutDown();
-                sendMessage(shutdown);
+                transport.send(this.serverId, shutdown);
               }
               numBytes += txn.getBody().capacity();
             } else {
@@ -184,7 +179,7 @@ public class CommitProcessor implements RequestProcessor,
           this.pendingTxns.subList(startIdx, endIdx).clear();
           Message delivered =
             MessageBuilder.buildDelivered(lastDeliveredZxid, numBytes);
-          sendMessage(delivered);
+          transport.send(this.serverId, delivered);
         } else if (msg.getType() == MessageType.ACK_EPOCH) {
           LOG.debug("Got ACK_EPOCH from {}", source);
           quorumSet.add(source);

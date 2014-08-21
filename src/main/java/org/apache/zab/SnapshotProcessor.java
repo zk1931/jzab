@@ -83,7 +83,6 @@ public class SnapshotProcessor implements RequestProcessor,
           break;
         }
         Message msg = request.getMessage();
-        String source = request.getServerId();
         if (msg.getType() == MessageType.SNAPSHOT) {
           Zxid zxid =
             MessageBuilder.fromProtoZxid(msg.getSnapshot().getLastZxid());
@@ -104,7 +103,7 @@ public class SnapshotProcessor implements RequestProcessor,
           }
         }
       }
-    } catch (Exception e) {
+    } catch (RuntimeException e) {
       LOG.error("Caught exception", e);
       throw e;
     }
