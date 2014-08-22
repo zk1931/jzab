@@ -135,6 +135,8 @@
              <filesets>
                 <fileset>
                   <directory>target/data</directory>
+                </fileset>
+                <fileset>
                   <directory>target/generated-resources</directory>
                 </fileset>
               </filesets>

@@ -331,19 +331,20 @@ public abstract class Participant {
         return;
       }
     } else if (msg.getType() == MessageType.TRUNCATE) {
-      // TRUNCATE message. If the peer's history is the prefix of this
-      // Participant, just trucate this Participant's history up to the
-      // last prefix zxid.
+      // TRUNCATE message.
       if (LOG.isDebugEnabled()) {
         LOG.debug("Got message {}",
                   TextFormat.shortDebugString(msg));
       }
       ZabMessage.Truncate trunc = msg.getTruncate();
-      Zxid lastPrefixZxid = MessageBuilder
-                            .fromProtoZxid(trunc.getLastPrefixZxid());
+      Zxid lastPrefixZxid =
+        MessageBuilder.fromProtoZxid(trunc.getLastPrefixZxid());
+      lastZxidPeer = MessageBuilder.fromProtoZxid(trunc.getLastZxid());
       log.truncate(lastPrefixZxid);
-      waitForSyncEnd(peer);
-      return;
+      if (lastZxidPeer.compareTo(lastPrefixZxid) == 0) {
+        waitForSyncEnd(peer);
+        return;
+      }
     } else {
       // SNAPSHOT message.
       if (LOG.isDebugEnabled()) {
@@ -352,9 +353,14 @@ public abstract class Participant {
       }
       ZabMessage.Snapshot snap = msg.getSnapshot();
       lastZxidPeer = MessageBuilder.fromProtoZxid(snap.getLastZxid());
+      Zxid snapZxid = MessageBuilder.fromProtoZxid(snap.getSnapZxid());
+      ByteBuffer data = snap.getData().asReadOnlyByteBuffer();
+      persistence.setSnapshotData(data, snapZxid);
+      // Truncates the whole log.
       log.truncate(Zxid.ZXID_NOT_EXIST);
-      // Check if the history of peer is empty.
+      // Checks if there's any proposals after snapshot.
       if (lastZxidPeer.compareTo(Zxid.ZXID_NOT_EXIST) == 0) {
+        // If no, done with synchronization.
         waitForSyncEnd(peer);
         return;
       }
@@ -531,35 +537,65 @@ public abstract class Participant {
     }
 
     public void run() throws IOException {
-      LOG.debug("Begins synchronizing history to {}(last zxid : {})", peerId,
-                peerLatestZxid);
+      LOG.debug("Starts synchronizing {}", peerId);
       Zxid syncPoint = null;
       Log log = persistence.getLog();
-      if (this.lastSyncZxid.getEpoch() == peerLatestZxid.getEpoch()) {
-        // If the peer has same epoch number as the server.
-        if (this.lastSyncZxid.compareTo(peerLatestZxid) >= 0) {
-          // Means peer's history is the prefix of the server's.
-          LOG.debug("{}'s history >= {}'s, sending DIFF.", serverId, peerId);
-          syncPoint = new Zxid(peerLatestZxid.getEpoch(),
-                               peerLatestZxid.getXid() + 1);
-          Message diff = MessageBuilder.buildDiff(this.lastSyncZxid);
-          sendMessage(peerId, diff);
+      Zxid snapZxid = persistence.getSnapshotZxid();
+      File snapFile = persistence.getSnapshotFile();
+
+      LOG.debug("Last peer zxid is {}, last sync zxid is {}, snapshot is {}",
+                peerLatestZxid, lastSyncZxid, snapZxid);
+
+      if (snapFile == null ||
+          (snapZxid.compareTo(peerLatestZxid) <= 0 &&
+           lastSyncZxid.getEpoch() == peerLatestZxid.getEpoch())) {
+        // Starts the synchronization without using snapshot if any of the two
+        // cases happens:
+        //  1) There's no snapshot file.
+        //  2) The peer's log is the superset of the current snapshot and the
+        //     server and peer have the same epoch number in last appended zxid.
+        if (lastSyncZxid.getEpoch() == peerLatestZxid.getEpoch()) {
+          // If the peer has same epoch number as the server.
+          if (lastSyncZxid.compareTo(peerLatestZxid) >= 0) {
+            // Means peer's history is the prefix of the server's.
+            LOG.debug("{}'s history >= {}'s, sending DIFF.", serverId, peerId);
+            syncPoint = new Zxid(peerLatestZxid.getEpoch(),
+                                 peerLatestZxid.getXid() + 1);
+            Message diff = MessageBuilder.buildDiff(lastSyncZxid);
+            sendMessage(peerId, diff);
+          } else {
+            // Means peer's history is the superset of the server's.
+            LOG.debug("{}'s history < {}'s, sending TRUNCATE.", serverId,
+                      peerId);
+            // Doesn't need to synchronize anything, just truncate.
+            syncPoint = null;
+            Message trunc =
+              MessageBuilder.buildTruncate(lastSyncZxid, lastSyncZxid);
+            sendMessage(peerId, trunc);
+          }
         } else {
-          // Means peer's history is the superset of the server's.
-          LOG.debug("{}'s history < {}'s, sending TRUNCATE.", serverId,
-                    peerId);
-          // Doesn't need to synchronize anything, just truncate.
-          syncPoint = null;
-          Message trunc = MessageBuilder.buildTruncate(this.lastSyncZxid);
+          // They have different epoch numbers. Truncate all.
+          LOG.debug("The last epoch of {} and {} are different, sending "
+                    + "TRUNCATE to truncate whole log.", serverId, peerId);
+          syncPoint = new Zxid(0, 0);
+          Message trunc =
+            MessageBuilder.buildTruncate(Zxid.ZXID_NOT_EXIST, lastSyncZxid);
           sendMessage(peerId, trunc);
         }
       } else {
-        // They have different epoch numbers. Truncate all.
-        LOG.debug("The last epoch of {} and {} are different, sending "
-                  + "SNAPSHOT.", serverId, peerId);
-        syncPoint = new Zxid(0, 0);
-        Message snapshot = MessageBuilder.buildSnapshot(this.lastSyncZxid);
+        // Synchronizing peer with snapshot file.
+        ByteBuffer data = persistence.getSnapshotData();
+        Message snapshot = MessageBuilder.buildSnapshot(lastSyncZxid, snapZxid,
+                                                        data);
         sendMessage(peerId, snapshot);
+        if (snapZxid.compareTo(lastSyncZxid) == 0) {
+          // If there's nothing after snapshot needs to by synchronized.
+          syncPoint = null;
+        } else {
+          // The first transaction that needs to be synchronized to peer after
+          // snapshot.
+          syncPoint = new Zxid(snapZxid.getEpoch(), snapZxid.getXid() + 1);
+        }
       }
       if (syncPoint != null) {
         try (Log.LogIterator iter = log.getIterator(syncPoint)) {

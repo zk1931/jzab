@@ -154,6 +154,8 @@ public class Follower extends Participant {
       waitForNewLeaderMessage();
       waitForCommitMessage();
       persistence.setProposedEpoch(persistence.getAckEpoch());
+      // See if it can be restored from the snapshot file.
+      restoreFromSnapshot();
       // Delivers all transactions in log before entering broadcasting phase.
       deliverUndeliveredTxns();
 
