@@ -36,9 +36,8 @@ final class DummyPersistentState {
       throws IOException {
     PersistentState persistence = new PersistentState(directory);
     List<String> peerList = Arrays.asList(peers.split(";"));
-    ClusterConfiguration cnf = new ClusterConfiguration(Zxid.ZXID_NOT_EXIST,
-                                                        peerList,
-                                                        "host");
+    ClusterConfiguration cnf =
+      new ClusterConfiguration(new Zxid(0, 0), peerList, "host");
     persistence.setLastSeenConfig(cnf);
     persistence.setProposedEpoch(epoch);
     return persistence;

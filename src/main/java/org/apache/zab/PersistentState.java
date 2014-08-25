@@ -47,11 +47,6 @@ public class PersistentState {
   private final File fProposedEpoch;
 
   /**
-   * The file to store the last acknowledged config.
-   */
-  private final File fLastSeenConfig;
-
-  /**
    * The directory for all the persistent variables.
    */
   private final File logDir;
@@ -80,7 +75,6 @@ public class PersistentState {
     }
     this.fAckEpoch = new File(logDir, "ack_epoch");
     this.fProposedEpoch = new File(logDir, "proposed_epoch");
-    this.fLastSeenConfig = new File(logDir, "cluster_config");
     File logFile = new File(logDir, "transaction.log");
     if (log != null) {
       this.log = log;
@@ -154,8 +148,12 @@ public class PersistentState {
    * @throws IOException in case of IO failure.
    */
   ClusterConfiguration getLastSeenConfig() throws IOException {
+    File file = getLatestFileWithPrefix("cluster_config");
+    if (file == null) {
+      return null;
+    }
     try {
-      Properties prop = FileUtils.readPropertiesFromFile(this.fLastSeenConfig);
+      Properties prop = FileUtils.readPropertiesFromFile(file);
       return ClusterConfiguration.fromProperties(prop);
     } catch (FileNotFoundException e) {
       LOG.debug("AckConfig file doesn't exist, probably it's the first time" +
@@ -171,9 +169,16 @@ public class PersistentState {
    * @throws IOException in case of IO failure.
    */
   void setLastSeenConfig(ClusterConfiguration conf) throws IOException {
-    FileUtils.writePropertiesToFile(conf.toProperties(), this.fLastSeenConfig);
+    String version = conf.getVersion().toSimpleString();
+    File file = new File(logDir, String.format("cluster_config.%s", version));
+    FileUtils.writePropertiesToFile(conf.toProperties(), file);
   }
 
+  /**
+   * Gets the transaction log.
+   *
+   * @return the transaction log.
+   */
   Log getLog() {
     return this.log;
   }
@@ -206,21 +211,7 @@ public class PersistentState {
    * @return the last snapshot file.
    */
   File getSnapshotFile() {
-    // There're probably a list of snapshot files, pick the last one.
-    List<File> snapshotFiles = new ArrayList<File>();
-    for (File file : this.logDir.listFiles()) {
-      if (!file.isDirectory() &&
-          file.getName().matches("snapshot\\.\\d+_\\d+")) {
-        // Only consider those with valid name.
-        snapshotFiles.add(file);
-      }
-    }
-    if (!snapshotFiles.isEmpty()) {
-      // Picks the last one.
-      Collections.sort(snapshotFiles);
-      return snapshotFiles.get(snapshotFiles.size() - 1);
-    }
-    return null;
+    return getLatestFileWithPrefix("snapshot");
   }
 
   /**
@@ -249,6 +240,32 @@ public class PersistentState {
 
   File getLogDir() {
     return this.logDir;
+  }
+
+
+  /**
+   * Gets file with highest zxid for given prefix. The file name has format :
+   * prefix.zxid.
+   *
+   * @return the file with highest zxid in its name for given prefix, or null
+   * if there's no such files.
+   */
+  File getLatestFileWithPrefix(String prefix) {
+    List<File> files = new ArrayList<File>();
+    String pattern = prefix + "\\.\\d+_\\d+";
+    for (File file : this.logDir.listFiles()) {
+      if (!file.isDirectory() &&
+          file.getName().matches(pattern)) {
+        // Only consider those with valid name.
+        files.add(file);
+      }
+    }
+    if (!files.isEmpty()) {
+      // Picks the last one.
+      Collections.sort(files);
+      return files.get(files.size() - 1);
+    }
+    return null;
   }
 }
 

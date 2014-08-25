@@ -76,8 +76,11 @@ class ClusterConfiguration {
     Properties prop = new Properties();
     StringBuilder strBuilder = new StringBuilder();
     String strVersion = this.version.toSimpleString();
-    for (String peer : this.peers) {
-      strBuilder.append(peer + ",");
+    if (!this.peers.isEmpty()) {
+      strBuilder.append(this.peers.get(0));
+      for (int i = 1; i < this.peers.size(); ++i) {
+        strBuilder.append("," + this.peers.get(i));
+      }
     }
     prop.setProperty("peers", strBuilder.toString());
     prop.setProperty("version", strVersion);

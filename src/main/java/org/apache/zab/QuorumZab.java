@@ -341,6 +341,8 @@ public class QuorumZab {
 
     private File fLastSeenConfig;
 
+    private PersistentState persistence;
+
     Log log = null;
 
     /**
@@ -354,7 +356,8 @@ public class QuorumZab {
      * For example, if the baseLogDir is /tmp/log and the serverId is server1,
      * then the log directory for this server is /tmp/log/server1.
      */
-    public TestState(String serverId, String servers, File baseLogDir) {
+    public TestState(String serverId, String servers, File baseLogDir)
+        throws IOException {
       prop = new Properties();
       if (serverId != null) {
         this.prop.setProperty("serverId", serverId);
@@ -367,16 +370,10 @@ public class QuorumZab {
       } else {
         this.logDir = baseLogDir;
       }
-      // Creates its log directory.
-      if(!this.logDir.mkdir()) {
-        LOG.warn("Creating log directory {} failed, already exists?",
-                 this.logDir.getAbsolutePath());
-      }
-
+      this.persistence = new PersistentState(this.logDir);
       this.prop.setProperty("logdir", logDir.getAbsolutePath());
       this.fAckEpoch = new File(this.logDir, "ack_epoch");
       this.fProposedEpoch = new File(this.logDir, "proposed_epoch");
-      this.fLastSeenConfig = new File(this.logDir, "cluster_config");
     }
 
     public TestState(Properties prop) {
@@ -404,8 +401,7 @@ public class QuorumZab {
 
     TestState setClusterConfiguration(ClusterConfiguration conf)
         throws IOException {
-      FileUtils.writePropertiesToFile(conf.toProperties(),
-                                      this.fLastSeenConfig);
+      this.persistence.setLastSeenConfig(conf);
       return this;
     }
 
@@ -454,7 +450,7 @@ public class QuorumZab {
           List<String> peers = config.getPeers();
           serverId = config.getServerId();
           ClusterConfiguration cnf =
-            new ClusterConfiguration(Zxid.ZXID_NOT_EXIST, peers, serverId);
+            new ClusterConfiguration(new Zxid(0, 0), peers, serverId);
           persistence.setLastSeenConfig(cnf);
         } else {
           // Restore from log directory.
