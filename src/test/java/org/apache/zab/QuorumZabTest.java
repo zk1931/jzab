@@ -39,12 +39,12 @@ class QuorumTestCallback implements QuorumZab.StateChangeCallback {
   private static final Logger LOG =
       LoggerFactory.getLogger(QuorumTestCallback.class);
 
-  int establishedEpoch = -1;
-  int acknowledgedEpoch = -1;
+  long establishedEpoch = -1;
+  long acknowledgedEpoch = -1;
   String electedLeader;
   String syncFollower;
   Zxid syncZxid;
-  int syncAckEpoch;
+  long syncAckEpoch;
   List<Transaction> initialHistory = new ArrayList<Transaction>();
 
   Semaphore semElection = new Semaphore(0);
@@ -98,26 +98,26 @@ class QuorumTestCallback implements QuorumZab.StateChangeCallback {
   }
 
   @Override
-  public void initialHistoryOwner(String server, int aEpoch, Zxid zxid) {
+  public void initialHistoryOwner(String server, long aEpoch, Zxid zxid) {
     this.syncFollower = server;
     this.syncZxid =zxid;
     this.syncAckEpoch =aEpoch;
   }
 
   @Override
-  public void leaderSynchronizing(int epoch) {
+  public void leaderSynchronizing(long epoch) {
     this.establishedEpoch = epoch;
     this.semSynchronizing.release();
   }
 
   @Override
-  public void followerSynchronizing(int epoch) {
+  public void followerSynchronizing(long epoch) {
     this.establishedEpoch = epoch;
     this.semSynchronizing.release();
   }
 
   @Override
-  public void leaderBroadcasting(int epoch, List<Transaction> history,
+  public void leaderBroadcasting(long epoch, List<Transaction> history,
                                  ClusterConfiguration config) {
     LOG.debug("The history after synchronization:");
     for (Transaction txn : history) {
@@ -130,7 +130,7 @@ class QuorumTestCallback implements QuorumZab.StateChangeCallback {
   }
 
   @Override
-  public void followerBroadcasting(int epoch, List<Transaction> history,
+  public void followerBroadcasting(long epoch, List<Transaction> history,
                                    ClusterConfiguration config) {
     LOG.debug("The history after synchronization:");
     for (Transaction txn : history) {

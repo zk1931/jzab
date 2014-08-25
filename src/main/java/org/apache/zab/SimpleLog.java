@@ -110,8 +110,8 @@ public class SimpleLog implements Log {
     }
     try {
       ByteBuffer buf = txn.getBody();
-      this.logStream.writeInt(txn.getZxid().getEpoch());
-      this.logStream.writeInt(txn.getZxid().getXid());
+      this.logStream.writeLong(txn.getZxid().getEpoch());
+      this.logStream.writeLong(txn.getZxid().getXid());
       this.logStream.writeInt(txn.getType());
       this.logStream.writeInt(buf.remaining());
       // Write the data of ByteBuffer to stream.
@@ -294,10 +294,10 @@ public class SimpleLog implements Log {
         throw new NoSuchElementException();
       }
       DataInputStream in = new DataInputStream(logStream);
-      int epoch, xid;
+      long epoch, xid;
       int type;
-      epoch = in.readInt();
-      xid = in.readInt();
+      epoch = in.readLong();
+      xid = in.readLong();
       type = in.readInt();
       Zxid zxid = new Zxid(epoch, xid);
       // Reads the length of the transaction body.

@@ -45,23 +45,23 @@ public final class FileUtils {
   }
 
   /**
-   * Atomically writes an integer to a file.
+   * Atomically writes a long integer to a file.
    *
-   * This method writes an integer to a file by first writing the integer to a
-   * temporary file and then atomically moving it to the destination,
-   * overwriting the destination file if it already exists.
+   * This method writes a long integer to a file by first writing the long
+   * integer to a temporary file and then atomically moving it to the
+   * destination, overwriting the destination file if it already exists.
    *
-   * @param value an integer value to write.
+   * @param value a long integer value to write.
    * @param file file to write the value to.
    * @throws IOException if an I/O error occurs.
    */
-  public static void writeIntToFile(int value, File file) throws IOException {
+  public static void writeLongToFile(long value, File file) throws IOException {
     // Create a temp file in the same directory as the file parameter.
     File temp = File.createTempFile(file.getName(), null,
                                     file.getAbsoluteFile().getParentFile());
     try (FileOutputStream fos = new FileOutputStream(temp);
          PrintWriter pw = new PrintWriter(fos)) {
-      pw.print(Integer.toString(value));
+      pw.print(Long.toString(value));
       fos.getChannel().force(true);
     }
     atomicMove(temp, file);
@@ -69,17 +69,17 @@ public final class FileUtils {
   }
 
   /**
-   * Reads an integer from a file that was created by the
-   * {@link #writeIntToFile(int, File) writeIntToFile} method.
+   * Reads a long integer from a file that was created by the
+   * {@link #writeLongToFile(long, File) writeIntToFile} method.
    *
    * @param file file to read the integer value from.
-   * @return the integer value in the file
+   * @return the long integer value in the file
    * @throws IOException if an I/O error occurs.
    */
-  public static int readIntFromFile(File file) throws IOException {
+  public static long readLongFromFile(File file) throws IOException {
     try (FileInputStream fis = new FileInputStream(file);
          BufferedReader br = new BufferedReader(new InputStreamReader(fis))) {
-      int value = Integer.parseInt(br.readLine());
+      long value = Long.parseLong(br.readLine());
       return value;
     }
   }

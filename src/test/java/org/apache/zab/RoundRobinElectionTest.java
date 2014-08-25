@@ -32,7 +32,7 @@ final class DummyPersistentState {
 
   private DummyPersistentState() {}
 
-  static PersistentState make(File directory, String peers, int epoch)
+  static PersistentState make(File directory, String peers, long epoch)
       throws IOException {
     PersistentState persistence = new PersistentState(directory);
     List<String> peerList = Arrays.asList(peers.split(";"));

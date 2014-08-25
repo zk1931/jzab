@@ -89,9 +89,9 @@ public class PersistentState {
    * @return the last acknowledged epoch.
    * @throws IOException in case of IO failures.
    */
-  int getAckEpoch() throws IOException {
+  long getAckEpoch() throws IOException {
     try {
-      int ackEpoch = FileUtils.readIntFromFile(this.fAckEpoch);
+      long ackEpoch = FileUtils.readLongFromFile(this.fAckEpoch);
       return ackEpoch;
     } catch (FileNotFoundException e) {
       LOG.debug("File not exist, initialize acknowledged epoch to -1");
@@ -108,8 +108,8 @@ public class PersistentState {
    * @param ackEpoch the updated last acknowledged epoch.
    * @throws IOException in case of IO failures.
    */
-  void setAckEpoch(int ackEpoch) throws IOException {
-    FileUtils.writeIntToFile(ackEpoch, this.fAckEpoch);
+  void setAckEpoch(long ackEpoch) throws IOException {
+    FileUtils.writeLongToFile(ackEpoch, this.fAckEpoch);
   }
 
   /**
@@ -118,9 +118,9 @@ public class PersistentState {
    * @return the last proposed epoch.
    * @throws IOException in case of IO failures.
    */
-  int getProposedEpoch() throws IOException {
+  long getProposedEpoch() throws IOException {
     try {
-      int pEpoch = FileUtils.readIntFromFile(this.fProposedEpoch);
+      long pEpoch = FileUtils.readLongFromFile(this.fProposedEpoch);
       return pEpoch;
     } catch (FileNotFoundException e) {
       LOG.debug("File not exist, initialize acknowledged epoch to -1");
@@ -137,8 +137,8 @@ public class PersistentState {
    * @param pEpoch the updated last proposed epoch.
    * @throws IOException in case of IO failure.
    */
-  void setProposedEpoch(int pEpoch) throws IOException {
-    FileUtils.writeIntToFile(pEpoch, this.fProposedEpoch);
+  void setProposedEpoch(long pEpoch) throws IOException {
+    FileUtils.writeLongToFile(pEpoch, this.fProposedEpoch);
   }
 
   /**

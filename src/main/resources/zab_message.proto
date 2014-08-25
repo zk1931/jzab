@@ -70,17 +70,17 @@ message InvalidMessage {
 
 // This message corresponds to CEPOCH message in Zab paper.
 message ProposedEpoch {
-  required int32 proposed_epoch = 1;
-  required int32 current_epoch = 2;
+  required int64 proposed_epoch = 1;
+  required int64 current_epoch = 2;
   required ClusterConfiguration config = 3;
 }
 
 message NewEpoch {
-  required int32 new_epoch = 1;
+  required int64 new_epoch = 1;
 }
 
 message AckEpoch {
-  required int32 acknowledged_epoch = 1;
+  required int64 acknowledged_epoch = 1;
   required Zxid lastZxid = 2;
 }
 
@@ -122,12 +122,12 @@ message Snapshot {
 }
 
 message Zxid {
-  required int32 epoch = 1;
-  required int32 xid = 2;
+  required int64 epoch = 1;
+  required int64 xid = 2;
 }
 
 message NewLeader {
-  required int32 epoch = 1;
+  required int64 epoch = 1;
 }
 
 message Ack {

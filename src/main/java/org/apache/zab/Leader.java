@@ -70,7 +70,7 @@ public class Leader extends Participant {
   /**
    * The established epoch for this leader.
    */
-  private int establishedEpoch = -1;
+  private long establishedEpoch = -1;
 
   /**
    * The zxid for pending COP, or null if there's no pending COP.
@@ -305,7 +305,7 @@ public class Leader extends Participant {
   void waitProposedEpochFromQuorum()
       throws InterruptedException, TimeoutException, IOException {
     ClusterConfiguration currentConfig = persistence.getLastSeenConfig();
-    int acknowledgedEpoch = persistence.getAckEpoch();
+    long acknowledgedEpoch = persistence.getAckEpoch();
     // Waits PROPOED_EPOCH from a quorum of peers in current configuraion.
     while (this.quorumSet.size() < getQuorumSize() - 1) {
       MessageTuple tuple = getExpectedMessage(MessageType.PROPOSED_EPOCH, null);
@@ -314,8 +314,8 @@ public class Leader extends Participant {
       ZabMessage.ProposedEpoch epoch = msg.getProposedEpoch();
       ClusterConfiguration peerConfig =
         ClusterConfiguration.fromProto(epoch.getConfig(), source);
-      int peerProposedEpoch = epoch.getProposedEpoch();
-      int peerAckedEpoch = epoch.getCurrentEpoch();
+      long peerProposedEpoch = epoch.getProposedEpoch();
+      long peerAckedEpoch = epoch.getCurrentEpoch();
       Zxid peerVersion = peerConfig.getVersion();
       Zxid selfVersion = currentConfig.getVersion();
       // If the peer's config version doesn't match leader's config version,
@@ -360,13 +360,13 @@ public class Leader extends Participant {
    */
   void proposeNewEpoch()
       throws IOException {
-    List<Integer> epochs = new ArrayList<Integer>();
+    List<Long> epochs = new ArrayList<Long>();
     // Puts leader's last received proposed epoch in list.
     epochs.add(persistence.getProposedEpoch());
     for (PeerHandler ph : this.quorumSet.values()) {
       epochs.add(ph.getLastProposedEpoch());
     }
-    int newEpoch = Collections.max(epochs) + 1;
+    long newEpoch = Collections.max(epochs) + 1;
     // Updates leader's last proposed epoch.
     persistence.setProposedEpoch(newEpoch);
     LOG.debug("Begins proposing new epoch {}", newEpoch);
@@ -429,14 +429,14 @@ public class Leader extends Participant {
     // L.1.2 Select the history of a follwer f to be the initial history
     // of the new epoch. Follwer f is such that for every f' in the quorum,
     // f'.a < f.a or (f'.a == f.a && f'.zxid <= f.zxid).
-    int ackEpoch = persistence.getAckEpoch();
+    long ackEpoch = persistence.getAckEpoch();
     Zxid zxid = persistence.getLog().getLatestZxid();
     String peerId = this.serverId;
     Iterator<Map.Entry<String, PeerHandler>> iter;
     iter = this.quorumSet.entrySet().iterator();
     while (iter.hasNext()) {
       Map.Entry<String, PeerHandler> entry = iter.next();
-      int fEpoch = entry.getValue().getLastAckedEpoch();
+      long fEpoch = entry.getValue().getLastAckedEpoch();
       Zxid fZxid = entry.getValue().getLastZxid();
       if (fEpoch > ackEpoch ||
           (fEpoch == ackEpoch && fZxid.compareTo(zxid) > 0)) {
@@ -510,7 +510,7 @@ public class Leader extends Participant {
     // Synchronization is performed in other threads.
     Zxid lastZxid = persistence.getLog().getLatestZxid();
     ClusterConfiguration clusterConfig = persistence.getLastSeenConfig();
-    int proposedEpoch = persistence.getProposedEpoch();
+    long proposedEpoch = persistence.getProposedEpoch();
     for (PeerHandler ph : this.quorumSet.values()) {
       ph.setSyncTask(new SyncPeerTask(ph.getServerId(), ph.getLastZxid(),
                                       lastZxid, clusterConfig),

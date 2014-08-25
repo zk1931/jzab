@@ -108,8 +108,8 @@ public final class MessageBuilder {
    * @param config the current seen configuration.
    * @return the protobuf message.
    */
-  public static Message buildProposedEpoch(int proposedEpoch,
-                                           int acknowledgedEpoch,
+  public static Message buildProposedEpoch(long proposedEpoch,
+                                           long acknowledgedEpoch,
                                            ClusterConfiguration config) {
     ZabMessage.Zxid version = toProtoZxid(config.getVersion());
     ZabMessage.ClusterConfiguration zCnf
@@ -133,7 +133,7 @@ public final class MessageBuilder {
    * @param epoch the new proposed epoch number.
    * @return the protobuf message.
    */
-  public static Message buildNewEpochMessage(int epoch) {
+  public static Message buildNewEpochMessage(long epoch) {
     NewEpoch nEpoch = NewEpoch.newBuilder().setNewEpoch(epoch).build();
 
     return  Message.newBuilder().setType(MessageType.NEW_EPOCH)
@@ -148,7 +148,7 @@ public final class MessageBuilder {
    * @param lastZxid the last zxid of the follower.
    * @return the protobuf message.
    */
-  public static Message buildAckEpoch(int epoch, Zxid lastZxid) {
+  public static Message buildAckEpoch(long epoch, Zxid lastZxid) {
     ZabMessage.Zxid zxid = toProtoZxid(lastZxid);
 
     AckEpoch ackEpoch = AckEpoch.newBuilder()
@@ -278,7 +278,7 @@ public final class MessageBuilder {
    * @param epoch the established epoch.
    * @return a protobuf message.
    */
-  public static Message buildNewLeader(int epoch) {
+  public static Message buildNewLeader(long epoch) {
     NewLeader nl = NewLeader.newBuilder().setEpoch(epoch).build();
     return Message.newBuilder().setType(MessageType.NEW_LEADER)
                                .setNewLeader(nl)

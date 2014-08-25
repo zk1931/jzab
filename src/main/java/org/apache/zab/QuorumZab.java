@@ -219,21 +219,21 @@ public class QuorumZab {
      * @param zxid the last transaction id of the node whose initial history
      * is chosen for synchronization.
      */
-    void initialHistoryOwner(String server, int aEpoch, Zxid zxid);
+    void initialHistoryOwner(String server, long aEpoch, Zxid zxid);
 
     /**
      * Will be called when entering synchronization phase of leader.
      *
      * @param epoch the established epoch.
      */
-    void leaderSynchronizing(int epoch);
+    void leaderSynchronizing(long epoch);
 
     /**
      * Will be called when entering synchronization phase of follower.
      *
      * @param epoch the established epoch.
      */
-    void followerSynchronizing(int epoch);
+    void followerSynchronizing(long epoch);
 
     /**
      * Will be called when entering broadcasting phase of leader.
@@ -241,7 +241,7 @@ public class QuorumZab {
      * @param epoch the acknowledged epoch (f.a).
      * @param history the initial history (f.h) of broadcasting phase.
      */
-    void leaderBroadcasting(int epoch, List<Transaction> history,
+    void leaderBroadcasting(long epoch, List<Transaction> history,
                             ClusterConfiguration config);
 
     /**
@@ -250,7 +250,7 @@ public class QuorumZab {
      * @param epoch the current epoch (f.a).
      * @param history the initial history (f.h) of broadcasting phase.
      */
-    void followerBroadcasting(int epoch, List<Transaction> history,
+    void followerBroadcasting(long epoch, List<Transaction> history,
                               ClusterConfiguration config);
 
     /**
@@ -380,13 +380,13 @@ public class QuorumZab {
       this.prop = prop;
     }
 
-    TestState setProposedEpoch(int epoch) throws IOException {
-      FileUtils.writeIntToFile(epoch, this.fProposedEpoch);
+    TestState setProposedEpoch(long epoch) throws IOException {
+      FileUtils.writeLongToFile(epoch, this.fProposedEpoch);
       return this;
     }
 
-    TestState setAckEpoch(int epoch) throws IOException {
-      FileUtils.writeIntToFile(epoch, this.fAckEpoch);
+    TestState setAckEpoch(long epoch) throws IOException {
+      FileUtils.writeLongToFile(epoch, this.fAckEpoch);
       return this;
     }
 

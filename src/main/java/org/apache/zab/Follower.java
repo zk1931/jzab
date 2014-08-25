@@ -301,7 +301,7 @@ public class Follower extends Participant {
                 source);
     }
     ZabMessage.NewLeader nl = msg.getNewLeader();
-    int epoch = nl.getEpoch();
+    long epoch = nl.getEpoch();
     Log log = persistence.getLog();
     // Sync Ack epoch to disk.
     log.sync();
@@ -357,7 +357,7 @@ public class Follower extends Participant {
       new SnapshotProcessor(stateMachine, persistence);
     // The last time of HEARTBEAT message comes from leader.
     long lastHeartbeatTime = System.nanoTime();
-    int ackEpoch = persistence.getAckEpoch();
+    long ackEpoch = persistence.getAckEpoch();
     // Notifies the client current configuration.
     stateMachine.following(electedLeader,
                            new HashSet<String>(clusterConfig.getPeers()));
