@@ -557,7 +557,7 @@ public class Leader extends Participant {
     this.lastProposedZxid = lastZxid;
     this.lastAckedZxid = lastZxid;
     try {
-      while (this.quorumSet.size() >= getQuorumSize()) {
+      while (this.quorumSet.size() >= clusterConfig.getQuorumSize()) {
         MessageTuple tuple = getMessage();
         Message msg = tuple.getMessage();
         String source = tuple.getServerId();
@@ -590,7 +590,8 @@ public class Leader extends Participant {
           }
           pendingCopZxid = getNextProposedZxid();
           tuple.setZxid(pendingCopZxid);
-          onJoin(tuple, preProcessor, ackProcessor, commitProcessor);
+          onJoin(tuple, preProcessor, ackProcessor, commitProcessor,
+                 clusterConfig);
         } else {
           // In broadcasting phase, the only expected messages come outside
           // the quorum set is PROPOSED_EPOCH, ACK_EPOCH, QUERY_LEADER and JOIN.
@@ -627,7 +628,7 @@ public class Leader extends Participant {
             }
             pendingCopZxid = getNextProposedZxid();
             tuple.setZxid(pendingCopZxid);
-            onRemove(tuple, preProcessor, ackProcessor);
+            onRemove(tuple, preProcessor, ackProcessor, clusterConfig);
           } else if (msg.getType() == MessageType.SHUT_DOWN) {
             throw new LeftCluster("Left cluster");
           } else if (msg.getType() == MessageType.DELIVERED) {
@@ -662,7 +663,8 @@ public class Leader extends Participant {
   }
 
   void onJoin(MessageTuple tuple, PreProcessor preProcessor,
-              AckProcessor ackProcessor, CommitProcessor commitProcessor)
+              AckProcessor ackProcessor, CommitProcessor commitProcessor,
+              ClusterConfiguration clusterConfig)
       throws IOException {
     // For JOIN message, we simply create a PeerHandler and add to quorum set
     // of main thread and pending set. Then we pass the JOIN message to
@@ -674,6 +676,7 @@ public class Leader extends Participant {
     ph.setLastZxid(Zxid.ZXID_NOT_EXIST);
     // We'll synchronize the joiner up to last proposed zxid of leader.
     ph.setLastSyncedZxid(tuple.getZxid());
+    clusterConfig.addPeer(source);
     quorumSet.put(source, ph);
     pendingPeers.put(source, ph);
     preProcessor.processRequest(tuple);
@@ -834,7 +837,8 @@ public class Leader extends Participant {
   }
 
   void onRemove(MessageTuple tuple, PreProcessor preProcessor,
-                AckProcessor ackProcessor) throws IOException {
+                AckProcessor ackProcessor,
+                ClusterConfiguration clusterConfig) throws IOException {
     // NOTE : For REMOVE message, we shouldn't remove server from quorumSet
     // here, the leaving server will close the transport once the COP gets
     // committed and then we'll remove it like normal DISCONNECTED server.
@@ -842,6 +846,8 @@ public class Leader extends Participant {
     // But we still need to remove the server from PreProcessor since logically
     // all the proposals after COP will not be the responsibilities of removed
     // server.
+    Message msg = tuple.getMessage();
+    clusterConfig.removePeer(msg.getRemove().getServerId());
     preProcessor.processRequest(tuple);
     ackProcessor.processRequest(tuple);
   }
