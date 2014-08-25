@@ -17,8 +17,6 @@
  */
 package org.apache.zab;
 
-import com.google.protobuf.InvalidProtocolBufferException;
-import com.google.protobuf.TextFormat;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
@@ -78,31 +76,13 @@ public class ParticipantState implements Transport.Receiver {
       throws InterruptedException, IOException , GeneralSecurityException {
     this.persistence = persistence;
     this.serverId = serverId;
-    this.transport = new NettyTransport(this.serverId, this);
+    this.transport = new NettyTransport(this.serverId, this,
+                                        persistence.getLogDir());
   }
 
   @Override
-  public void onReceived(String source, ByteBuffer message) {
-    byte[] buffer = null;
-    try {
-      // Parses it to protocol message.
-      buffer = new byte[message.remaining()];
-      message.get(buffer);
-      Message msg = Message.parseFrom(buffer);
-      if (LOG.isTraceEnabled()) {
-        LOG.trace("Received message from {}: {} ",
-                  source,
-                  TextFormat.shortDebugString(msg));
-      }
-      // Puts the message in message queue.
-      this.messageQueue.add(new MessageTuple(source, msg));
-    } catch (InvalidProtocolBufferException e) {
-      LOG.error("Exception when parse protocol buffer.", e);
-      // Puts an invalid message to queue, it's up to handler to decide what
-      // to do.
-      Message msg = MessageBuilder.buildInvalidMessage(buffer);
-      this.messageQueue.add(new MessageTuple(source, msg));
-    }
+  public void onReceived(String source, Message message) {
+    this.messageQueue.add(new MessageTuple(source, message));
   }
 
   @Override

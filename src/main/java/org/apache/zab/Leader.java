@@ -19,7 +19,6 @@ package org.apache.zab;
 
 import com.google.protobuf.TextFormat;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
@@ -378,7 +377,7 @@ public class Leader extends Participant {
    * @param message the message to be broadcasted.
    */
   void broadcast(Iterator<String> peers, Message message) {
-    transport.broadcast(peers, ByteBuffer.wrap(message.toByteArray()));
+    transport.broadcast(peers, message);
   }
 
   /**

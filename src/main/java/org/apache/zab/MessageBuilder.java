@@ -317,16 +317,13 @@ public final class MessageBuilder {
    *
    * @param lastZxid the last zxid of the sender.
    * @param snapZxid the last guaranteed applied zxid in snapshot.
-   * @param data the snapshot data.
    * @return a protobuf message.
    */
-  public static Message buildSnapshot(Zxid lastZxid, Zxid snapZxid,
-                                      ByteBuffer data) {
+  public static Message buildSnapshot(Zxid lastZxid, Zxid snapZxid) {
     ZabMessage.Zxid lZxid = toProtoZxid(lastZxid);
     ZabMessage.Zxid sZxid = toProtoZxid(snapZxid);
     Snapshot snapshot = Snapshot.newBuilder().setLastZxid(lZxid)
                                              .setSnapZxid(sZxid)
-                                             .setData(ByteString.copyFrom(data))
                                              .build();
     return Message.newBuilder().setType(MessageType.SNAPSHOT)
                                .setSnapshot(snapshot)
@@ -493,5 +490,21 @@ public final class MessageBuilder {
                                                          .setZxid(zxid).build();
     return Message.newBuilder().setType(MessageType.DELIVERED)
                                .setDelivered(delivered).build();
+  }
+
+  public static Message buildFileHeader(long length) {
+    ZabMessage.FileHeader header = ZabMessage.FileHeader.newBuilder()
+                                             .setLength(length).build();
+    return Message.newBuilder().setType(MessageType.FILE_HEADER)
+                               .setFileHeader(header).build();
+  }
+
+  public static Message buildFileReceived(String fullPath) {
+    ZabMessage.FileReceived received = ZabMessage.FileReceived
+                                                 .newBuilder()
+                                                 .setFullPath(fullPath)
+                                                 .build();
+    return Message.newBuilder().setType(MessageType.FILE_RECEIVED)
+                               .setFileReceived(received).build();
   }
 }

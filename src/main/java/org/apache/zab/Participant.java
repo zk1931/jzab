@@ -204,7 +204,7 @@ public abstract class Participant {
                 TextFormat.shortDebugString(message),
                 dest);
     }
-    this.transport.send(dest, ByteBuffer.wrap(message.toByteArray()));
+    this.transport.send(dest, message);
   }
 
   /**
@@ -354,8 +354,11 @@ public abstract class Participant {
       ZabMessage.Snapshot snap = msg.getSnapshot();
       lastZxidPeer = MessageBuilder.fromProtoZxid(snap.getLastZxid());
       Zxid snapZxid = MessageBuilder.fromProtoZxid(snap.getSnapZxid());
-      ByteBuffer data = snap.getData().asReadOnlyByteBuffer();
-      persistence.setSnapshotData(data, snapZxid);
+      // Waiting for snapshot file to be received.
+      msg = getExpectedMessage(MessageType.FILE_RECEIVED, peer).getMessage();
+      // Turns the temp file to snapshot file.
+      File file = new File(msg.getFileReceived().getFullPath());
+      persistence.setSnapshotFile(file, snapZxid);
       // Truncates the whole log.
       log.truncate(Zxid.ZXID_NOT_EXIST);
       // Checks if there's any proposals after snapshot.
@@ -584,10 +587,11 @@ public abstract class Participant {
         }
       } else {
         // Synchronizing peer with snapshot file.
-        ByteBuffer data = persistence.getSnapshotData();
-        Message snapshot = MessageBuilder.buildSnapshot(lastSyncZxid, snapZxid,
-                                                        data);
-        sendMessage(peerId, snapshot);
+        Message snapshot = MessageBuilder.buildSnapshot(lastSyncZxid, snapZxid);
+        // Sends snapshot message.
+        transport.send(peerId, snapshot);
+        // Sends actuall snapshot file.
+        transport.send(peerId, snapFile);
         if (snapZxid.compareTo(lastSyncZxid) == 0) {
           // If there's nothing after snapshot needs to by synchronized.
           syncPoint = null;

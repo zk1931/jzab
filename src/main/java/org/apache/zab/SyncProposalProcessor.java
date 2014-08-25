@@ -90,8 +90,7 @@ public class SyncProposalProcessor implements RequestProcessor,
 
   void sendAck(String source, Zxid ackZxid) {
     Message ack = MessageBuilder.buildAck(ackZxid);
-    ByteBuffer buffer = ByteBuffer.wrap(ack.toByteArray());
-    this.transport.send(source, buffer);
+    this.transport.send(source, ack);
   }
 
   @Override

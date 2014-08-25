@@ -17,13 +17,9 @@
  */
 package org.apache.zab;
 
-import java.io.DataInputStream;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -251,38 +247,8 @@ public class PersistentState {
     return File.createTempFile(prefix, "", this.logDir);
   }
 
-  /**
-   * Gets the ByteBuffer which contains all the data of the snapshot.
-   *
-   * @return the ByteBuffer contains the data for snapshot.
-   */
-  ByteBuffer getSnapshotData() throws IOException {
-    File snapFile = getSnapshotFile();
-    if (snapFile == null) {
-      throw new RuntimeException("No snapshot file found.");
-    }
-    try (FileInputStream fin = new FileInputStream(snapFile);
-         DataInputStream din = new DataInputStream(fin)) {
-      byte[] data = new byte[(int)snapFile.length()];
-      din.readFully(data);
-      return ByteBuffer.wrap(data);
-    }
-  }
-
-  /**
-   * Writes the data to snapshot file.
-   *
-   * @param data the ByteBuffer contains all the data of snapshot.
-   * @param zxid the last guaranteed applied zxid of the snapshot.
-   */
-  void setSnapshotData(ByteBuffer data, Zxid zxid) throws IOException {
-    File tempFile = createTempFile("snapshot");
-    try (FileOutputStream fout = new FileOutputStream(tempFile)) {
-      byte[] dataArray = new byte[data.remaining()];
-      data.get(dataArray);
-      fout.write(dataArray);
-    }
-    setSnapshotFile(tempFile, zxid);
+  File getLogDir() {
+    return this.logDir;
   }
 }
 

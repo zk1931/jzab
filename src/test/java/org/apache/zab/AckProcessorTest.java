@@ -17,8 +17,6 @@
  */
 package org.apache.zab;
 
-import com.google.protobuf.InvalidProtocolBufferException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -50,23 +48,12 @@ class TestReceiver implements Transport.Receiver {
   }
 
   @Override
-  public void onReceived(String source, ByteBuffer message) {
-    byte[] buffer = null;
-    try {
-      // Parses it to protocol message.
-      buffer = new byte[message.remaining()];
-      message.get(buffer);
-      Message msg = Message.parseFrom(buffer);
-      if (msg.getType() == MessageType.COMMIT) {
-        Zxid zxid = MessageBuilder.fromProtoZxid(msg.getCommit().getZxid());
-        LOG.debug("Got COMMIT {} from {}.", zxid, source);
-        committedZxids.add(zxid);
-        if (latch != null) {
-          latch.countDown();
-        }
-      }
-    } catch (InvalidProtocolBufferException e) {
-      LOG.error("Invalid protocol buffer message.");
+  public void onReceived(String source, Message message) {
+    if (message.getType() == MessageType.COMMIT) {
+      Zxid zxid = MessageBuilder.fromProtoZxid(message.getCommit().getZxid());
+      LOG.info("Got COMMIT {}", zxid);
+      committedZxids.add(zxid);
+      latch.countDown();
     }
   }
 
@@ -105,8 +92,10 @@ public class AckProcessorTest extends TestBase {
     String server2 = getUniqueHostPort();
     TestReceiver receiver1 = new TestReceiver(1);
     TestReceiver receiver2 = new TestReceiver(1);
-    NettyTransport transport1 = new NettyTransport(server1, receiver1);
-    NettyTransport transport2 = new NettyTransport(server2, receiver2);
+    NettyTransport transport1 =
+      new NettyTransport(server1, receiver1, getDirectory());
+    NettyTransport transport2 =
+      new NettyTransport(server2, receiver2, getDirectory());
     PeerHandler ph1 = new PeerHandler(server1, transport1, 10000);
     PeerHandler ph2 = new PeerHandler(server2, transport2, 10000);
     ph1.startBroadcastingTask();
@@ -139,9 +128,12 @@ public class AckProcessorTest extends TestBase {
     TestReceiver receiver1 = new TestReceiver(1);
     TestReceiver receiver2 = new TestReceiver(1);
     TestReceiver receiver3 = new TestReceiver(1);
-    NettyTransport transport1 = new NettyTransport(server1, receiver1);
-    NettyTransport transport2 = new NettyTransport(server2, receiver2);
-    NettyTransport transport3 = new NettyTransport(server3, receiver3);
+    NettyTransport transport1 =
+      new NettyTransport(server1, receiver1, getDirectory());
+    NettyTransport transport2 =
+      new NettyTransport(server2, receiver2, getDirectory());
+    NettyTransport transport3 =
+      new NettyTransport(server3, receiver3, getDirectory());
     PeerHandler ph1 = new PeerHandler(server1, transport1, 10000);
     PeerHandler ph2 = new PeerHandler(server2, transport2, 10000);
     PeerHandler ph3 = new PeerHandler(server3, transport3, 10000);
@@ -179,9 +171,12 @@ public class AckProcessorTest extends TestBase {
     TestReceiver receiver1 = new TestReceiver(1);
     TestReceiver receiver2 = new TestReceiver(1);
     TestReceiver receiver3 = new TestReceiver(1);
-    NettyTransport transport1 = new NettyTransport(server1, receiver1);
-    NettyTransport transport2 = new NettyTransport(server2, receiver2);
-    NettyTransport transport3 = new NettyTransport(server3, receiver3);
+    NettyTransport transport1 =
+      new NettyTransport(server1, receiver1, getDirectory());
+    NettyTransport transport2 =
+      new NettyTransport(server2, receiver2, getDirectory());
+    NettyTransport transport3 =
+      new NettyTransport(server3, receiver3, getDirectory());
     PeerHandler ph1 = new PeerHandler(server1, transport1, 10000);
     PeerHandler ph2 = new PeerHandler(server2, transport2, 10000);
     PeerHandler ph3 = new PeerHandler(server3, transport3, 10000);
@@ -218,9 +213,12 @@ public class AckProcessorTest extends TestBase {
     TestReceiver receiver1 = new TestReceiver(1);
     TestReceiver receiver2 = new TestReceiver(1);
     TestReceiver receiver3 = new TestReceiver(1);
-    NettyTransport transport1 = new NettyTransport(server1, receiver1);
-    NettyTransport transport2 = new NettyTransport(server2, receiver2);
-    NettyTransport transport3 = new NettyTransport(server3, receiver3);
+    NettyTransport transport1 =
+      new NettyTransport(server1, receiver1, getDirectory());
+    NettyTransport transport2 =
+      new NettyTransport(server2, receiver2, getDirectory());
+    NettyTransport transport3 =
+      new NettyTransport(server3, receiver3, getDirectory());
     PeerHandler ph1 = new PeerHandler(server1, transport1, 10000);
     PeerHandler ph2 = new PeerHandler(server2, transport2, 10000);
     PeerHandler ph3 = new PeerHandler(server3, transport3, 10000);
@@ -262,8 +260,10 @@ public class AckProcessorTest extends TestBase {
     String server2 = getUniqueHostPort();
     TestReceiver receiver1 = new TestReceiver(1);
     TestReceiver receiver2 = new TestReceiver(1);
-    NettyTransport transport1 = new NettyTransport(server1, receiver1);
-    NettyTransport transport2 = new NettyTransport(server2, receiver2);
+    NettyTransport transport1 =
+      new NettyTransport(server1, receiver1, getDirectory());
+    NettyTransport transport2 =
+      new NettyTransport(server2, receiver2, getDirectory());
     PeerHandler ph1 = new PeerHandler(server1, transport1, 10000);
     PeerHandler ph2 = new PeerHandler(server2, transport2, 10000);
     ph1.startBroadcastingTask();
@@ -304,8 +304,10 @@ public class AckProcessorTest extends TestBase {
     String server2 = getUniqueHostPort();
     TestReceiver receiver1 = new TestReceiver(1);
     TestReceiver receiver2 = new TestReceiver(1);
-    NettyTransport transport1 = new NettyTransport(server1, receiver1);
-    NettyTransport transport2 = new NettyTransport(server2, receiver2);
+    NettyTransport transport1 =
+      new NettyTransport(server1, receiver1, getDirectory());
+    NettyTransport transport2 =
+      new NettyTransport(server2, receiver2, getDirectory());
     PeerHandler ph1 = new PeerHandler(server1, transport1, 10000);
     PeerHandler ph2 = new PeerHandler(server2, transport2, 10000);
     ph1.startBroadcastingTask();
@@ -339,7 +341,8 @@ public class AckProcessorTest extends TestBase {
     // cluster.
     String server1 = getUniqueHostPort();
     TestReceiver receiver1 = new TestReceiver(1);
-    NettyTransport transport1 = new NettyTransport(server1, receiver1);
+    NettyTransport transport1 =
+      new NettyTransport(server1, receiver1, getDirectory());
     PeerHandler ph1 = new PeerHandler(server1, transport1, 10000);
     ph1.startBroadcastingTask();
     List<String> peers = new ArrayList<String>();

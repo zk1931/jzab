@@ -18,8 +18,9 @@
 
 package org.apache.zab.transport;
 
-import java.nio.ByteBuffer;
+import java.io.File;
 import java.util.Iterator;
+import org.apache.zab.proto.ZabMessage.Message;
 
 /**
  * Abstract transport class. Used for communication between different
@@ -48,7 +49,15 @@ public abstract class Transport {
    * @param destination the id of the message destination
    * @param message the message to be sent
    */
-  public abstract void send(String destination, ByteBuffer message);
+  public abstract void send(String destination, Message message);
+
+  /**
+   * Sends a file to a specific server.
+   *
+   * @param destination the id of the message destination
+   * @param  file the file to be sent
+   */
+  public abstract void send(String destination, File file);
 
   /**
    * Clears the connection to the destination. If there is no connection to the
@@ -67,7 +76,7 @@ public abstract class Transport {
    * @param peers the set of destination peers.
    * @param message the message to be broadcasted.
    */
-  public void broadcast(Iterator<String> peers, ByteBuffer message) {
+  public void broadcast(Iterator<String> peers, Message message) {
     while (peers.hasNext()) {
       send(peers.next(), message);
     }
@@ -94,7 +103,7 @@ public abstract class Transport {
      * @param source the id of the server who sent the message
      * @param message the message
      */
-    void onReceived(String source, ByteBuffer message);
+    void onReceived(String source, Message message);
 
     /**
      * Callback that notifies that the transport has been disconnected from the
