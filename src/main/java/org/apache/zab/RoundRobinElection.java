@@ -26,7 +26,7 @@ import org.slf4j.LoggerFactory;
  */
 public class RoundRobinElection implements Election {
   private int round = 0;
-  private int lastEpoch = -1;
+  private long lastEpoch = -1;
 
   private static final Logger LOG =
       LoggerFactory.getLogger(RoundRobinElection.class);

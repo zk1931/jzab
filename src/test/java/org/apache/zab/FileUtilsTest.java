@@ -29,16 +29,16 @@ import org.junit.Test;
  */
 public class FileUtilsTest extends TestBase {
   @Test
-  public void testReadWriteInt() throws IOException {
+  public void testReadWriteLong() throws IOException {
     File file = new File(getDirectory(), "test");
     for (int i = 0; i < 10; i++) {
-      FileUtils.writeIntToFile(i, file);
-      Assert.assertEquals(i, FileUtils.readIntFromFile(file));
+      FileUtils.writeLongToFile(i, file);
+      Assert.assertEquals(i, FileUtils.readLongFromFile(file));
     }
   }
 
   @Test(expected=FileNotFoundException.class)
   public void testFileNotFound() throws IOException {
-    FileUtils.readIntFromFile(new File(getDirectory(), "missing"));
+    FileUtils.readLongFromFile(new File(getDirectory(), "missing"));
   }
 }

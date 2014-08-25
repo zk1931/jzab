@@ -59,7 +59,7 @@ public class ZxidTest extends TestBase {
   public void serializeTest() throws IOException {
     Zxid z1 = new Zxid(1, 20);
     byte[] bytes = z1.toByteArray();
-    Assert.assertEquals(bytes.length, 8);
+    Assert.assertEquals(bytes.length, 16);
     Zxid z2 = Zxid.fromByteArray(bytes);
     Assert.assertTrue(z1.compareTo(z2) == 0);
   }

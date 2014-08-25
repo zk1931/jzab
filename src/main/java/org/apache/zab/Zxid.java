@@ -30,12 +30,12 @@ import java.io.IOException;
  * Simple implementation of Zxid.
  */
 public class Zxid implements Comparable<Zxid> {
-  private final int epoch;
-  private final int xid;
-  private static final int ZXID_LENGTH = 8;
+  private final long epoch;
+  private final long xid;
+  private static final int ZXID_LENGTH = 16;
   static final Zxid ZXID_NOT_EXIST = new Zxid(0, -1);
 
-  public Zxid(int epoch, int xid) {
+  public Zxid(long epoch, long xid) {
     this.epoch = epoch;
     this.xid = xid;
   }
@@ -44,11 +44,11 @@ public class Zxid implements Comparable<Zxid> {
     return ZXID_LENGTH;
   }
 
-  public int getEpoch() {
+  public long getEpoch() {
     return this.epoch;
   }
 
-  public int getXid() {
+  public long getXid() {
     return this.xid;
   }
 
@@ -56,8 +56,8 @@ public class Zxid implements Comparable<Zxid> {
     DataInputStream in = new DataInputStream(
                          new BufferedInputStream(
                          new ByteArrayInputStream(bytes)));
-    int epoch = in.readInt();
-    int xid = in.readInt();
+    long epoch = in.readLong();
+    long xid = in.readLong();
     return new Zxid(epoch, xid);
   }
 
@@ -71,8 +71,8 @@ public class Zxid implements Comparable<Zxid> {
   public byte[] toByteArray() throws IOException {
     ByteArrayOutputStream bout = new ByteArrayOutputStream();
     DataOutputStream out = new DataOutputStream(new BufferedOutputStream(bout));
-    out.writeInt(this.epoch);
-    out.writeInt(this.xid);
+    out.writeLong(this.epoch);
+    out.writeLong(this.xid);
     out.flush();
     return bout.toByteArray();
   }
@@ -84,8 +84,9 @@ public class Zxid implements Comparable<Zxid> {
 
   @Override
   public int compareTo(Zxid zxid) {
-    return (this.epoch != zxid.epoch)? this.epoch - zxid.epoch :
-                                       this.xid - zxid.xid;
+    long res = (this.epoch != zxid.epoch)? this.epoch - zxid.epoch :
+                                           this.xid - zxid.xid;
+    return (int)res;
   }
 
   @Override
@@ -104,14 +105,11 @@ public class Zxid implements Comparable<Zxid> {
 
   @Override
   public int hashCode() {
-    int hash = 17;
-    hash = hash * 31 + this.epoch;
-    hash = hash * 31 + this.xid;
-    return hash;
+    return 0;
   }
 
   public String toSimpleString() {
-    return String.format("%010d_%010d", this.epoch, this.xid);
+    return String.format("%015d_%015d", this.epoch, this.xid);
   }
 
   public static Zxid fromSimpleString(String zxid) {
@@ -119,6 +117,6 @@ public class Zxid implements Comparable<Zxid> {
     if (str.length != 2) {
       throw new RuntimeException("Can't convert string to zxid, wrong format.");
     }
-    return new Zxid(Integer.parseInt(str[0]), Integer.parseInt(str[1]));
+    return new Zxid(Long.parseLong(str[0]), Long.parseLong(str[1]));
   }
 }

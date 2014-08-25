@@ -42,13 +42,13 @@ public class PeerHandler {
    * Last proposed epoch of the follower, it helps leader decides new
    * proposed epoch.
    */
-  protected int lastProposedEpoch = -1;
+  protected long lastProposedEpoch = -1;
 
   /**
    * Last acknowledged epoch of the follower, it helps leader decides whose
    * transaction history will be selected as initial history.
    */
-  protected int lastAckedEpoch = -1;
+  protected long lastAckedEpoch = -1;
 
   /**
    * Last replied HEARTBEAT time of the peer (in nanoseconds).
@@ -87,7 +87,7 @@ public class PeerHandler {
    * The epoch of the NEWLEADER message. It will be sent to follower after the
    * synchronization is done.
    */
-  protected int newleaderEpoch;
+  protected long newleaderEpoch;
 
   /**
    * Passed by Participant to send messages.
@@ -164,19 +164,19 @@ public class PeerHandler {
     this.lastHeartbeatTime = System.nanoTime();
   }
 
-  int getLastProposedEpoch() {
+  long getLastProposedEpoch() {
     return this.lastProposedEpoch;
   }
 
-  void setLastProposedEpoch(int epoch) {
+  void setLastProposedEpoch(long epoch) {
     this.lastProposedEpoch = epoch;
   }
 
-  int getLastAckedEpoch() {
+  long getLastAckedEpoch() {
     return this.lastAckedEpoch;
   }
 
-  void setLastAckedEpoch(int epoch) {
+  void setLastAckedEpoch(long epoch) {
     this.lastAckedEpoch = epoch;
   }
 
@@ -213,7 +213,7 @@ public class PeerHandler {
     this.broadcastingQueue.add(msg);
   }
 
-  void setSyncTask(Participant.SyncPeerTask task, int newLeaderEpoch) {
+  void setSyncTask(Participant.SyncPeerTask task, long newLeaderEpoch) {
     this.syncTask = task;
     this.newleaderEpoch = newLeaderEpoch;
   }
