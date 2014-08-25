@@ -19,6 +19,7 @@ package org.apache.zab;
 
 import com.google.protobuf.TextFormat;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
@@ -33,6 +34,7 @@ import java.util.Map;
 import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.Message.MessageType;
+import org.apache.zab.proto.ZabMessage.Proposal.ProposalType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -184,10 +186,13 @@ public class Leader extends Participant {
       List<String> peers = new ArrayList<String>();
       peers.add(this.serverId);
       ClusterConfiguration cnf =
-        new ClusterConfiguration(Zxid.ZXID_NOT_EXIST,
-                                 peers,
-                                 this.serverId);
+        new ClusterConfiguration(new Zxid(0, 0), peers, this.serverId);
       persistence.setLastSeenConfig(cnf);
+      ByteBuffer cop = cnf.toByteBuffer();
+      Transaction txn =
+        new Transaction(cnf.getVersion(), ProposalType.COP_VALUE, cop);
+      // Also we need to append the initial configuration to log.
+      persistence.getLog().append(txn);
       persistence.setProposedEpoch(0);
       persistence.setAckEpoch(0);
 

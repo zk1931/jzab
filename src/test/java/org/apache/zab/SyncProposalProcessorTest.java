@@ -121,12 +121,10 @@ public class SyncProposalProcessorTest extends TestBase {
     TestReceiver receiver = new TestReceiver();
     Transport transport = new NettyTransport(leader, receiver, getDirectory());
     ClusterConfiguration cnf =
-      new ClusterConfiguration(Zxid.ZXID_NOT_EXIST,
-                               new ArrayList<String>(), "");
+      new ClusterConfiguration(new Zxid(0, 0), new ArrayList<String>(), "");
     persistence.setLastSeenConfig(cnf);
-    SyncProposalProcessor processor = new SyncProposalProcessor(persistence,
-                                                                transport,
-                                                                batchSize);
+    SyncProposalProcessor processor =
+      new SyncProposalProcessor(persistence, transport, batchSize);
     long startTime = System.nanoTime();
     String message = new String(new char[transactionSize]).replace('\0', 'a');
     for (int i = 0; i < count; i++) {
