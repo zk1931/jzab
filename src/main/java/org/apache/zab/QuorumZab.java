@@ -149,6 +149,16 @@ public class QuorumZab {
   }
 
   /**
+   * Flushes the request pipeline. Zab calls StateMachine.flushed() after all
+   * the pending requests get committed.
+   *
+   * @param message the flush message.
+   */
+  public void flush(ByteBuffer message) {
+    this.mainThread.enqueueFlush(message);
+  }
+
+  /**
    * Removes a peer from the cluster.
    *
    * @param peerId the id of the peer who will be removed from the cluster.
@@ -537,6 +547,10 @@ public class QuorumZab {
 
     void enqueueRemove(String peerId) {
       this.participantState.enqueueRemove(peerId);
+    }
+
+    void enqueueFlush(ByteBuffer buffer) {
+      this.participantState.enqueueFlush(buffer);
     }
   }
 }

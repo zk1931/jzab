@@ -448,7 +448,7 @@ public final class MessageBuilder {
   }
 
   /**
-   * Creats a SYNC_END message.
+   * Creates a SYNC_END message.
    *
    * @param config the cluster configuration.
    * @return a protobuf message.
@@ -466,7 +466,7 @@ public final class MessageBuilder {
   }
 
   /**
-   * Creats a REMOVE message.
+   * Creates a REMOVE message.
    *
    * @param serverId the id of server who will be removed from the cluster
    * configuration.
@@ -479,10 +479,20 @@ public final class MessageBuilder {
                                .build();
   }
 
+  /**
+   * Creates a SHUT_DOWN message.
+   *
+   * @return a protobuf message.
+   */
   public static Message buildShutDown() {
     return Message.newBuilder().setType(MessageType.SHUT_DOWN).build();
   }
 
+  /**
+   * Creates a DELIVERED message.
+   *
+   * @return a protobuf message.
+   */
   public static Message buildDelivered(Zxid deliveredZxid, long numBytes) {
     ZabMessage.Zxid zxid = toProtoZxid(deliveredZxid);
     ZabMessage.Delivered delivered = ZabMessage.Delivered.newBuilder()
@@ -492,6 +502,12 @@ public final class MessageBuilder {
                                .setDelivered(delivered).build();
   }
 
+  /**
+   * Creates a FILE_HEADER message.
+   *
+   * @param length the lenght of the file.
+   * @return a protobuf message.
+   */
   public static Message buildFileHeader(long length) {
     ZabMessage.FileHeader header = ZabMessage.FileHeader.newBuilder()
                                              .setLength(length).build();
@@ -499,6 +515,12 @@ public final class MessageBuilder {
                                .setFileHeader(header).build();
   }
 
+  /**
+   * Creates a FILE_RECEIVED message.
+   *
+   * @param fullPath the path of the received file.
+   * @return a protobuf message.
+   */
   public static Message buildFileReceived(String fullPath) {
     ZabMessage.FileReceived received = ZabMessage.FileReceived
                                                  .newBuilder()
@@ -507,4 +529,37 @@ public final class MessageBuilder {
     return Message.newBuilder().setType(MessageType.FILE_RECEIVED)
                                .setFileReceived(received).build();
   }
+
+  /**
+   * Creates a FLUSH_REQ message.
+   *
+   * @param body the data of the request.
+   * @return a protobuf message.
+   */
+  public static Message buildFlushRequest(ByteBuffer body) {
+    ZabMessage.FlushRequest flushReq =
+      ZabMessage.FlushRequest.newBuilder().setBody(ByteString.copyFrom(body))
+                                          .build();
+    return Message.newBuilder().setType(MessageType.FLUSH_REQ)
+                               .setFlushRequest(flushReq)
+                               .build();
+  }
+
+  /**
+   * Creates a FLUSH message.
+   *
+   * @param lastProposedZxid the last proposed zxid before the FLUSH.
+   * @param body the data of the request.
+   * @return a protobuf message.
+   */
+  public static Message buildFlush(Zxid lastProposedZxid, ByteBuffer body) {
+    ZabMessage.Zxid zxid = toProtoZxid(lastProposedZxid);
+    ZabMessage.Flush flush = ZabMessage.Flush.newBuilder()
+                                             .setZxid(zxid)
+                                             .setBody(ByteString.copyFrom(body))
+                                             .build();
+    return Message.newBuilder().setType(MessageType.FLUSH).setFlush(flush)
+                  .build();
+  }
 }
+

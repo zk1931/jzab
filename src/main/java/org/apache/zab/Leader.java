@@ -610,8 +610,17 @@ public class Leader extends Participant {
           if (msg.getType() == MessageType.ACK) {
             onAck(tuple, ackProcessor);
           } else if (msg.getType() == MessageType.REQUEST) {
-            tuple.setZxid(getNextProposedZxid());
+            Zxid proposedZxid = getNextProposedZxid();
+            // Updates last proposed zxid for this peer. The FLUSH
+            // message needs this zxid to determine when it's safe
+            // to deliver the FLUSH request back to user.
+            quorumSet.get(source).setLastProposedZxid(proposedZxid);
+            tuple.setZxid(proposedZxid);
             preProcessor.processRequest(tuple);
+          } else if (msg.getType() == MessageType.FLUSH_REQ) {
+            onFlushReq(tuple);
+          } else if (msg.getType() == MessageType.FLUSH) {
+            onFlush(tuple, commitProcessor);
           } else if (msg.getType() == MessageType.HEARTBEAT) {
             LOG.trace("Got HEARTBEAT replies from {}", source);
           } else if (msg.getType() == MessageType.PROPOSAL) {
@@ -754,23 +763,23 @@ public class Leader extends Participant {
     Message msg = tuple.getMessage();
     ZabMessage.Ack ack = msg.getAck();
     Zxid ackZxid = MessageBuilder.fromProtoZxid(ack.getZxid());
-    if (pendingPeers.get(source) != null) {
+    PeerHandler peer = pendingPeers.get(source);
+    if (peer != null) {
       // This is the ACK sent from the peer at the end of the synchronization.
-      PeerHandler ph = pendingPeers.get(source);
       if (LOG.isDebugEnabled()) {
         LOG.debug("Got first {} from pending peer {}.",
                   TextFormat.shortDebugString(msg),
                   source);
       }
-      ph.setLastAckedZxid(ackZxid);
+      peer.setLastAckedZxid(ackZxid);
       if (lastCommittedZxid.compareTo(ackZxid) >= 0) {
-        // If the zxid of ACK is already committed, send COMMIT to follower and
-        // start broadcasting task. Otherwise we need to wait until the zxid of
-        // ACK is committed.
+        // If the zxid of ACK is already committed, send the first COMMIT to
+        // follower and start broadcasting task. Otherwise we need to wait
+        // until the zxid of ACK is committed.
         LOG.debug("The ACK of pending peer is committed already, send COMMIT.");
         Message commit = MessageBuilder.buildCommit(ackZxid);
-        sendMessage(ph.getServerId(), commit);
-        ph.startBroadcastingTask();
+        sendMessage(peer.getServerId(), commit);
+        peer.startBroadcastingTask();
         pendingPeers.remove(source);
       }
     }
@@ -850,6 +859,17 @@ public class Leader extends Participant {
     clusterConfig.removePeer(msg.getRemove().getServerId());
     preProcessor.processRequest(tuple);
     ackProcessor.processRequest(tuple);
+  }
+
+  void onFlushReq(MessageTuple tuple) {
+    Message msg = tuple.getMessage();
+    String source = tuple.getServerId();
+    PeerHandler ph = quorumSet.get(source);
+    Zxid zxid = ph.getLastProposedZxid();
+    ZabMessage.FlushRequest req = msg.getFlushRequest();
+    msg = MessageBuilder.buildFlush(zxid,
+                                    req.getBody().asReadOnlyByteBuffer());
+    sendMessage(source, msg);
   }
 
   void checkFollowerLiveness() {
