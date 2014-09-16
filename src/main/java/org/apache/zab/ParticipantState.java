@@ -57,7 +57,7 @@ public class ParticipantState implements Transport.Receiver {
    * they will be processed once Participant enters broadcasting phase.
    */
   private final BlockingQueue<MessageTuple> requestQueue =
-    new LinkedBlockingQueue<MessageTuple>();
+    new LinkedBlockingQueue<MessageTuple>(ZabConfig.MAX_PENDING_REQS);
 
   /**
    * Used for communication between nodes.
@@ -123,17 +123,29 @@ public class ParticipantState implements Transport.Receiver {
 
   public void enqueueRequest(ByteBuffer buffer) {
     Message msg = MessageBuilder.buildRequest(buffer);
-    this.requestQueue.add(new MessageTuple(this.serverId, msg));
+    try {
+      this.requestQueue.put(new MessageTuple(this.serverId, msg));
+    } catch (InterruptedException e) {
+      throw new RuntimeException("Interrupted Exception");
+    }
   }
 
   public void enqueueRemove(String peerId) {
     Message msg = MessageBuilder.buildRemove(peerId);
-    this.requestQueue.add(new MessageTuple(this.serverId, msg));
+    try {
+      this.requestQueue.put(new MessageTuple(this.serverId, msg));
+    } catch (InterruptedException e) {
+      throw new RuntimeException("Interrupted Exception");
+    }
   }
 
   public void enqueueFlush(ByteBuffer buffer) {
     Message msg = MessageBuilder.buildFlushRequest(buffer);
-    this.requestQueue.add(new MessageTuple(this.serverId, msg));
+    try {
+      this.requestQueue.put(new MessageTuple(this.serverId, msg));
+    } catch (InterruptedException e) {
+      throw new RuntimeException("Interrupted Exception");
+    }
   }
 }
 

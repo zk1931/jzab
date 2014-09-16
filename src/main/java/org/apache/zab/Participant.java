@@ -28,6 +28,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeoutException;
 import java.util.ArrayList;
 import java.util.List;
@@ -126,6 +127,12 @@ public abstract class Participant {
    * Total number of bytes of delivered transactions since last snapshot.
    */
   protected long numDeliveredBytes = 0;
+
+  /**
+   * The semaphore is used to prevent the internal queues grow infinitely.
+   */
+  protected final Semaphore semPendingReqs =
+    new Semaphore(ZabConfig.MAX_PENDING_REQS);
 
   private static final Logger LOG = LoggerFactory.getLogger(Participant.class);
 
@@ -656,6 +663,8 @@ public abstract class Participant {
           if (tuple == MessageTuple.REQUEST_OF_DEATH) {
             return null;
           }
+          // Blocks if the maximum pending requests have been reached.
+          semPendingReqs.acquire();
           sendMessage(this.leader, tuple.getMessage());
         }
       } catch (Exception e) {

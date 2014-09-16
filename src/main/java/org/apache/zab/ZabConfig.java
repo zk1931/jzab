@@ -27,7 +27,14 @@ import java.util.Properties;
  * Simple wrapper on Properties, provides a way to query configuration.
  */
 public class ZabConfig {
+
+  /**
+   * Maximum number of pending requests allowed for each server.
+   */
+  static final int MAX_PENDING_REQS = 20000;
+
   protected Properties prop;
+
   protected List<String> peers = null;
 
   /**

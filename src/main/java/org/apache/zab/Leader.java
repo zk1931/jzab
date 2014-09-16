@@ -550,7 +550,7 @@ public class Leader extends Participant {
     CommitProcessor commitProcessor =
         new CommitProcessor(stateMachine, lastDeliveredZxid, serverId,
                             transport, new HashSet<String>(quorumSet.keySet()),
-                            clusterConfig, electedLeader);
+                            clusterConfig, electedLeader, semPendingReqs);
     SnapshotProcessor snapProcessor =
       new SnapshotProcessor(stateMachine, persistence);
     // First time notifies the client active members and cluster configuration.

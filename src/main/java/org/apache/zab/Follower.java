@@ -352,7 +352,8 @@ public class Follower extends Participant {
       new SyncProposalProcessor(persistence, transport, SYNC_MAX_BATCH_SIZE);
     CommitProcessor commitProcessor
       = new CommitProcessor(stateMachine, lastDeliveredZxid, serverId,
-                            transport, null, clusterConfig, electedLeader);
+                            transport, null, clusterConfig, electedLeader,
+                            semPendingReqs);
     SnapshotProcessor snapProcessor =
       new SnapshotProcessor(stateMachine, persistence);
     // The last time of HEARTBEAT message comes from leader.
