@@ -116,6 +116,7 @@ public class AckProcessorTest extends TestBase {
     // Waits COMMIT is sent to both servers.
     receiver1.latch.await();
     receiver2.latch.await();
+    ackProcessor.shutdown();
   }
 
   @Test(timeout=3000)
@@ -159,6 +160,7 @@ public class AckProcessorTest extends TestBase {
     receiver1.latch.await();
     receiver2.latch.await();
     receiver3.latch.await();
+    ackProcessor.shutdown();
   }
 
   @Test(timeout=3000)
@@ -201,6 +203,7 @@ public class AckProcessorTest extends TestBase {
     Assert.assertFalse(receiver1.latch.await(500, TimeUnit.MILLISECONDS));
     Assert.assertFalse(receiver2.latch.await(10, TimeUnit.MILLISECONDS));
     Assert.assertFalse(receiver3.latch.await(10, TimeUnit.MILLISECONDS));
+    ackProcessor.shutdown();
   }
 
   @Test(timeout=3000)
@@ -248,6 +251,7 @@ public class AckProcessorTest extends TestBase {
     Assert.assertEquals(new Zxid(0, 1), receiver1.committedZxids.get(0));
     Assert.assertEquals(new Zxid(0, 1), receiver2.committedZxids.get(0));
     Assert.assertEquals(new Zxid(0, 1), receiver3.committedZxids.get(0));
+    ackProcessor.shutdown();
   }
 
   @Test(timeout=3000)
@@ -292,6 +296,7 @@ public class AckProcessorTest extends TestBase {
     // There should be only one committed message.
     Assert.assertEquals(1, receiver1.committedZxids.size());
     Assert.assertEquals(1, receiver2.committedZxids.size());
+    ackProcessor.shutdown();
   }
 
   @Test(timeout=3000)
@@ -333,6 +338,7 @@ public class AckProcessorTest extends TestBase {
     // There should be only one committed message.
     Assert.assertEquals(1, receiver1.committedZxids.size());
     Assert.assertEquals(1, receiver2.committedZxids.size());
+    ackProcessor.shutdown();
   }
 
   @Test(timeout=3000)
@@ -358,5 +364,44 @@ public class AckProcessorTest extends TestBase {
     ackProcessor.processRequest(createAck(server1, z1));
     // Waits COMMIT is sent to both servers.
     receiver1.latch.await();
+    ackProcessor.shutdown();
+  }
+
+  @Test(timeout=3000)
+  public  void testJoinInNewEpoch() throws Exception {
+    // The joining of the server is the first transaction in the new epoch.
+    String server1 = getUniqueHostPort();
+    String server2 = getUniqueHostPort();
+    TestReceiver receiver1 = new TestReceiver(2);
+    TestReceiver receiver2 = new TestReceiver(1);
+    NettyTransport transport1 =
+      new NettyTransport(server1, receiver1, getDirectory());
+    NettyTransport transport2 =
+      new NettyTransport(server2, receiver2, getDirectory());
+    PeerHandler ph1 = new PeerHandler(server1, transport1, 10000);
+    PeerHandler ph2 = new PeerHandler(server2, transport2, 10000);
+    ph1.startBroadcastingTask();
+    ph2.startBroadcastingTask();
+    List<String> peers = new ArrayList<String>();
+    peers.add(server1);
+    HashMap<String, PeerHandler> quorumSet = new HashMap<String, PeerHandler>();
+    quorumSet.put(server1, ph1);
+    ClusterConfiguration cnf =
+      new ClusterConfiguration(Zxid.ZXID_NOT_EXIST, peers, server1);
+    AckProcessor ackProcessor =
+      new AckProcessor(quorumSet, cnf, Zxid.ZXID_NOT_EXIST);
+    ackProcessor.processRequest(createAck(server1, new Zxid(0, 0)));
+    ackProcessor.processRequest(createAck(server1, new Zxid(0, 1)));
+    // Server2 joins in.
+    quorumSet.put(server2, ph2);
+    ackProcessor.processRequest(createJoin(server2, new Zxid(1, 0)));
+    ackProcessor.processRequest(createAck(server1, new Zxid(1, 0)));
+    receiver1.latch.await();
+    boolean isCountedDown = receiver2.latch.await(500, TimeUnit.MILLISECONDS);
+    // server2 shouldn't get any COMMIT message.
+    Assert.assertFalse(isCountedDown);
+    // server1 should only get the COMMIT before COP.
+    Assert.assertEquals(receiver1.committedZxids.size(), 2);
+    ackProcessor.shutdown();
   }
 }

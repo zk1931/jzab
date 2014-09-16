@@ -175,8 +175,15 @@ public class AckProcessor implements RequestProcessor,
               // are just acknowledged by a quorum of old configuration.
               Zxid version = pendingConfig.getVersion();
               // Then commit the transactions up to the one before COP.
-              zxidCanCommit =
-                new Zxid(version.getEpoch(), version.getXid() - 1);
+              if (version.getXid() == 0) {
+                // Means the COP is the first transaction in this epoch, no
+                // transactions before COP needs to be committed.
+                zxidCanCommit = lastCommittedZxid;
+              } else {
+                // We can commit the transaction up to the one before COP.
+                zxidCanCommit =
+                  new Zxid(version.getEpoch(), version.getXid() - 1);
+              }
             }
             LOG.debug("Zxid can be committed for current configuration is {}",
                       zxidCanCommit);
