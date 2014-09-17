@@ -69,34 +69,6 @@
           <altDeploymentRepository>internal.repo::default::file://${project.build.repo.directory}</altDeploymentRepository>
         </configuration>
       </plugin>
-      <plugin>
-        <groupId>com.github.github</groupId>
-        <artifactId>site-maven-plugin</artifactId>
-        <version>0.8</version>
-        <configuration>
-          <message>Maven artifacts for ${project.groupId}:${project.artifactId}:${project.version}</message>
-          <noJekyll>true</noJekyll>
-          <outputDirectory>${project.build.repo.directory}</outputDirectory>
-          <merge>false</merge>
-          <dryRun>false</dryRun>
-          <repositoryOwner>ZK-1931</repositoryOwner>
-          <repositoryName>mvnrepo</repositoryName>
-          <branch>refs/heads/gh-pages</branch>
-          <path>snapshots</path>
-          <oauth2Token>${env.GH_TOKEN}</oauth2Token>
-          <includes>
-            <include>**/*</include>
-          </includes>
-        </configuration>
-        <executions>
-          <execution>
-            <goals>
-              <goal>site</goal>
-            </goals>
-            <phase>deploy</phase>
-          </execution>
-        </executions>
-      </plugin>
 
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
