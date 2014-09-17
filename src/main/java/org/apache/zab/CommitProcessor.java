@@ -32,6 +32,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.Semaphore;
 import org.apache.zab.proto.ZabMessage;
 import org.apache.zab.proto.ZabMessage.Message;
 import org.apache.zab.proto.ZabMessage.Message.MessageType;
@@ -73,6 +74,8 @@ public class CommitProcessor implements RequestProcessor,
 
   Future<Void> ft;
 
+  private final Semaphore semPendingReqs;
+
   /**
    * Constructs a CommitProcessor. The CommitProcesor accepts both COMMIT and
    * PROPOSAL message. It puts the PROPOSAL into pendingTxn list and delivers
@@ -86,6 +89,8 @@ public class CommitProcessor implements RequestProcessor,
    * @param quorumSet the initial quorum set. It's null on follower's side.
    * @param clusterConfig the initial cluster configurations.
    * @param leader the current established leader.
+   * @param semPendingReqs releases the semaphore when requests from this
+   * server are delivered. Used to avoid the internal queues grow infinitely.
    */
   public CommitProcessor(StateMachine stateMachine,
                          Zxid lastDeliveredZxid,
@@ -93,7 +98,8 @@ public class CommitProcessor implements RequestProcessor,
                          Transport transport,
                          Set<String> quorumSet,
                          ClusterConfiguration clusterConfig,
-                         String leader) {
+                         String leader,
+                         Semaphore semPendingReqs) {
     this.stateMachine = stateMachine;
     this.lastDeliveredZxid = lastDeliveredZxid;
     this.serverId = serverId;
@@ -101,6 +107,7 @@ public class CommitProcessor implements RequestProcessor,
     this.quorumSet = quorumSet;
     this.clusterConfig = clusterConfig;
     this.leader = leader;
+    this.semPendingReqs = semPendingReqs;
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
     ft = es.submit(this);
@@ -152,6 +159,11 @@ public class CommitProcessor implements RequestProcessor,
             if (txn.getType() == ProposalType.USER_REQUEST_VALUE) {
               LOG.debug("Delivering transaction {}.", txn.getZxid());
               stateMachine.deliver(txn.getZxid(), txn.getBody(), clientId);
+              if (clientId.equals(serverId)) {
+                // If the delivered transaction comes from this server,
+                // release pending requests semaphore.
+                semPendingReqs.release();
+              }
               numBytes += txn.getBody().capacity();
             } else if (txn.getType() == ProposalType.COP_VALUE) {
               LOG.debug("Delivering COP {}.", txn.getZxid());
@@ -169,6 +181,10 @@ public class CommitProcessor implements RequestProcessor,
                 transport.send(this.serverId, shutdown);
               }
               numBytes += txn.getBody().capacity();
+              // The COP might or might not be proposed by this server, but for
+              // simplicity, we still release the sempahore here, it's OK since
+              // COP should be very few, this will not affect the correctness.
+              semPendingReqs.release();
             } else {
               LOG.warn("Unknown proposal type.");
               continue;
@@ -180,6 +196,9 @@ public class CommitProcessor implements RequestProcessor,
                 PendingFlush flush = flushQueue.peek();
                 if (flush.getWaitZxid().compareTo(lastDeliveredZxid) <= 0) {
                   stateMachine.flushed(flush.getBody());
+                  // Since FLUSH is also considered as pending request. So we
+                  // need releasing semaphore too.
+                  semPendingReqs.release();
                   flushQueue.remove();
                 } else {
                   break;
@@ -217,6 +236,9 @@ public class CommitProcessor implements RequestProcessor,
           Zxid zxid = MessageBuilder.fromProtoZxid(flush.getZxid());
           if (lastDeliveredZxid.compareTo(zxid) >= 0) {
             stateMachine.flushed(body);
+            // Since FLUSH is also considered as pending request. So we need
+            // releasing semaphore too.
+            semPendingReqs.release();
           } else {
             flushQueue.add(new PendingFlush(zxid, body));
           }
