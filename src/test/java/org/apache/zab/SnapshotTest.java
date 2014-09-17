@@ -65,6 +65,9 @@ class SnapshotStateMachine implements StateMachine {
   }
 
   @Override
+  public void flushed(ByteBuffer flushReq) {}
+
+  @Override
   public void save(OutputStream os) {
     LOG.debug("SAVE is called.");
     try {

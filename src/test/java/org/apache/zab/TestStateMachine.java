@@ -70,6 +70,15 @@ class TestStateMachine implements StateMachine {
   }
 
   @Override
+  public void flushed(ByteBuffer flushReq) {
+    LOG.debug("Deliver syncReq {}.");
+    this.deliveredTxns.add(new Transaction(Zxid.ZXID_NOT_EXIST, flushReq));
+    if (txnsCount != null) {
+      txnsCount.countDown();
+    }
+  }
+
+  @Override
   public void save(OutputStream os) {
     throw new UnsupportedOperationException("This implementation"
         + "doesn't support getState operation");

@@ -2154,4 +2154,93 @@ public class QuorumZabTest extends TestBase  {
     zab2.shutdown();
     zab3.shutdown();
   }
+
+  @Test(timeout=3000)
+  public void testFlushFromLeader() throws Exception {
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    QuorumTestCallback cb3 = new QuorumTestCallback();
+    TestStateMachine st1 = new TestStateMachine(2);
+    TestStateMachine st2 = new TestStateMachine();
+    TestStateMachine st3 = new TestStateMachine();
+    final String server1 = getUniqueHostPort();
+    final String server2 = getUniqueHostPort();
+    final String server3 = getUniqueHostPort();
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState(server1,
+                                                null,
+                                                getDirectory());
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    // Waits for leader goes into broadcasting phase.
+    st1.waitMembershipChanged();
+
+    zab1.send(ByteBuffer.wrap("req1".getBytes()));
+    zab1.flush(ByteBuffer.wrap("flush".getBytes()));
+    st1.txnsCount.await();
+    // Make sure first delivered txn is req1.
+    Assert.assertEquals(ByteBuffer.wrap("req1".getBytes()),
+                        st1.deliveredTxns.get(0).getBody());
+    // Make sure last delivered txn is flush.
+    Assert.assertEquals(ByteBuffer.wrap("flush".getBytes()),
+                        st1.deliveredTxns.get(1).getBody());
+    zab1.shutdown();
+  }
+
+  @Test(timeout=3000)
+  public void testFlushFromFollower() throws Exception {
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    TestStateMachine st1 = new TestStateMachine(3);
+    TestStateMachine st2 = new TestStateMachine(5);
+    final String server1 = getUniqueHostPort();
+    final String server2 = getUniqueHostPort();
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState(server1,
+                                                null,
+                                                getDirectory());
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    // Waits for leader goes into broadcasting phase.
+    st1.waitMembershipChanged();
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState(server2,
+                                                null,
+                                                getDirectory());
+    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    st2.waitMembershipChanged();
+    st1.waitMembershipChanged();
+
+    zab2.send(ByteBuffer.wrap("req1".getBytes()));
+    zab2.flush(ByteBuffer.wrap("flush1".getBytes()));
+    zab2.send(ByteBuffer.wrap("req2".getBytes()));
+    zab2.flush(ByteBuffer.wrap("flush2".getBytes()));
+    zab2.send(ByteBuffer.wrap("req3".getBytes()));
+
+    st1.txnsCount.await();
+    st2.txnsCount.await();
+
+    // Leader should received 3 delivered txns.
+    Assert.assertEquals(st1.deliveredTxns.size(), 3);
+    // Follower should received 5 delivered txns(1 is FLUSH).
+    Assert.assertEquals(st2.deliveredTxns.size(), 5);
+    // Make sure the first delivered txn is req1.
+    Assert.assertEquals(ByteBuffer.wrap("req1".getBytes()),
+                        st2.deliveredTxns.get(0).getBody());
+    // Make sure the second delivered txn is flush1.
+    Assert.assertEquals(ByteBuffer.wrap("flush1".getBytes()),
+                        st2.deliveredTxns.get(1).getBody());
+    // Make sure the third delivered txn is req2.
+    Assert.assertEquals(ByteBuffer.wrap("req2".getBytes()),
+                        st2.deliveredTxns.get(2).getBody());
+    // Make sure the fourth delivered txn is flush2.
+    Assert.assertEquals(ByteBuffer.wrap("flush2".getBytes()),
+                        st2.deliveredTxns.get(3).getBody());
+    // Make sure the fifth delivered txn is req3.
+    Assert.assertEquals(ByteBuffer.wrap("req3".getBytes()),
+                        st2.deliveredTxns.get(4).getBody());
+    zab1.shutdown();
+    zab2.shutdown();
+  }
 }

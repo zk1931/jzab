@@ -125,6 +125,11 @@ public class PeerHandler {
    */
   private Zxid lastSyncedZxid = null;
 
+  /**
+   * The zxid of the last request of the peer.
+   */
+  private Zxid lastProposedZxid = Zxid.ZXID_NOT_EXIST;
+
   private static final Logger LOG = LoggerFactory.getLogger(PeerHandler.class);
 
   /**
@@ -194,6 +199,14 @@ public class PeerHandler {
 
   Zxid getLastAckedZxid() {
     return this.lastAckedZxid;
+  }
+
+  Zxid getLastProposedZxid() {
+    return this.lastProposedZxid;
+  }
+
+  void setLastProposedZxid(Zxid zxid) {
+    this.lastProposedZxid = zxid;
   }
 
   synchronized void disableSending() {

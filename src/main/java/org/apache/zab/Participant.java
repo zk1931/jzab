@@ -496,6 +496,10 @@ public abstract class Participant {
     }
   }
 
+  protected void onFlush(MessageTuple tuple, CommitProcessor commitProcessor) {
+    commitProcessor.processRequest(tuple);
+  }
+
   /**
    * Synchronizes server's history to peer based on the last zxid of peer.
    * This function is called when the follower syncs its history to leader as

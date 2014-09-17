@@ -33,6 +33,8 @@ message Message {
     DELIVERED = 24;
     FILE_HEADER = 25;
     FILE_RECEIVED = 26;
+    FLUSH_REQ = 27;
+    FLUSH = 28;
     INVALID_MESSAGE = 30;
   }
 
@@ -61,6 +63,8 @@ message Message {
   optional Delivered delivered = 19;
   optional FileHeader file_header = 20;
   optional FileReceived file_received = 21;
+  optional FlushRequest flush_request = 22;
+  optional Flush flush = 23;
   optional InvalidMessage invalid = 30;
 }
 
@@ -181,4 +185,13 @@ message FileHeader {
 
 message FileReceived {
   required string full_path = 1;
+}
+
+message FlushRequest {
+  required bytes body = 2;
+}
+
+message Flush {
+  required Zxid zxid = 1;
+  required bytes body = 2;
 }

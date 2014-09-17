@@ -420,6 +420,8 @@ public class Follower extends Participant {
           throw new LeftCluster("Left cluster!");
         } else if (msg.getType() == MessageType.DELIVERED) {
           onDelivered(msg, snapProcessor);
+        } else if (msg.getType() == MessageType.FLUSH) {
+          onFlush(tuple, commitProcessor);
         } else {
           if (LOG.isWarnEnabled()) {
             LOG.warn("Unexpected messgae : {} from {}",

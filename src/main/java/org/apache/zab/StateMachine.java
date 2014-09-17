@@ -52,6 +52,14 @@ public interface StateMachine {
   void deliver(Zxid zxid, ByteBuffer stateUpdate, String clientId);
 
   /**
+   * Upcall to deliver the flush request. This method is called from the same
+   * thread as the deliver callback.
+   *
+   * @param  flushRequest the flush request.
+   */
+  void flushed(ByteBuffer flushRequest);
+
+  /**
    * Upcall to serialize the application state using an OutputStream. Upon a
    * call to save, the application writes its state to os.
    *

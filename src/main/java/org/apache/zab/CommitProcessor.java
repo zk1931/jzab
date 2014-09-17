@@ -19,9 +19,11 @@
 package org.apache.zab;
 
 import com.google.protobuf.TextFormat;
+import java.nio.ByteBuffer;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
@@ -66,6 +68,8 @@ public class CommitProcessor implements RequestProcessor,
   private ClusterConfiguration clusterConfig;
 
   private final String leader;
+
+  private final Queue<PendingFlush> flushQueue = new LinkedList<PendingFlush>();
 
   Future<Void> ft;
 
@@ -170,6 +174,18 @@ public class CommitProcessor implements RequestProcessor,
               continue;
             }
             this.lastDeliveredZxid = txn.getZxid();
+            // See if any pending flush requests are waiting for this COMMIT.
+            if (!flushQueue.isEmpty()) {
+              while(flushQueue.peek() != null) {
+                PendingFlush flush = flushQueue.peek();
+                if (flush.getWaitZxid().compareTo(lastDeliveredZxid) <= 0) {
+                  stateMachine.flushed(flush.getBody());
+                  flushQueue.remove();
+                } else {
+                  break;
+                }
+              }
+            }
           }
           if (!zxid.equals(lastDeliveredZxid)) {
             LOG.error("a bug?");
@@ -194,6 +210,16 @@ public class CommitProcessor implements RequestProcessor,
         } else if (msg.getType() == MessageType.JOIN) {
           LOG.debug("Got JOIN from {}", source);
           quorumSet.add(source);
+        } else if (msg.getType() == MessageType.FLUSH) {
+          LOG.debug("Got FLUSH form {}", source);
+          ZabMessage.Flush flush = msg.getFlush();
+          ByteBuffer body = flush.getBody().asReadOnlyByteBuffer();
+          Zxid zxid = MessageBuilder.fromProtoZxid(flush.getZxid());
+          if (lastDeliveredZxid.compareTo(zxid) >= 0) {
+            stateMachine.flushed(body);
+          } else {
+            flushQueue.add(new PendingFlush(zxid, body));
+          }
         } else {
           if (LOG.isWarnEnabled()) {
             LOG.warn("Unexpected message {}", TextFormat.shortDebugString(msg));
@@ -228,5 +254,23 @@ public class CommitProcessor implements RequestProcessor,
 
   public Zxid getLastDeliveredZxid() {
     return this.lastDeliveredZxid;
+  }
+
+  static class PendingFlush {
+    private final Zxid waitZxid;
+    private final ByteBuffer body;
+
+    PendingFlush(Zxid waitZxid, ByteBuffer body) {
+      this.waitZxid = waitZxid;
+      this.body = body;
+    }
+
+    ByteBuffer getBody() {
+      return this.body;
+    }
+
+    Zxid getWaitZxid() {
+      return this.waitZxid;
+    }
   }
 }

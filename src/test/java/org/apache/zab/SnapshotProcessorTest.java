@@ -54,6 +54,9 @@ class SnapshotProcessorStateMachine implements StateMachine {
   public void deliver(Zxid zxid, ByteBuffer stateUpdate, String clientId) {}
 
   @Override
+  public void flushed(ByteBuffer flushReq) {}
+
+  @Override
   public void save(OutputStream os) {
     try {
       ObjectOutputStream out = new ObjectOutputStream(os);

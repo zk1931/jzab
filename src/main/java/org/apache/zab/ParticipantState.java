@@ -130,5 +130,10 @@ public class ParticipantState implements Transport.Receiver {
     Message msg = MessageBuilder.buildRemove(peerId);
     this.requestQueue.add(new MessageTuple(this.serverId, msg));
   }
+
+  public void enqueueFlush(ByteBuffer buffer) {
+    Message msg = MessageBuilder.buildFlushRequest(buffer);
+    this.requestQueue.add(new MessageTuple(this.serverId, msg));
+  }
 }
 
