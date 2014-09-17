@@ -1,6 +1,6 @@
-package zab;
+package jzab;
 
-option java_package = "org.apache.zab.proto";
+option java_package = "com.github.zk1931.jzab.proto";
 option java_outer_classname = "ZabMessage";
 
 message Message {
