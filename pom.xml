@@ -1,16 +1,54 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <groupId>com.github.zk1931.jzab</groupId>
+  <groupId>com.github.zk1931</groupId>
   <artifactId>jzab</artifactId>
   <packaging>jar</packaging>
   <version>0.1.0-SNAPSHOT</version>
   <name>jzab</name>
-  <url>http://maven.apache.org</url>
+  <description>An implementation of ZooKeeper Atomic Broadcast.</description>
+  <url>https://github.com/zk1931/jzab</url>
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.build.repo.directory>${project.build.directory}/repo</project.build.repo.directory>
   </properties>
+  <developers>
+    <developer>
+      <name>Yisheng Liao</name>
+      <email>eason.liao@nyu.edu</email>
+      <organization>zk1931</organization>
+      <organizationUrl>https://github.com/zk1931</organizationUrl>
+    </developer>
+    <developer>
+      <name>Michi Mutsuzaki</name>
+      <email>michi@cs.stanford.edu</email>
+      <organization>zk1931</organization>
+      <organizationUrl>https://github.com/zk1931</organizationUrl>
+    </developer>
+    <developer>
+      <name>Flavio Junqueira</name>
+      <email>fpj@apache.org</email>
+      <organization>zk1931</organization>
+      <organizationUrl>https://github.com/zk1931</organizationUrl>
+    </developer>
+    <developer>
+      <name>Hongchao Deng</name>
+      <email>hdeng@cloudera.com</email>
+      <organization>zk1931</organization>
+      <organizationUrl>https://github.com/zk1931</organizationUrl>
+    </developer>
+  </developers>
+  <licenses>
+    <license>
+      <name>The Apache License, Version 2.0</name>
+      <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+    </license>
+  </licenses>
+  <scm>
+    <connection>scm:git:git@github.com:zk1931/jzab.git</connection>
+    <developerConnection>scm:git:git@github.com:zk1931/jzab.git</developerConnection>
+    <url>https://github.com/zk1931/jzab</url>
+  </scm>
   <build>
     <plugins>
       <plugin>
@@ -32,6 +70,7 @@
             <phase>verify</phase>
             <goals>
               <goal>aggregate</goal>
+              <goal>jar</goal>
             </goals>
           </execution>
         </executions>
@@ -69,7 +108,6 @@
           <altDeploymentRepository>internal.repo::default::file://${project.build.repo.directory}</altDeploymentRepository>
         </configuration>
       </plugin>
-
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
@@ -89,6 +127,21 @@
           <threshold>Low</threshold>
           <xmlOutput>false</xmlOutput>
         </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <version>2.2.1</version>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>jar-no-fork</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
 
       <!-- Delete target/data before running unit tests -->
@@ -156,8 +209,50 @@
         </executions>
       </plugin>
     </plugins>
-
   </build>
+
+  <profiles>
+    <!-- We use separate profile for releasing to pass travis build. -->
+    <profile>
+      <id>ossrh</id>
+      <distributionManagement>
+        <snapshotRepository>
+          <id>ossrh</id>
+          <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+        </snapshotRepository>
+      </distributionManagement>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>1.5</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.sonatype.plugins</groupId>
+            <artifactId>nexus-staging-maven-plugin</artifactId>
+            <version>1.6.3</version>
+            <extensions>true</extensions>
+            <configuration>
+              <serverId>ossrh</serverId>
+              <nexusUrl>https://oss.sonatype.org/</nexusUrl>
+              <autoReleaseAfterClose>true</autoReleaseAfterClose>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+
   <dependencies>
     <dependency>
       <groupId>junit</groupId>
