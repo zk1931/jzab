@@ -18,6 +18,7 @@
 
 package com.github.zk1931.jzab;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
@@ -73,11 +74,15 @@ public class ParticipantState implements Transport.Receiver {
   private static final Logger LOG =
     LoggerFactory.getLogger(ParticipantState.class);
 
-  ParticipantState(PersistentState persistence, String serverId)
+  ParticipantState(PersistentState persistence, String serverId, File keyStore,
+                   String keyStorePassword, File trustStore,
+                   String trustStorePassword)
       throws InterruptedException, IOException , GeneralSecurityException {
     this.persistence = persistence;
     this.serverId = serverId;
     this.transport = new NettyTransport(this.serverId, this,
+                                        keyStore, keyStorePassword,
+                                        trustStore, trustStorePassword,
                                         persistence.getLogDir());
   }
 

@@ -84,7 +84,7 @@ public class QuorumZab {
    * @param prop the Properties object stores the configuration of QuorumZab.
    */
   public QuorumZab(StateMachine stateMachine, Properties prop) {
-    this(stateMachine, prop, null);
+    this(stateMachine, prop, null, null, null, null);
   }
 
   /**
@@ -96,7 +96,56 @@ public class QuorumZab {
    */
   public QuorumZab(StateMachine stateMachine, Properties prop,
                    String joinPeer) {
-    this(stateMachine, null, null, new TestState(prop), joinPeer);
+    this(stateMachine, prop, joinPeer, null, null, null, null);
+  }
+
+  /**
+   * Constructs a QuorumZab instance with Ssl support by recovering from log
+   * directory.
+   *
+   * @param stateMachine the state machine implementation of clients.
+   * @param prop the Properties object stores the configuration of QuorumZab.
+   * @param keyStore keystore file that contains the private key and
+   *                 corresponding certificate chain.
+   * @param keyStorePassword password for the keystore, or null if the password
+   *                         is not set.
+   * @param trustStore truststore file that contains trusted CA certificates.
+   * @param trustStorePassword password for the truststore, or null if the
+   *                           password is not set.
+   */
+  public QuorumZab(StateMachine stateMachine,
+                   Properties prop,
+                   File keyStore,
+                   String keyStorePassword,
+                   File trustStore,
+                   String trustStorePassword) {
+    this(stateMachine, prop, null, keyStore, keyStorePassword, trustStore,
+         trustStorePassword);
+  }
+
+  /**
+   * Constructs a QuorumZab instance with Ssl support by joining an exisintg
+   * cluster.
+   *
+   * @param stateMachine the state machine implementation of clients.
+   * @param prop the Properties object stores the configuration of QuorumZab.
+   * @param joinPeer the id of peer you want to join in.
+   * @param keyStore keystore file that contains the private key and
+   *                 corresponding certificate chain.
+   * @param keyStorePassword password for the keystore, or null if the password
+   *                         is not set.
+   * @param trustStore truststore file that contains trusted CA certificates.
+   * @param trustStorePassword password for the truststore, or null if the
+   *                           password is not set.
+   */
+  public QuorumZab(StateMachine stateMachine,
+                   Properties prop,
+                   String joinPeer,
+                   File keyStore,
+                   String keyStorePassword, File trustStore,
+                   String trustStorePassword) {
+    this(stateMachine, null, null, new TestState(prop), joinPeer, keyStore,
+         keyStorePassword, trustStore, trustStorePassword);
   }
 
   QuorumZab(StateMachine stateMachine,
@@ -111,6 +160,19 @@ public class QuorumZab {
             FailureCaseCallback failureCallback,
             TestState initialState,
             String joinPeer) {
+    this(stateMachine, stateCallback, failureCallback, initialState, joinPeer,
+         null, null, null, null);
+  }
+
+  QuorumZab(StateMachine stateMachine,
+            StateChangeCallback stateCallback,
+            FailureCaseCallback failureCallback,
+            TestState initialState,
+            String joinPeer,
+            File keyStore,
+            String keyStorePassword,
+            File trustStore,
+            String trustStorePassword) {
     this.config = new ZabConfig(initialState.prop);
     this.stateMachine = stateMachine;
     this.stateChangeCallback = stateCallback;
@@ -120,7 +182,8 @@ public class QuorumZab {
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
     try {
       // Initialize.
-      this.mainThread.init();
+      this.mainThread.init(keyStore, keyStorePassword, trustStore,
+                           trustStorePassword);
     } catch (Exception e) {
       LOG.warn("Caught an exception while initializing QuorumZab.");
       throw new IllegalStateException("Failed to initialize QuorumZab.", e);
@@ -439,8 +502,9 @@ public class QuorumZab {
      */
     private ParticipantState participantState;
 
-    private void init() throws IOException, InterruptedException,
-                               GeneralSecurityException {
+    private void init(File keyStore, String keyStorePassword, File trustStore,
+                      String trustStorePassword)
+        throws IOException, InterruptedException, GeneralSecurityException {
       PersistentState persistence = new PersistentState(config.getLogDir(),
                                                         testState.getLog());
       if (this.joinPeer != null) {
@@ -472,7 +536,9 @@ public class QuorumZab {
           serverId = cnf.getServerId();
         }
       }
-      participantState = new ParticipantState(persistence, serverId);
+      participantState =
+        new ParticipantState(persistence, serverId, keyStore, keyStorePassword,
+                             trustStore, trustStorePassword);
       MDC.put("serverId", serverId);
     }
 
