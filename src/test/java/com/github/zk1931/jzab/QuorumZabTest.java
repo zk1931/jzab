@@ -18,6 +18,7 @@
 
 package com.github.zk1931.jzab;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -2209,6 +2210,75 @@ public class QuorumZabTest extends TestBase  {
                                                 null,
                                                 getDirectory());
     QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    st2.waitMembershipChanged();
+    st1.waitMembershipChanged();
+
+    zab2.send(ByteBuffer.wrap("req1".getBytes()));
+    zab2.flush(ByteBuffer.wrap("flush1".getBytes()));
+    zab2.send(ByteBuffer.wrap("req2".getBytes()));
+    zab2.flush(ByteBuffer.wrap("flush2".getBytes()));
+    zab2.send(ByteBuffer.wrap("req3".getBytes()));
+
+    st1.txnsCount.await();
+    st2.txnsCount.await();
+
+    // Leader should received 3 delivered txns.
+    Assert.assertEquals(st1.deliveredTxns.size(), 3);
+    // Follower should received 5 delivered txns(1 is FLUSH).
+    Assert.assertEquals(st2.deliveredTxns.size(), 5);
+    // Make sure the first delivered txn is req1.
+    Assert.assertEquals(ByteBuffer.wrap("req1".getBytes()),
+                        st2.deliveredTxns.get(0).getBody());
+    // Make sure the second delivered txn is flush1.
+    Assert.assertEquals(ByteBuffer.wrap("flush1".getBytes()),
+                        st2.deliveredTxns.get(1).getBody());
+    // Make sure the third delivered txn is req2.
+    Assert.assertEquals(ByteBuffer.wrap("req2".getBytes()),
+                        st2.deliveredTxns.get(2).getBody());
+    // Make sure the fourth delivered txn is flush2.
+    Assert.assertEquals(ByteBuffer.wrap("flush2".getBytes()),
+                        st2.deliveredTxns.get(3).getBody());
+    // Make sure the fifth delivered txn is req3.
+    Assert.assertEquals(ByteBuffer.wrap("req3".getBytes()),
+                        st2.deliveredTxns.get(4).getBody());
+    zab1.shutdown();
+    zab2.shutdown();
+  }
+
+  @Test(timeout=3000)
+  public void testFlushFromFollowerSsl() throws Exception {
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    TestStateMachine st1 = new TestStateMachine(3);
+    TestStateMachine st2 = new TestStateMachine(5);
+    final String server1 = getUniqueHostPort();
+    final String server2 = getUniqueHostPort();
+
+    String password = "pa55w0rd";
+    String sslDir = "target" + File.separator + "generated-resources" +
+                    File.separator + "ssl";
+
+    File trustStore = new File(sslDir, "truststore.jks");
+    File keyStoreA = new File(sslDir, "keystore_a.jks");
+    File keyStoreB = new File(sslDir, "keystore_b.jks");
+
+    QuorumZab.TestState state1 = new QuorumZab
+                                     .TestState(server1,
+                                                null,
+                                                getDirectory());
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1, keyStoreA,
+                                   password, trustStore, password);
+
+    // Waits for leader goes into broadcasting phase.
+    st1.waitMembershipChanged();
+
+    QuorumZab.TestState state2 = new QuorumZab
+                                     .TestState(server2,
+                                                null,
+                                                getDirectory());
+    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1, keyStoreB,
+                                   password, trustStore, password);
+
     st2.waitMembershipChanged();
     st1.waitMembershipChanged();
 
