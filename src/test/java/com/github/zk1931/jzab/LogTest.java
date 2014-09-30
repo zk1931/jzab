@@ -20,6 +20,7 @@ package com.github.zk1931.jzab;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.ArrayList;
@@ -69,6 +70,14 @@ public class LogTest extends TestBase {
     } else {
       return (Log)logClass.getConstructor(File.class).newInstance(f);
     }
+  }
+
+  void corruptFile(int position) throws Exception {
+    File file = new File(getDirectory(), "transaction.log");
+    RandomAccessFile ra = new RandomAccessFile(file, "rw");
+    ra.seek(position);
+    ra.write(0xff);
+    ra.close();
   }
 
   void appendTxns(Log log, Zxid startZxid, int count) throws IOException {
@@ -207,6 +216,81 @@ public class LogTest extends TestBase {
     for (int i = 0; i < zxids.size(); ++i) {
       Zxid zxid = new Zxid(0, i);
       Assert.assertEquals(zxid, zxids.get(i));
+    }
+  }
+
+  @Test(expected=RuntimeException.class)
+  public void testCorruptChecksum() throws Exception {
+    if (logClass == SimpleLog.class) {
+      Log log = getLog();
+      appendTxns(log, new Zxid(0, 0), 1);
+      // Corrupts checksum.
+      corruptFile(0);
+      // Iterating the log will trigger the checksum error.
+      log.getIterator(log.getLatestZxid());
+      log.close();
+    } else {
+      throw new RuntimeException("Simulated exception for RollingLog.");
+    }
+  }
+
+  @Test(expected=RuntimeException.class)
+  public void testCorruptLength() throws Exception {
+    if (logClass == SimpleLog.class) {
+      Log log = getLog();
+      appendTxns(log, new Zxid(0, 0), 1);
+      // Corrupts length.
+      corruptFile(4);
+      // Iterating the log will trigger the checksum error.
+      log.getIterator(log.getLatestZxid());
+      log.close();
+    } else {
+      throw new RuntimeException("Simulated exception for RollingLog.");
+    }
+  }
+
+  @Test(expected=RuntimeException.class)
+  public void testCorruptZxid() throws Exception {
+    if (logClass == SimpleLog.class) {
+      Log log = getLog();
+      appendTxns(log, new Zxid(0, 0), 1);
+      // Corrupts zxid.
+      corruptFile(8);
+      // Iterating the log will trigger the checksum error.
+      log.getIterator(log.getLatestZxid());
+      log.close();
+    } else {
+      throw new RuntimeException("Simulated exception for RollingLog.");
+    }
+  }
+
+  @Test(expected=RuntimeException.class)
+  public void testCorruptType() throws Exception {
+    if (logClass == SimpleLog.class) {
+      Log log = getLog();
+      appendTxns(log, new Zxid(0, 0), 1);
+      // Corrupts type.
+      corruptFile(16);
+      // Iterating the log will trigger the checksum error.
+      log.getIterator(log.getLatestZxid());
+      log.close();
+    } else {
+      throw new RuntimeException("Simulated exception for RollingLog.");
+    }
+  }
+
+  @Test(expected=RuntimeException.class)
+  public void testCorruptTxn() throws Exception {
+    if (logClass == SimpleLog.class) {
+      Log log = getLog();
+      appendTxns(log, new Zxid(0, 0), 1);
+      // Corrupts Transaction.
+      corruptFile(20);
+      // Iterating the log will trigger the checksum error.
+      log.getIterator(log.getLatestZxid());
+      log.close();
+    } else {
+      throw new RuntimeException("Simulated exception for RollingLog.");
     }
   }
 }

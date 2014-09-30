@@ -44,7 +44,7 @@ public class RollingLog implements Log {
   /**
    * The list of log files, they are sorted by zxid order.
    */
-  List<File> logFiles = new ArrayList<File>();
+  private final List<File> logFiles = new ArrayList<File>();
 
   /**
    * The current log. Transaction will be appended to this log file.
@@ -56,11 +56,10 @@ public class RollingLog implements Log {
    */
   private final File logDir;
 
-
   /**
-   * Last zxid in log.
+   * The last seen zxid, used to avoid appending duplicate transactions.
    */
-  private Zxid lastZxid = Zxid.ZXID_NOT_EXIST;
+  private Zxid lastSeenZxid = null;
 
   /**
    * Creates a RollingLog object.
@@ -74,15 +73,8 @@ public class RollingLog implements Log {
     this.rollingSize =  rollingSize;
     // Initialize from log directory.
     initFromDir();
-    if (this.logFiles.isEmpty()) {
-      // If the log directory doesn't contain any log files, creates the
-      // first log file.
-      File firstFile =
-        new File(this.logDir, "transaction." + new Zxid(0, 0).toSimpleString());
-      logFiles.add(firstFile);
-    }
     this.currentLog = getLastLog();
-    this.lastZxid = getLatestZxid();
+    this.lastSeenZxid = getLatestZxid();
   }
 
   /**
@@ -92,7 +84,10 @@ public class RollingLog implements Log {
    */
   @Override
   public void close() throws IOException {
-    this.currentLog.close();
+    if (this.currentLog != null) {
+      this.currentLog.close();
+      this.currentLog = null;
+    }
   }
 
   /**
@@ -103,21 +98,23 @@ public class RollingLog implements Log {
    */
   @Override
   public void append(Transaction txn) throws IOException {
-    if (currentLog.length() >= this.rollingSize) {
-      // Once current log file reaches the threshold, starts rolling the log.
-      LOG.debug("Current log file {} exceeds size of {}, rolling the log.",
-                this.currentLog.getName(), rollingSize);
+    if (this.lastSeenZxid.compareTo(txn.getZxid()) >= 0) {
+      String exStr = String.format("The zxid %s is not larger than last seen"
+          + " zxid %s in the log.", txn.getZxid(), lastSeenZxid);
+      throw new RuntimeException(exStr);
+    }
+    if (currentLog == null || currentLog.length() >= this.rollingSize) {
       Zxid zxid = txn.getZxid();
-      // Close the old one.
-      this.currentLog.close();
-      File logFile =
-        new File(this.logDir, "transaction." + zxid.toSimpleString());
+      // Close the old one if any.
+      this.close();
+      File logFile = new File(logDir, "transaction." + zxid.toSimpleString());
+      LOG.debug("Rolling to the new log {}.", logFile.getName());
       // Adds new created log file to list.
       this.logFiles.add(logFile);
-      this.currentLog = new SimpleLog(logFile, this.lastZxid);
+      this.currentLog = new SimpleLog(logFile);
     }
+    this.lastSeenZxid = txn.getZxid();
     this.currentLog.append(txn);
-    this.lastZxid = txn.getZxid();
   }
 
   /**
@@ -130,24 +127,22 @@ public class RollingLog implements Log {
    */
   @Override
   public void truncate(Zxid zxid) throws IOException {
-    int idx = getFileIdx(zxid);
-    if (idx == -1) {
-      idx = 0;
-    }
-    for (int i = idx + 1; i < logFiles.size(); ++i) {
+    int lastKeepIdx = getFileIdx(zxid);
+    for (int i = lastKeepIdx + 1; i < logFiles.size(); ++i) {
       // Deletes all the log files after the file which contains the
       // transaction with zxid.
       File file = logFiles.get(i);
       file.delete();
     }
-    // Truncates the file which contains the zxid.
-    File file = logFiles.get(idx);
-    try (SimpleLog log = new SimpleLog(file)) {
-      log.truncate(zxid);
+    if (lastKeepIdx != -1) {
+      File file = this.logFiles.get(lastKeepIdx);
+      try (SimpleLog log = new SimpleLog(file)) {
+        log.truncate(zxid);
+      }
     }
-    logFiles.subList(idx + 1, logFiles.size()).clear();
+    logFiles.subList(lastKeepIdx+ 1, logFiles.size()).clear();
     this.currentLog = getLastLog();
-    this.lastZxid = getLatestZxid();
+    this.lastSeenZxid = getLatestZxid();
   }
 
   /**
@@ -159,6 +154,9 @@ public class RollingLog implements Log {
    */
   @Override
   public Zxid getLatestZxid() throws IOException {
+    if (logFiles.isEmpty()) {
+      return Zxid.ZXID_NOT_EXIST;
+    }
     try (SimpleLog log = getLastLog()) {
       return log.getLatestZxid();
     }
@@ -174,11 +172,7 @@ public class RollingLog implements Log {
    */
   @Override
   public LogIterator getIterator(Zxid zxid) throws IOException {
-    int idx = getFileIdx(zxid);
-    if (idx == -1) {
-      return new RollingLogIterator(0, null);
-    }
-    return new RollingLogIterator(idx, zxid);
+    return new RollingLogIterator(zxid);
   }
 
   /**
@@ -224,15 +218,17 @@ public class RollingLog implements Log {
    * -1 will be returned.
    *
    * @param zxid the zxid of the transaction.
-   * @return the idx of file which contains the transaction with given zxid if
-   * the transaction is in the log.
+   * @return the idx of file which possibly contains the transaction with
+   * given zxid.
    */
   int getFileIdx(Zxid zxid) {
-    int idx = 0;
-    if (zxid.compareTo(getZxidFromFileName(logFiles.get(0))) < 0) {
-      // If the zxid is smaller than the smallest zxid of RollingLog.
+    if (logFiles.isEmpty() ||
+        zxid.compareTo(getZxidFromFileName(logFiles.get(0))) < 0) {
+      // If there's no log files or the zxid is smaller than the smallest zxid
+      // of the rolling log, returns -1.
       return -1;
     }
+    int idx = 0;
     while (idx < logFiles.size() - 1) {
       Zxid firstZxid = getZxidFromFileName(logFiles.get(idx));
       if (zxid.compareTo(firstZxid) == 0) {
@@ -273,6 +269,9 @@ public class RollingLog implements Log {
    * @return the SimpleLog instance of the last log.
    */
   SimpleLog getLastLog() throws IOException {
+    if (logFiles.isEmpty()) {
+      return null;
+    }
     return new SimpleLog(logFiles.get(logFiles.size() - 1));
   }
 
@@ -281,23 +280,20 @@ public class RollingLog implements Log {
    */
   public class RollingLogIterator implements Log.LogIterator {
     int fileIdx;
-    SimpleLog.SimpleLogIterator iter = null;
+    Log.LogIterator iter;
 
-    public RollingLogIterator() throws IOException {
-      this(0, null);
-    }
-
-    public RollingLogIterator(int idx, Zxid startZxid) throws IOException {
-      this.fileIdx = idx;
-      File logFile = logFiles.get(this.fileIdx);
-      this.iter = new SimpleLog.SimpleLogIterator(logFile);
-      if (startZxid != null) {
-        while (iter.hasNext()) {
-          Transaction txn = iter.next();
-          if (txn.getZxid().compareTo(startZxid) >= 0) {
-            iter.backward();
-            break;
-          }
+    public RollingLogIterator(Zxid startZxid) throws IOException {
+      int idx = getFileIdx(startZxid);
+      if (logFiles.isEmpty()) {
+        this.fileIdx = -1;
+        this.iter = null;
+      } else {
+        if (idx == -1) {
+          idx = 0;
+        }
+        this.fileIdx = idx;
+        try (SimpleLog log = new SimpleLog(logFiles.get(this.fileIdx))) {
+          this.iter = log.getIterator(startZxid);
         }
       }
     }
@@ -309,7 +305,9 @@ public class RollingLog implements Log {
      */
     @Override
     public void close() throws IOException {
-      this.iter.close();
+      if (this.iter != null) {
+        this.iter.close();
+      }
     }
 
     /**
@@ -319,7 +317,8 @@ public class RollingLog implements Log {
      */
     @Override
     public boolean hasNext() {
-      return this.iter.hasNext() || this.fileIdx < (logFiles.size() - 1);
+      return this.fileIdx != -1 &&
+             (this.iter.hasNext() || this.fileIdx < (logFiles.size() - 1));
     }
 
     /**

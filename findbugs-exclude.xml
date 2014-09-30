@@ -22,7 +22,7 @@
 <!-- Ignoring protobuf generated files. -->
 <FindBugsFilter>
   <Match>
-    <Package name="org.apache.zab.proto" />
+    <Package name="com.github.zk1931.jzab.proto" />
   </Match>
 </FindBugsFilter>
 
