@@ -31,6 +31,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeUnit;
 import java.util.ArrayList;
 import java.util.List;
 import com.github.zk1931.jzab.proto.ZabMessage;
@@ -638,6 +639,7 @@ public abstract class Participant {
   protected class SendRequestTask implements Callable<Void> {
     private final Future<Void> ft;
     private final String leader;
+    private volatile boolean stop = false;
 
     public SendRequestTask(String leader) {
       this.leader = leader;
@@ -648,7 +650,10 @@ public abstract class Participant {
     }
 
     public void shutdown() throws ExecutionException, InterruptedException {
-      participantState.getRequestQueue().add(MessageTuple.REQUEST_OF_DEATH);
+      this.stop = true;
+      // Release semaphore in case the thread is blocked on acuiqring of the
+      // semaphore.
+      semPendingReqs.release();
       this.ft.get();
       LOG.debug("SendRequestTask has been shut down.");
     }
@@ -659,10 +664,10 @@ public abstract class Participant {
       try {
         BlockingQueue<MessageTuple> requestQueue
           = participantState.getRequestQueue();
-        while (true) {
-          MessageTuple tuple = requestQueue.take();
-          if (tuple == MessageTuple.REQUEST_OF_DEATH) {
-            return null;
+        while (!stop) {
+          MessageTuple tuple = requestQueue.poll(500, TimeUnit.MILLISECONDS);
+          if (tuple == null) {
+            continue;
           }
           // Blocks if the maximum pending requests have been reached.
           semPendingReqs.acquire();
@@ -672,6 +677,7 @@ public abstract class Participant {
         LOG.error("Caught exception in SendRequest!");
         throw e;
       }
+      return null;
     }
   }
 }
