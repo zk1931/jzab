@@ -22,6 +22,7 @@ import com.google.protobuf.TextFormat;
 import java.io.IOException;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -217,6 +218,10 @@ public class PeerHandler {
     return this.ftSync != null;
   }
 
+  boolean isSynchronizing() {
+    return this.ftSync != null && this.ftBroad == null;
+  }
+
   /**
    * Puts message in queue.
    *
@@ -237,15 +242,22 @@ public class PeerHandler {
     }
   }
 
-  void shutdown() {
+  void shutdown() throws InterruptedException, ExecutionException {
     if (this.ftSync != null) {
-      this.ftSync.cancel(true);
+      try {
+        this.ftSync.get();
+      } catch (Exception ex) {
+        throw new RuntimeException(ex);
+      }
     }
     if (this.ftBroad != null) {
-      this.ftBroad.cancel(true);
+      Message shutdown = MessageBuilder.buildShutDown();
+      this.broadcastingQueue.add(shutdown);
+      this.ftBroad.get();
     }
     this.transport.clear(this.serverId);
-    LOG.debug("PeerHandler of {} has been shut down.", this.serverId);
+    LOG.debug("PeerHandler of {} has been shut down {}.", this.serverId);
+    this.es.shutdown();
   }
 
   void startSynchronizingTask() {
@@ -295,6 +307,10 @@ public class PeerHandler {
           // messages for a certain duration.
           sendMessage(heartbeat);
           continue;
+        }
+        if (msg.getType() == MessageType.SHUT_DOWN) {
+          // shutdown method is called.
+          return null;
         }
         if (msg.getType() == MessageType.PROPOSAL) {
           // Got PROPOSAL message, send it to follower.
