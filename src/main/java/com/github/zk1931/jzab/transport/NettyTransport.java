@@ -87,7 +87,7 @@ public class NettyTransport extends Transport {
   private final String hostPort;
   private final EventLoopGroup bossGroup = new NioEventLoopGroup();
   private final EventLoopGroup workerGroup = new NioEventLoopGroup();
-  final Channel channel;
+  Channel channel;
   private final File keyStore;
   private final char[] keyStorePassword;
   private final File trustStore;
@@ -167,8 +167,24 @@ public class NettyTransport extends Transport {
           ch.pipeline().addLast("frameEncoder", new LengthFieldPrepender(4));
         }
       });
-    channel = b.bind(port).sync().channel();
-    LOG.info("Server started: {}", hostPort);
+
+    // Travis build fails once in a while because it fails to bind to a port.
+    // This is most likely a transient failure. Retry binding for 5 times with
+    // 1 second sleep in between before giving up.
+    int bindRetryCount = 5;
+    for (int i = 0;; i++) {
+      try {
+        channel = b.bind(port).sync().channel();
+        LOG.info("Server started: {}", hostPort);
+        return;
+      } catch (Exception ex) {
+        if (i >= bindRetryCount) {
+          throw ex;
+        }
+        LOG.debug("Failed to bind to {}. Retrying after 1 second.", hostPort);
+        Thread.sleep(1000);
+      }
+    }
   }
 
   private boolean isSslEnabled() {
