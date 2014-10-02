@@ -71,7 +71,7 @@ public class NettyTransportTest extends TestBase {
   /**
    * Make sure the constructor fails when the port is invalid.
    */
-  @Test(timeout=5000, expected=IllegalArgumentException.class)
+  @Test(timeout=10000, expected=IllegalArgumentException.class)
   public void testInvalidPort() throws Exception {
     NettyTransport transport = new NettyTransport(getHostPort(-1), NOOP,
                                                   getDirectory());
