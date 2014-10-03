@@ -94,12 +94,21 @@ public class ZabConfig {
   }
 
   /**
-   * Gets the timeout of heartbeat messages (default is 3000 milliseconds).
+   * Gets the timeout of heartbeat messages (default is 1000 milliseconds).
    *
    * @return the timeout in milliseconds
    */
-  public int getTimeout() {
+  public int getTimeoutMs() {
     return Integer.parseInt(this.prop.getProperty("timeout_ms", "1000"));
+  }
+
+  /**
+   * Gets the timeout for synchronizing peers (default is 20000 milliseconds).
+   *
+   * @return the timeout in milliseconds.
+   */
+  public int  getSyncTimeoutMs() {
+    return Integer.parseInt(this.prop.getProperty("sync_timeout_ms", "20000"));
   }
 
   /**

@@ -91,15 +91,16 @@ public class Leader extends Participant {
   /**
    * Gets a message from the queue.
    *
+   * @param timeoutMs how to wait before raising a TimeoutException.
    * @return a message tuple contains the message and its source.
    * @throws TimeoutException in case of timeout.
    * @throws InterruptedException it's interrupted.
    */
   @Override
-  protected MessageTuple getMessage()
+  protected MessageTuple getMessage(int timeoutMs)
       throws TimeoutException, InterruptedException {
     while (true) {
-      MessageTuple tuple = messageQueue.poll(config.getTimeout(),
+      MessageTuple tuple = messageQueue.poll(timeoutMs,
                                              TimeUnit.MILLISECONDS);
       if (tuple == null) {
         // Timeout.
@@ -121,13 +122,15 @@ public class Leader extends Participant {
             // phase, you are for sure not have a quorum of followers, just go
             // back to leader election. The clearance of the transport happens
             // in the exception handlers of lead/join function.
-            LOG.debug("Lost follower {} in the quorumSet.", peerId);
+            LOG.debug("Lost follower {} in the quorumSet in recovering.",
+                      peerId);
             throw new BackToElectionException();
           } else {
             // Lost someone who is in the quorumSet in broadcasting phase,
             // return this message to caller and let it handles the
             // disconnection.
-            LOG.debug("Lost follower {} in the quorumSet.", peerId);
+            LOG.debug("Lost follower {} in the quorumSet in broadcasting.",
+                      peerId);
             return tuple;
           }
         } else {
@@ -206,7 +209,7 @@ public class Leader extends Participant {
     } catch (TimeoutException e) {
       LOG.debug("Didn't hear message from peers for {} milliseconds. Going"
                 + " back to leader election.",
-                this.config.getTimeout());
+                this.config.getTimeoutMs());
     } catch (BackToElectionException e) {
       LOG.debug("Got GO_BACK message from queue, going back to electing.");
     } catch (LeftCluster e) {
@@ -260,6 +263,7 @@ public class Leader extends Participant {
       changePhase(Phase.BROADCASTING);
       for (PeerHandler ph : this.quorumSet.values()) {
         ph.startBroadcastingTask();
+        ph.updateHeartbeatTime();
       }
       broadcasting();
     } catch (InterruptedException e) {
@@ -268,7 +272,7 @@ public class Leader extends Participant {
     } catch (TimeoutException e) {
       LOG.debug("Didn't hear message from peers for {} milliseconds. Going"
                 + " back to leader election.",
-                this.config.getTimeout());
+                this.config.getTimeoutMs());
     } catch (BackToElectionException e) {
       LOG.debug("Got GO_BACK message from queue, going back to electing.");
     } catch (QuorumZab.SimulatedException e) {
@@ -284,6 +288,8 @@ public class Leader extends Participant {
         ph.shutdown();
         this.quorumSet.remove(ph.getServerId());
       }
+      // Clears the message queue.
+      clearMessageQueue();
     }
   }
 
@@ -346,7 +352,7 @@ public class Leader extends Participant {
             + source + ", probably a bug?");
       }
       PeerHandler ph = new PeerHandler(source, transport,
-                                       config.getTimeout()/3);
+                                       config.getTimeoutMs()/3);
       ph.setLastProposedEpoch(peerProposedEpoch);
       this.quorumSet.put(source, ph);
     }
@@ -482,7 +488,9 @@ public class Leader extends Participant {
     int completeCount = 0;
     Zxid lastZxid = persistence.getLog().getLatestZxid();
     while (completeCount < this.quorumSet.size()) {
-      MessageTuple tuple = getExpectedMessage(MessageType.ACK, null);
+      // Here we should use sync_timeout.
+      MessageTuple tuple =
+        getExpectedMessage(MessageType.ACK, null, config.getSyncTimeoutMs());
       ZabMessage.Ack ack = tuple.getMessage().getAck();
       String source =tuple.getServerId();
       Zxid zxid = MessageBuilder.fromProtoZxid(ack.getZxid());
@@ -535,8 +543,8 @@ public class Leader extends Participant {
     Zxid lastZxid = persistence.getLog().getLatestZxid();
     this.establishedEpoch = persistence.getAckEpoch();
     // Add leader itself to quorumSet.
-    PeerHandler lh = new PeerHandler(serverId, transport,
-                                     config.getTimeout()/3);
+    PeerHandler lh =
+      new PeerHandler(serverId, transport, config.getTimeoutMs()/3);
     lh.setLastAckedZxid(lastZxid);
     lh.startBroadcastingTask();
     quorumSet.put(this.serverId, lh);
@@ -693,7 +701,8 @@ public class Leader extends Participant {
     Zxid lastZxid =
       MessageBuilder.fromProtoZxid(tuple.getMessage().getJoin().getLastZxid());
     String source = tuple.getServerId();
-    PeerHandler ph = new PeerHandler(source, transport, config.getTimeout()/3);
+    PeerHandler ph =
+      new PeerHandler(source, transport, config.getTimeoutMs()/3);
     // For joiner, its history must be empty.
     ph.setLastZxid(lastZxid);
     // We'll synchronize the joiner up to last proposed zxid of leader.
@@ -750,7 +759,8 @@ public class Leader extends Participant {
   void onDisconnected(MessageTuple tuple,
                       PreProcessor preProcessor,
                       AckProcessor ackProcessor,
-                      CommitProcessor commitProcessor) {
+                      CommitProcessor commitProcessor)
+      throws InterruptedException, ExecutionException {
     Message msg = tuple.getMessage();
     String peerId = msg.getDisconnected().getServerId();
     // Remove if it's in pendingPeers.
@@ -833,7 +843,8 @@ public class Leader extends Participant {
     ZabMessage.AckEpoch ackEpoch = msg.getAckEpoch();
     Zxid lastPeerZxid = MessageBuilder
                         .fromProtoZxid(ackEpoch.getLastZxid());
-    PeerHandler ph = new PeerHandler(source, transport, config.getTimeout()/3);
+    PeerHandler ph =
+      new PeerHandler(source, transport, config.getTimeoutMs()/3);
     ph.setLastZxid(lastPeerZxid);
     ph.setLastSyncedZxid(zxid);
     // Add to the quorum set of main thread.
@@ -887,7 +898,8 @@ public class Leader extends Participant {
 
   void onSyncHistory(MessageTuple tuple) throws IOException {
     String source = tuple.getServerId();
-    PeerHandler ph = new PeerHandler(source, transport, config.getTimeout()/3);
+    PeerHandler ph = new
+      PeerHandler(source, transport, config.getTimeoutMs()/3);
     // The new joiner will issue the SYNC_HISTORY message first. At this time
     // the joiner's log must be empty.
     ph.setLastZxid(Zxid.ZXID_NOT_EXIST);
@@ -906,10 +918,15 @@ public class Leader extends Participant {
 
   void checkFollowerLiveness() {
     long currentTime = System.nanoTime();
-    long timeoutNs = this.config.getTimeout() * (long)1000000;
+    long timeoutNs;
     for (PeerHandler ph : this.quorumSet.values()) {
       if (ph.getServerId().equals(this.serverId)) {
         continue;
+      }
+      if (!ph.isSynchronizing()) {
+        timeoutNs = this.config.getTimeoutMs() * (long)1000000;
+      } else {
+        timeoutNs = this.config.getSyncTimeoutMs() * (long)1000000;
       }
       if (currentTime - ph.getLastHeartbeatTime() >= timeoutNs) {
         // Removes the peer who is likely to be dead.

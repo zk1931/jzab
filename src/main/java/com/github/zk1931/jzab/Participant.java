@@ -31,6 +31,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeUnit;
 import java.util.ArrayList;
 import java.util.List;
 import com.github.zk1931.jzab.proto.ZabMessage;
@@ -222,7 +223,20 @@ public abstract class Participant {
    * @throws TimeoutException in case of timeout.
    * @throws InterruptedException it's interrupted.
    */
-  protected abstract MessageTuple getMessage()
+  protected MessageTuple getMessage()
+      throws TimeoutException, InterruptedException {
+    return getMessage(this.config.getTimeoutMs());
+  }
+
+  /**
+   * Gets a message from the queue.
+   *
+   * @param timeoutMs how to wait before raising a TimeoutException.
+   * @return a message tuple contains the message and its source.
+   * @throws TimeoutException in case of timeout.
+   * @throws InterruptedException it's interrupted.
+   */
+  protected abstract MessageTuple getMessage(int timeoutMs)
       throws TimeoutException, InterruptedException;
 
   /**
@@ -232,15 +246,18 @@ public abstract class Participant {
    * @param type the expected message type.
    * @param source the expected source, null if it can from anyone.
    * @return the message tuple contains the message and its source.
+   * @param timeoutMs how to wait before raising a TimeoutException.
    * @throws TimeoutException in case of timeout.
    * @throws InterruptedException it's interrupted.
    */
-  protected MessageTuple getExpectedMessage(MessageType type, String source)
+  protected MessageTuple getExpectedMessage(MessageType type,
+                                            String source,
+                                            int timeoutMs)
       throws TimeoutException, InterruptedException {
     int startTime = (int) (System.nanoTime() / 1000000);
     // Waits until the expected message is received.
     while (true) {
-      MessageTuple tuple = getMessage();
+      MessageTuple tuple = getMessage(timeoutMs);
       String from = tuple.getServerId();
       if (tuple.getMessage().getType() == type &&
           (source == null || source.equals(from))) {
@@ -248,7 +265,7 @@ public abstract class Participant {
         return tuple;
       } else {
         int curTime = (int) (System.nanoTime() / 1000000);
-        if (curTime - startTime >= this.config.getTimeout()) {
+        if (curTime - startTime >= timeoutMs) {
           throw new TimeoutException("Timeout in getExpectedMessage.");
         }
         if (LOG.isDebugEnabled()) {
@@ -258,6 +275,11 @@ public abstract class Participant {
         }
       }
     }
+  }
+
+  protected MessageTuple getExpectedMessage(MessageType type, String source)
+      throws TimeoutException, InterruptedException {
+    return getExpectedMessage(type, source, this.config.getTimeoutMs());
   }
 
   /**
@@ -281,7 +303,7 @@ public abstract class Participant {
     // Expects getting message of DIFF or TRUNCATE or SNAPSHOT or PULL_TXN_REQ
     // from elected leader.
     while (true) {
-      MessageTuple tuple = getMessage();
+      MessageTuple tuple = getMessage(config.getSyncTimeoutMs());
       source = tuple.getServerId();
       msg = tuple.getMessage();
       if ((msg.getType() != MessageType.DIFF &&
@@ -311,7 +333,8 @@ public abstract class Participant {
       syncTask.run();
       // After synchronization, leader should have same history as this
       // server, so next message should be an empty DIFF.
-      MessageTuple tuple = getExpectedMessage(MessageType.DIFF, peer);
+      MessageTuple tuple =
+        getExpectedMessage(MessageType.DIFF, peer, config.getSyncTimeoutMs());
       msg = tuple.getMessage();
       ZabMessage.Diff diff = msg.getDiff();
       lastZxidPeer = MessageBuilder.fromProtoZxid(diff.getLastZxid());
@@ -378,7 +401,8 @@ public abstract class Participant {
     }
     // Get subsequent proposals.
     while (true) {
-      MessageTuple tuple = getExpectedMessage(MessageType.PROPOSAL, peer);
+      MessageTuple tuple = getExpectedMessage(MessageType.PROPOSAL, peer,
+                                              config.getSyncTimeoutMs());
       msg = tuple.getMessage();
       source = tuple.getServerId();
       if (LOG.isDebugEnabled()) {
@@ -408,7 +432,8 @@ public abstract class Participant {
    */
   void waitForSyncEnd(String peerId)
       throws TimeoutException, IOException, InterruptedException {
-    MessageTuple tuple = getExpectedMessage(MessageType.SYNC_END, peerId);
+    MessageTuple tuple = getExpectedMessage(MessageType.SYNC_END, peerId,
+                                            config.getSyncTimeoutMs());
     ClusterConfiguration cnf
       = ClusterConfiguration.fromProto(tuple.getMessage().getConfig(),
                                        this.serverId);
@@ -506,6 +531,20 @@ public abstract class Participant {
 
   protected void onFlush(MessageTuple tuple, CommitProcessor commitProcessor) {
     commitProcessor.processRequest(tuple);
+  }
+
+  /**
+   * Clears all the messages in the message queue, clears the peer in transport
+   * if it's the DISCONNECTED message.
+   */
+  protected void clearMessageQueue() {
+    MessageTuple tuple = null;
+    while ((tuple = messageQueue.poll()) != null) {
+      Message msg = tuple.getMessage();
+      if (msg.getType() == MessageType.DISCONNECTED) {
+        this.transport.clear(msg.getDisconnected().getServerId());
+      }
+    }
   }
 
   /**
@@ -638,6 +677,7 @@ public abstract class Participant {
   protected class SendRequestTask implements Callable<Void> {
     private final Future<Void> ft;
     private final String leader;
+    private boolean stop = false;
 
     public SendRequestTask(String leader) {
       this.leader = leader;
@@ -648,7 +688,10 @@ public abstract class Participant {
     }
 
     public void shutdown() throws ExecutionException, InterruptedException {
-      participantState.getRequestQueue().add(MessageTuple.REQUEST_OF_DEATH);
+      this.stop = true;
+      // Release semaphore in case the thread is blocked on acuiqring of the
+      // semaphore.
+      semPendingReqs.release();
       this.ft.get();
       LOG.debug("SendRequestTask has been shut down.");
     }
@@ -659,10 +702,10 @@ public abstract class Participant {
       try {
         BlockingQueue<MessageTuple> requestQueue
           = participantState.getRequestQueue();
-        while (true) {
-          MessageTuple tuple = requestQueue.take();
-          if (tuple == MessageTuple.REQUEST_OF_DEATH) {
-            return null;
+        while (!stop) {
+          MessageTuple tuple = requestQueue.poll(500, TimeUnit.MILLISECONDS);
+          if (tuple == null) {
+            continue;
           }
           // Blocks if the maximum pending requests have been reached.
           semPendingReqs.acquire();
@@ -672,6 +715,7 @@ public abstract class Participant {
         LOG.error("Caught exception in SendRequest!");
         throw e;
       }
+      return null;
     }
   }
 }

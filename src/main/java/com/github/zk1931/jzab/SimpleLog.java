@@ -18,6 +18,7 @@
 
 package com.github.zk1931.jzab;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -167,12 +168,14 @@ public class SimpleLog implements Log {
       while (iter.hasNext()) {
         Transaction txn = iter.next();
         if (txn.getZxid().compareTo(zxid) == 0) {
+          this.lastSeenZxid = txn.getZxid();
           break;
         }
         if (txn.getZxid().compareTo(zxid) > 0) {
           iter.backward();
           break;
         }
+        this.lastSeenZxid = txn.getZxid();
       }
       if (iter.hasNext()) {
         // It means there's something to truncate.
@@ -182,7 +185,6 @@ public class SimpleLog implements Log {
         }
       }
     }
-    this.lastSeenZxid = getLatestZxid();
   }
 
   /**
@@ -194,6 +196,10 @@ public class SimpleLog implements Log {
    */
   @Override
   public Zxid getLatestZxid() throws IOException {
+    if (this.lastSeenZxid != null) {
+      // If the lastSeenZxid is cached, returns it directly.
+      return this.lastSeenZxid;
+    }
     Transaction txn = null;
     try (LogIterator iter = new SimpleLogIterator(this.logFile)) {
       while (iter.hasNext()) {
@@ -261,7 +267,7 @@ public class SimpleLog implements Log {
    * An implementation of iterator for iterating the log.
    */
   public static class SimpleLogIterator implements Log.LogIterator {
-    private final DataInputStream logStream;
+    private DataInputStream logStream;
     private final FileInputStream fin;
     private final File logFile;
     private int position = 0;
@@ -271,7 +277,7 @@ public class SimpleLog implements Log {
     public SimpleLogIterator(File logFile) throws IOException {
       this.logFile = logFile;
       this.fin = new FileInputStream(logFile);
-      this.logStream = new DataInputStream(this.fin);
+      this.logStream = new DataInputStream(new BufferedInputStream(this.fin));
     }
 
     /**
@@ -372,6 +378,9 @@ public class SimpleLog implements Log {
     void backward() throws IOException {
       this.position -= this.lastTransactionLength;
       this.fin.getChannel().position(this.position);
+      // Since we moved the file pointer, the buffered data should be
+      // invalidated.
+      this.logStream = new DataInputStream(new BufferedInputStream(this.fin));
       this.lastTransactionLength = 0;
     }
   }

@@ -48,15 +48,16 @@ public class Follower extends Participant {
   /**
    * Gets a message from the queue.
    *
+   * @param timeoutMs how to wait before raising a TimeoutException.
    * @return a message tuple contains the message and its source.
    * @throws TimeoutException in case of timeout.
    * @throws InterruptedException it's interrupted.
    */
   @Override
-  protected MessageTuple getMessage()
+  protected MessageTuple getMessage(int timeoutMs)
       throws TimeoutException, InterruptedException {
     while (true) {
-      MessageTuple tuple = messageQueue.poll(config.getTimeout(),
+      MessageTuple tuple = messageQueue.poll(timeoutMs,
                                              TimeUnit.MILLISECONDS);
       if (tuple == null) {
         // Timeout.
@@ -186,7 +187,7 @@ public class Follower extends Participant {
       LOG.debug("Didn't hear message from {} for {} milliseconds. Going"
                 + " back to leader election.",
                 this.electedLeader,
-                this.config.getTimeout());
+                this.config.getTimeoutMs());
       if (persistence.getLastSeenConfig() == null) {
         throw new JoinFailure("Fails to join cluster.");
       }
@@ -236,7 +237,7 @@ public class Follower extends Participant {
       LOG.debug("Didn't hear message from {} for {} milliseconds. Going"
                 + " back to leader election.",
                 this.electedLeader,
-                this.config.getTimeout());
+                this.config.getTimeoutMs());
     } catch (BackToElectionException e) {
       LOG.debug("Got GO_BACK message from queue, going back to electing.");
     } catch (QuorumZab.SimulatedException e) {
@@ -249,6 +250,8 @@ public class Follower extends Participant {
       throw e;
     } finally {
       this.transport.clear(this.electedLeader);
+      // Clears the message queue.
+      clearMessageQueue();
     }
   }
 
@@ -399,7 +402,7 @@ public class Follower extends Participant {
         } else {
           // Checks if the leader is alive.
           long timeDiff = (System.nanoTime() - lastHeartbeatTime) / 1000000;
-          if ((int)timeDiff >= this.config.getTimeout()) {
+          if ((int)timeDiff >= this.config.getTimeoutMs()) {
             // HEARTBEAT timeout.
             LOG.warn("Detects there's a timeout in waiting"
                 + "message from leader {}, goes back to leader electing",
@@ -423,8 +426,8 @@ public class Follower extends Participant {
             syncProcessor.processRequest(tuple);
             commitProcessor.processRequest(tuple);
           } else {
-            LOG.debug("The proposal has the wrong epoch number {}.",
-                      zxid.getEpoch());
+            LOG.debug("The proposal has the wrong epoch {}, expecting {}.",
+                      zxid.getEpoch(), ackEpoch);
             throw new RuntimeException("The proposal has wrong epoch number.");
           }
         } else if (msg.getType() == MessageType.COMMIT) {
