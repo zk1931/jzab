@@ -146,7 +146,23 @@ public class Follower extends Participant {
                                               peer);
       this.electedLeader = tuple.getMessage().getReply().getLeader();
       LOG.debug("Got current leader {}", this.electedLeader);
-      Message join = MessageBuilder.buildJoin();
+      // It's possible the cluster already has a huge history. Instead of
+      // joining the cluster now, we do the first synchronization to make the
+      // new joined server's history 'almost' up-to-date, then issues the
+      // JOIN message. Once JOIN message has been issued, the cluster might be
+      // blocked (depends on whether the new configuration will have a quorum
+      // of servers in broadcasting phase while the synchronization is going
+      // on). If the cluster will be blocked, the length of the blocking time
+      // depends on the length of the synchronization.
+      Message sync = MessageBuilder.buildSyncHistory();
+      sendMessage(this.electedLeader, sync);
+      // Waits for the first synchronization completes.
+      waitForSync(this.electedLeader);
+      // Gets the last zxid in log after first synchronization.
+      Zxid lastZxid = persistence.getLog().getLatestZxid();
+      LOG.debug("After first synchronization, the last zxid is {}", lastZxid);
+      // Then issues the JOIN message.
+      Message join = MessageBuilder.buildJoin(lastZxid);
       sendMessage(this.electedLeader, join);
 
       /* -- Synchronizing phase -- */

@@ -35,6 +35,8 @@ message Message {
     FILE_RECEIVED = 26;
     FLUSH_REQ = 27;
     FLUSH = 28;
+    // The request of synchronizing the log.
+    SYNC_HISTORY = 29;
     INVALID_MESSAGE = 30;
   }
 
@@ -65,6 +67,7 @@ message Message {
   optional FileReceived file_received = 21;
   optional FlushRequest flush_request = 22;
   optional Flush flush = 23;
+  optional Join join = 24;
   optional InvalidMessage invalid = 30;
 }
 
@@ -168,6 +171,10 @@ message ClusterConfiguration {
 
 message QueryReply {
   required string leader = 1;
+}
+
+message Join {
+  required Zxid lastZxid = 1;
 }
 
 message Remove {

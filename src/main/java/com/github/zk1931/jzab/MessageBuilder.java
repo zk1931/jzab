@@ -427,8 +427,11 @@ public final class MessageBuilder {
    *
    * @return a protobuf message.
    */
-  public static Message buildJoin() {
-    return Message.newBuilder().setType(MessageType.JOIN).build();
+  public static Message buildJoin(Zxid lastZxid) {
+    ZabMessage.Zxid zxid = toProtoZxid(lastZxid);
+    ZabMessage.Join join =
+      ZabMessage.Join.newBuilder().setLastZxid(zxid).build();
+    return Message.newBuilder().setType(MessageType.JOIN).setJoin(join).build();
   }
 
   /**
@@ -559,6 +562,14 @@ public final class MessageBuilder {
                                              .build();
     return Message.newBuilder().setType(MessageType.FLUSH).setFlush(flush)
                   .build();
+  }
+
+  /**
+   * Creates a SYNC_HISTORY message. Leader will synchronize everything it has
+   * to follower after receiving this message.
+   */
+  public static Message buildSyncHistory() {
+    return Message.newBuilder().setType(MessageType.SYNC_HISTORY).build();
   }
 }
 
