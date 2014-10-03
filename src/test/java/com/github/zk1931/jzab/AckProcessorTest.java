@@ -76,7 +76,7 @@ public class AckProcessorTest extends TestBase {
   }
 
   private MessageTuple createJoin(String source, Zxid zxid) {
-    Message join = MessageBuilder.buildJoin();
+    Message join = MessageBuilder.buildJoin(Zxid.ZXID_NOT_EXIST);
     return new MessageTuple(source, join, zxid);
   }
 
