@@ -22,7 +22,6 @@ import com.google.protobuf.TextFormat;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
@@ -175,6 +174,7 @@ public class Leader extends Participant {
                                                persistence.getLastSeenConfig());
       }
     }
+    this.currentPhase = phase;
   }
 
   /**
@@ -240,6 +240,7 @@ public class Leader extends Participant {
       LOG.debug("Chose {} to pull its history.", peerId);
 
       /* -- Synchronizing phase -- */
+      LOG.debug("Synchronizing...");
       changePhase(Phase.SYNCHRONIZING);
       if (!peerId.equals(this.serverId)) {
         // Pulls history from the follower.
@@ -247,8 +248,13 @@ public class Leader extends Participant {
       }
       // Updates ACK EPOCH of leader.
       persistence.setAckEpoch(persistence.getProposedEpoch());
+      // Starts synchronizing.
+      long st = System.nanoTime();
       beginSynchronizing();
       waitNewLeaderAckFromQuorum();
+      long syncTime = System.nanoTime() - st;
+      // Adjusts the sync timeout based on this synchronization time.
+      adjustSyncTimeout((int)(syncTime / 1000000));
 
       // Broadcasts commit message.
       Message commit = MessageBuilder
@@ -290,6 +296,11 @@ public class Leader extends Participant {
       }
       // Clears the message queue.
       clearMessageQueue();
+      if (this.currentPhase == Phase.SYNCHRONIZING) {
+        incSyncTimeout();
+        LOG.debug("Go back to recovery in synchronization phase, increase " +
+            "sync timeout to {} milliseconds.", getSyncTimeoutMs());
+      }
     }
   }
 
@@ -323,6 +334,7 @@ public class Leader extends Participant {
         ClusterConfiguration.fromProto(epoch.getConfig(), source);
       long peerProposedEpoch = epoch.getProposedEpoch();
       long peerAckedEpoch = epoch.getCurrentEpoch();
+      int syncTimeoutMs = epoch.getSyncTimeout();
       Zxid peerVersion = peerConfig.getVersion();
       Zxid selfVersion = currentConfig.getVersion();
       // If the peer's config version doesn't match leader's config version,
@@ -367,19 +379,28 @@ public class Leader extends Participant {
    */
   void proposeNewEpoch()
       throws IOException {
-    List<Long> epochs = new ArrayList<Long>();
-    // Puts leader's last received proposed epoch in list.
-    epochs.add(persistence.getProposedEpoch());
+    long maxEpoch = persistence.getProposedEpoch();
+    int maxSyncTimeoutMs = getSyncTimeoutMs();
     for (PeerHandler ph : this.quorumSet.values()) {
-      epochs.add(ph.getLastProposedEpoch());
+      if (ph.getLastProposedEpoch() > maxEpoch) {
+        maxEpoch = ph.getLastProposedEpoch();
+      }
+      if (ph.getSyncTimeoutMs() > maxSyncTimeoutMs) {
+        maxSyncTimeoutMs = ph.getSyncTimeoutMs();
+      }
     }
-    long newEpoch = Collections.max(epochs) + 1;
+    // The new epoch number should be larger than any follower's epoch.
+    long newEpoch = maxEpoch + 1;
     // Updates leader's last proposed epoch.
     persistence.setProposedEpoch(newEpoch);
-    LOG.debug("Begins proposing new epoch {}", newEpoch);
+    // Updates leader's sync timeout to the largest timeout found in the quorum.
+    setSyncTimeoutMs(maxSyncTimeoutMs);
+    LOG.debug("Begins proposing new epoch {} with sync timeout {} ms",
+              newEpoch, getSyncTimeoutMs());
     // Sends new epoch message to quorum.
     broadcast(this.quorumSet.keySet().iterator(),
-              MessageBuilder.buildNewEpochMessage(newEpoch));
+              MessageBuilder.buildNewEpochMessage(newEpoch,
+                                                  getSyncTimeoutMs()));
   }
 
   /**
@@ -490,7 +511,7 @@ public class Leader extends Participant {
     while (completeCount < this.quorumSet.size()) {
       // Here we should use sync_timeout.
       MessageTuple tuple =
-        getExpectedMessage(MessageType.ACK, null, config.getSyncTimeoutMs());
+        getExpectedMessage(MessageType.ACK, null, getSyncTimeoutMs());
       ZabMessage.Ack ack = tuple.getMessage().getAck();
       String source =tuple.getServerId();
       Zxid zxid = MessageBuilder.fromProtoZxid(ack.getZxid());
@@ -584,8 +605,14 @@ public class Leader extends Participant {
                 + "ignores it.", source);
             continue;
           }
+          int syncTimeoutMs = msg.getProposedEpoch().getSyncTimeout();
+          if (syncTimeoutMs > getSyncTimeoutMs()) {
+            // Updates leader's sync timeout if the peer's time out is larger.
+            setSyncTimeoutMs(syncTimeoutMs);
+          }
           Message newEpoch =
-            MessageBuilder.buildNewEpochMessage(this.establishedEpoch);
+            MessageBuilder.buildNewEpochMessage(establishedEpoch,
+                                                getSyncTimeoutMs());
           sendMessage(source, newEpoch);
         } else if (msg.getType() == MessageType.ACK_EPOCH) {
           LOG.debug("Got ACK_EPOCH from {}", source);
@@ -900,9 +927,12 @@ public class Leader extends Participant {
     String source = tuple.getServerId();
     PeerHandler ph = new
       PeerHandler(source, transport, config.getTimeoutMs()/3);
+    Zxid lastZxid = MessageBuilder.fromProtoZxid(tuple.getMessage()
+                                                      .getSyncHistory()
+                                                      .getLastZxid());
     // The new joiner will issue the SYNC_HISTORY message first. At this time
     // the joiner's log must be empty.
-    ph.setLastZxid(Zxid.ZXID_NOT_EXIST);
+    ph.setLastZxid(lastZxid);
     // We'll synchronize the peer up to the last zxid that is guaranteed in the
     // leader's log.
     ph.setLastSyncedZxid(this.lastAckedZxid);
@@ -911,6 +941,9 @@ public class Leader extends Participant {
                                     ph.getLastSyncedZxid(),
                                     persistence.getLastSeenConfig()),
                    establishedEpoch);
+    Message reply = MessageBuilder.buildSyncHistoryReply(getSyncTimeoutMs());
+    // Sends the reply to tell new joiner the sync timeout.
+    sendMessage(source, reply);
     ph.startSynchronizingTask();
     // Adds it to quorumSet.
     this.quorumSet.put(source, ph);
@@ -923,20 +956,34 @@ public class Leader extends Participant {
       if (ph.getServerId().equals(this.serverId)) {
         continue;
       }
+      if (ph.isDisconnected()) {
+        // If has already been marked as disconnected, skips checking.
+        continue;
+      }
+      // Uses different timeout depends if it's in synchronizing.
       if (!ph.isSynchronizing()) {
         timeoutNs = this.config.getTimeoutMs() * (long)1000000;
       } else {
-        timeoutNs = this.config.getSyncTimeoutMs() * (long)1000000;
+        timeoutNs = getSyncTimeoutMs() * (long)1000000;
       }
       if (currentTime - ph.getLastHeartbeatTime() >= timeoutNs) {
         // Removes the peer who is likely to be dead.
         String peerId = ph.getServerId();
-        LOG.warn("{} is likely to be dead, enqueue a DISCONNECTED message.",
-                 peerId);
+        LOG.debug("{} is likely to be dead, enqueue a DISCONNECTED message.",
+                  peerId);
         // Enqueue a DISCONNECTED message.
         Message disconnected = MessageBuilder.buildDisconnected(peerId);
         this.messageQueue.add(new MessageTuple(this.serverId,
                                                disconnected));
+        // Marks it as disconnected. Avoids duplicate check before receiving
+        // DISCONNECTED message.
+        ph.markDisconnected();
+        if (ph.isSynchronizing()) {
+          LOG.debug("Can't get heartbeat reply from {} in synchronizing phase.",
+                    peerId);
+          incSyncTimeout();
+          LOG.debug("Adjusts sync timeout to {} ms", getSyncTimeoutMs());
+        }
       }
     }
   }

@@ -37,7 +37,8 @@ message Message {
     FLUSH = 28;
     // The request of synchronizing the log.
     SYNC_HISTORY = 29;
-    INVALID_MESSAGE = 30;
+    SYNC_HISTORY_REPLY = 30;
+    INVALID_MESSAGE = 100;
   }
 
   required MessageType type = 1;
@@ -68,6 +69,8 @@ message Message {
   optional FlushRequest flush_request = 22;
   optional Flush flush = 23;
   optional Join join = 24;
+  optional SyncHistory sync_history = 25;
+  optional SyncHistoryReply sync_history_reply = 26;
   optional InvalidMessage invalid = 30;
 }
 
@@ -80,10 +83,12 @@ message ProposedEpoch {
   required int64 proposed_epoch = 1;
   required int64 current_epoch = 2;
   required ClusterConfiguration config = 3;
+  required int32 sync_timeout = 4;
 }
 
 message NewEpoch {
   required int64 new_epoch = 1;
+  required int32 sync_timeout = 2;
 }
 
 message AckEpoch {
@@ -201,4 +206,12 @@ message FlushRequest {
 message Flush {
   required Zxid zxid = 1;
   required bytes body = 2;
+}
+
+message SyncHistory {
+  required Zxid lastZxid = 1;
+}
+
+message SyncHistoryReply {
+  required int32 syncTimeout = 1;
 }

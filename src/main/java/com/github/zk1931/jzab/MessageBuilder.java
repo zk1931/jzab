@@ -109,7 +109,8 @@ public final class MessageBuilder {
    */
   public static Message buildProposedEpoch(long proposedEpoch,
                                            long acknowledgedEpoch,
-                                           ClusterConfiguration config) {
+                                           ClusterConfiguration config,
+                                           int syncTimeoutMs) {
     ZabMessage.Zxid version = toProtoZxid(config.getVersion());
     ZabMessage.ClusterConfiguration zCnf
       = ZabMessage.ClusterConfiguration.newBuilder()
@@ -120,6 +121,7 @@ public final class MessageBuilder {
                                         .setProposedEpoch(proposedEpoch)
                                         .setCurrentEpoch(acknowledgedEpoch)
                                         .setConfig(zCnf)
+                                        .setSyncTimeout(syncTimeoutMs)
                                         .build();
     return Message.newBuilder().setType(MessageType.PROPOSED_EPOCH)
                                .setProposedEpoch(pEpoch)
@@ -130,11 +132,14 @@ public final class MessageBuilder {
    * Creates a NEW_EPOCH message.
    *
    * @param epoch the new proposed epoch number.
+   * @param syncTimeoutMs the timeout for synchronization.
    * @return the protobuf message.
    */
-  public static Message buildNewEpochMessage(long epoch) {
-    NewEpoch nEpoch = NewEpoch.newBuilder().setNewEpoch(epoch).build();
-
+  public static Message buildNewEpochMessage(long epoch, int syncTimeoutMs) {
+    NewEpoch nEpoch = NewEpoch.newBuilder()
+                              .setNewEpoch(epoch)
+                              .setSyncTimeout(syncTimeoutMs)
+                              .build();
     return  Message.newBuilder().setType(MessageType.NEW_EPOCH)
                                 .setNewEpoch(nEpoch)
                                 .build();
@@ -568,8 +573,19 @@ public final class MessageBuilder {
    * Creates a SYNC_HISTORY message. Leader will synchronize everything it has
    * to follower after receiving this message.
    */
-  public static Message buildSyncHistory() {
-    return Message.newBuilder().setType(MessageType.SYNC_HISTORY).build();
+  public static Message buildSyncHistory(Zxid lastZxid) {
+    ZabMessage.Zxid zxid = toProtoZxid(lastZxid);
+    ZabMessage.SyncHistory sync =
+      ZabMessage.SyncHistory.newBuilder().setLastZxid(zxid).build();
+    return Message.newBuilder().setType(MessageType.SYNC_HISTORY)
+                               .setSyncHistory(sync).build();
+  }
+
+  public static Message buildSyncHistoryReply(int timeout) {
+    ZabMessage.SyncHistoryReply reply =
+      ZabMessage.SyncHistoryReply.newBuilder().setSyncTimeout(timeout).build();
+    return Message.newBuilder().setType(MessageType.SYNC_HISTORY_REPLY)
+                               .setSyncHistoryReply(reply).build();
   }
 }
 

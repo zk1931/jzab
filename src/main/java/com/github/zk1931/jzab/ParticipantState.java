@@ -71,12 +71,18 @@ public class ParticipantState implements Transport.Receiver {
    */
   private final String serverId;
 
+  /**
+   * The synchronization timeout in milliseconds. It will be adjusted
+   * dynamically.
+   */
+  private int syncTimeoutMs;
+
   private static final Logger LOG =
     LoggerFactory.getLogger(ParticipantState.class);
 
   ParticipantState(PersistentState persistence, String serverId, File keyStore,
                    String keyStorePassword, File trustStore,
-                   String trustStorePassword)
+                   String trustStorePassword, int syncTimeoutMs)
       throws InterruptedException, IOException , GeneralSecurityException {
     this.persistence = persistence;
     this.serverId = serverId;
@@ -84,6 +90,7 @@ public class ParticipantState implements Transport.Receiver {
                                         keyStore, keyStorePassword,
                                         trustStore, trustStorePassword,
                                         persistence.getLogDir());
+    this.syncTimeoutMs = syncTimeoutMs;
   }
 
   @Override
@@ -121,6 +128,14 @@ public class ParticipantState implements Transport.Receiver {
 
   public Zxid getLastDeliveredZxid() {
     return this.lastDeliveredZxid;
+  }
+
+  public int getSyncTimeoutMs() {
+    return this.syncTimeoutMs;
+  }
+
+  public void setSyncTimeoutMs(int timeoutMs) {
+    this.syncTimeoutMs = timeoutMs;
   }
 
   public void updateLastDeliveredZxid(Zxid zxid) {

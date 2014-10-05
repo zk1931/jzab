@@ -128,6 +128,7 @@ public class Follower extends Participant {
         failCallback.followerBroadcasting();
       }
     }
+    this.currentPhase = phase;
   }
 
   /**
@@ -147,31 +148,24 @@ public class Follower extends Participant {
                                               peer);
       this.electedLeader = tuple.getMessage().getReply().getLeader();
       LOG.debug("Got current leader {}", this.electedLeader);
-      // It's possible the cluster already has a huge history. Instead of
-      // joining the cluster now, we do the first synchronization to make the
-      // new joined server's history 'almost' up-to-date, then issues the
-      // JOIN message. Once JOIN message has been issued, the cluster might be
-      // blocked (depends on whether the new configuration will have a quorum
-      // of servers in broadcasting phase while the synchronization is going
-      // on). If the cluster will be blocked, the length of the blocking time
-      // depends on the length of the synchronization.
-      Message sync = MessageBuilder.buildSyncHistory();
-      sendMessage(this.electedLeader, sync);
-      // Waits for the first synchronization completes.
-      waitForSync(this.electedLeader);
-      // Gets the last zxid in log after first synchronization.
-      Zxid lastZxid = persistence.getLog().getLatestZxid();
-      LOG.debug("After first synchronization, the last zxid is {}", lastZxid);
-      // Then issues the JOIN message.
-      Message join = MessageBuilder.buildJoin(lastZxid);
-      sendMessage(this.electedLeader, join);
 
       /* -- Synchronizing phase -- */
-      changePhase(Phase.SYNCHRONIZING);
-      waitForSync(this.electedLeader);
-      waitForNewLeaderMessage();
-      waitForCommitMessage();
-      persistence.setProposedEpoch(persistence.getAckEpoch());
+      boolean retry = false;
+      do {
+        try {
+          retry = false;
+          joinSynchronization();
+        } catch (TimeoutException | BackToElectionException ex) {
+          LOG.debug("Timeout({} ms) in synchronizing, retrying. Last zxid : {}",
+                    getSyncTimeoutMs(),
+                    persistence.getLog().getLatestZxid());
+          // If the join fails in synchronizing phase, retry.
+          // The leader side should have adjusted the sync timeout.
+          retry = true;
+          transport.clear(electedLeader);
+          clearMessageQueue();
+        }
+      } while (retry);
       // See if it can be restored from the snapshot file.
       restoreFromSnapshot();
       // Delivers all transactions in log before entering broadcasting phase.
@@ -218,10 +212,17 @@ public class Follower extends Participant {
       waitForNewEpoch();
 
       /* -- Synchronizing phase -- */
+      LOG.debug("Synchronizing...");
       changePhase(Phase.SYNCHRONIZING);
+      // Starts synchronizing.
+      long st = System.nanoTime();
       waitForSync(this.electedLeader);
       waitForNewLeaderMessage();
       waitForCommitMessage();
+      long syncTime = System.nanoTime() - st;
+      // Adjusts the sync timeout based on this synchronization time.
+      adjustSyncTimeout((int)(syncTime / 1000000));
+
       // See if it can be restored from the snapshot file.
       restoreFromSnapshot();
       // Delivers all transactions in log before entering broadcasting phase.
@@ -252,6 +253,11 @@ public class Follower extends Participant {
       this.transport.clear(this.electedLeader);
       // Clears the message queue.
       clearMessageQueue();
+      if (this.currentPhase == Phase.SYNCHRONIZING) {
+        incSyncTimeout();
+        LOG.debug("Go back to recovery in synchronization phase, increase " +
+            "sync timeout to {} milliseconds.", getSyncTimeoutMs());
+      }
     }
   }
 
@@ -263,7 +269,8 @@ public class Follower extends Participant {
     Message message = MessageBuilder
                       .buildProposedEpoch(persistence.getProposedEpoch(),
                                           persistence.getAckEpoch(),
-                                          persistence.getLastSeenConfig());
+                                          persistence.getLastSeenConfig(),
+                                          getSyncTimeoutMs());
     sendMessage(this.electedLeader, message);
   }
 
@@ -291,6 +298,8 @@ public class Follower extends Participant {
     }
     // Updates follower's last proposed epoch.
     persistence.setProposedEpoch(epoch.getNewEpoch());
+    // Updates follower's sync timeout.
+    setSyncTimeoutMs(epoch.getSyncTimeout());
     LOG.debug("Received the new epoch proposal {} from {}.",
               epoch.getNewEpoch(),
               source);
@@ -459,5 +468,41 @@ public class Follower extends Participant {
       this.lastDeliveredZxid = commitProcessor.getLastDeliveredZxid();
       this.participantState.updateLastDeliveredZxid(this.lastDeliveredZxid);
     }
+  }
+
+  // It's possible the cluster already has a huge history. Instead of
+  // joining the cluster now, we do the first synchronization to make the
+  // new joined server's history 'almost' up-to-date, then issues the
+  // JOIN message. Once JOIN message has been issued, the cluster might be
+  // blocked (depends on whether the new configuration will have a quorum
+  // of servers in broadcasting phase while the synchronization is going
+  // on). If the cluster will be blocked, the length of the blocking time
+  // depends on the length of the synchronization.
+  private void joinSynchronization()
+      throws IOException, TimeoutException, InterruptedException {
+    Log log = persistence.getLog();
+    Message sync = MessageBuilder.buildSyncHistory(log.getLatestZxid());
+    sendMessage(this.electedLeader, sync);
+    MessageTuple tuple =
+      getExpectedMessage(MessageType.SYNC_HISTORY_REPLY, electedLeader);
+    Message msg = tuple.getMessage();
+    // Updates the sync timeout based on leader's suggestion.
+    setSyncTimeoutMs(msg.getSyncHistoryReply().getSyncTimeout());
+    // Waits for the first synchronization completes.
+    waitForSync(this.electedLeader);
+
+    // Gets the last zxid in log after first synchronization.
+    Zxid lastZxid = log.getLatestZxid();
+    LOG.debug("After first synchronization, the last zxid is {}", lastZxid);
+    // Then issues the JOIN message.
+    Message join = MessageBuilder.buildJoin(lastZxid);
+    sendMessage(this.electedLeader, join);
+
+    /* -- Synchronizing phase -- */
+    changePhase(Phase.SYNCHRONIZING);
+    waitForSync(this.electedLeader);
+    waitForNewLeaderMessage();
+    waitForCommitMessage();
+    persistence.setProposedEpoch(persistence.getAckEpoch());
   }
 }
