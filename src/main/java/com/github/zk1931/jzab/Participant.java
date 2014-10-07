@@ -22,7 +22,6 @@ import com.google.protobuf.TextFormat;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -182,26 +181,12 @@ public abstract class Participant {
     this.messageQueue = participantState.getMessageQueue();
     this.stateMachine = stateMachine;
     this.snapshotThreshold = config.getSnapshotThreshold();
+    this.stateChangeCallback = participantState.getStateChangeCallback();
+    this.failCallback = participantState.getFailureCaseCallback();
     this.config = config;
   }
 
   protected abstract void join(String peer) throws Exception;
-
-  protected void send(ByteBuffer request) {
-    if (!this.isBroadcasting) {
-      throw new RuntimeException("Only can send in broadcasting phase.");
-    }
-    Message msg = MessageBuilder.buildRequest(request);
-    sendMessage(this.electedLeader, msg);
-  }
-
-  public void setStateChangeCallback(StateChangeCallback stCallback) {
-    this.stateChangeCallback = stCallback;
-  }
-
-  public void setFailureCaseCallback(FailureCaseCallback flCallback) {
-    this.failCallback = flCallback;
-  }
 
   /**
    * Sends message to the specific destination.
@@ -248,7 +233,7 @@ public abstract class Participant {
    * @param type the expected message type.
    * @param source the expected source, null if it can from anyone.
    * @return the message tuple contains the message and its source.
-   * @param timeoutMs how to wait before raising a TimeoutException.
+   * @param timeoutMs how long to wait before raising a TimeoutException.
    * @throws TimeoutException in case of timeout.
    * @throws InterruptedException it's interrupted.
    */
@@ -537,7 +522,8 @@ public abstract class Participant {
 
   /**
    * Clears all the messages in the message queue, clears the peer in transport
-   * if it's the DISCONNECTED message.
+   * if it's the DISCONNECTED message. This function should be called only
+   * right before going back to recovery.
    */
   protected void clearMessageQueue() {
     MessageTuple tuple = null;

@@ -2262,22 +2262,26 @@ public class QuorumZabTest extends TestBase  {
     File keyStoreA = new File(sslDir, "keystore_a.jks");
     File keyStoreB = new File(sslDir, "keystore_b.jks");
 
+    SslParameters sslParam1 =
+      new SslParameters(keyStoreA, password, trustStore, password);
+
     QuorumZab.TestState state1 = new QuorumZab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1, keyStoreA,
-                                   password, trustStore, password);
+    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1, sslParam1);
 
     // Waits for leader goes into broadcasting phase.
     st1.waitMembershipChanged();
+
+    SslParameters sslParam2 =
+      new SslParameters(keyStoreB, password, trustStore, password);
 
     QuorumZab.TestState state2 = new QuorumZab
                                      .TestState(server2,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1, keyStoreB,
-                                   password, trustStore, password);
+    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1, sslParam2);
 
     st2.waitMembershipChanged();
     st1.waitMembershipChanged();

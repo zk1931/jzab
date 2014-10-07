@@ -18,13 +18,14 @@
 
 package com.github.zk1931.jzab;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
+import com.github.zk1931.jzab.QuorumZab.StateChangeCallback;
+import com.github.zk1931.jzab.QuorumZab.FailureCaseCallback;
 import com.github.zk1931.jzab.transport.NettyTransport;
 import com.github.zk1931.jzab.transport.Transport;
 import org.slf4j.Logger;
@@ -77,19 +78,32 @@ public class ParticipantState implements Transport.Receiver {
    */
   private int syncTimeoutMs;
 
+  /**
+   * Callbacks for state change. Used for testing only.
+   */
+  private StateChangeCallback stateChangeCallback = null;
+
+  /**
+   * Callbacks for simulating failures. Used for testing only.
+   */
+  private FailureCaseCallback failureCallback = null;
+
   private static final Logger LOG =
     LoggerFactory.getLogger(ParticipantState.class);
 
-  ParticipantState(PersistentState persistence, String serverId, File keyStore,
-                   String keyStorePassword, File trustStore,
-                   String trustStorePassword, int syncTimeoutMs)
+  ParticipantState(PersistentState persistence,
+                   String serverId,
+                   SslParameters sslParam,
+                   StateChangeCallback stCallback,
+                   FailureCaseCallback failureCallback,
+                   int syncTimeoutMs)
       throws InterruptedException, IOException , GeneralSecurityException {
     this.persistence = persistence;
     this.serverId = serverId;
+    this.stateChangeCallback = stCallback;
+    this.failureCallback = failureCallback;
     this.transport = new NettyTransport(this.serverId, this,
-                                        keyStore, keyStorePassword,
-                                        trustStore, trustStorePassword,
-                                        persistence.getLogDir());
+                                        sslParam, persistence.getLogDir());
     this.syncTimeoutMs = syncTimeoutMs;
   }
 
@@ -140,6 +154,14 @@ public class ParticipantState implements Transport.Receiver {
 
   public void updateLastDeliveredZxid(Zxid zxid) {
     this.lastDeliveredZxid = zxid;
+  }
+
+  public StateChangeCallback getStateChangeCallback() {
+    return this.stateChangeCallback;
+  }
+
+  public FailureCaseCallback getFailureCaseCallback() {
+    return this.failureCallback;
   }
 
   public void enqueueRequest(ByteBuffer buffer) {

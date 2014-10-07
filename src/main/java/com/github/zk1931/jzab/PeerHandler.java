@@ -38,10 +38,9 @@ import org.slf4j.LoggerFactory;
  * Handles peer connection.
  */
 public class PeerHandler {
-
   /**
-   * Last proposed epoch of the follower, it helps leader decides new
-   * proposed epoch.
+   * Last proposed epoch of the follower, it helps leader decides new proposed
+   * epoch.
    */
   protected long lastProposedEpoch = -1;
 
@@ -54,7 +53,7 @@ public class PeerHandler {
   /**
    * Last replied HEARTBEAT time of the peer (in nanoseconds).
    */
-  protected long lastHeartbeatTime;
+  protected long lastHeartbeatTimeNs;
 
   /**
    * Last transaction id in peer's log. It's used by leader to decide how to
@@ -173,11 +172,11 @@ public class PeerHandler {
   }
 
   long getLastHeartbeatTime() {
-    return this.lastHeartbeatTime;
+    return this.lastHeartbeatTimeNs;
   }
 
   void updateHeartbeatTime() {
-    this.lastHeartbeatTime = System.nanoTime();
+    this.lastHeartbeatTimeNs = System.nanoTime();
   }
 
   long getLastProposedEpoch() {
