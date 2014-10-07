@@ -36,8 +36,8 @@ import java.util.List;
 import com.github.zk1931.jzab.proto.ZabMessage;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
 import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
-import com.github.zk1931.jzab.QuorumZab.FailureCaseCallback;
-import com.github.zk1931.jzab.QuorumZab.StateChangeCallback;
+import com.github.zk1931.jzab.Zab.FailureCaseCallback;
+import com.github.zk1931.jzab.Zab.StateChangeCallback;
 import com.github.zk1931.jzab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,28 +48,28 @@ import static com.github.zk1931.jzab.proto.ZabMessage.Proposal.ProposalType;
  */
 public abstract class Participant {
   /**
-   * Transport. Passed from QuorumZab.
+   * Transport. Passed from Zab.
    */
   protected final Transport transport;
 
   /**
-   * Persistent state of Zab. Passed from QuorumZab.
+   * Persistent state of Zab. Passed from Zab.
    */
   protected final PersistentState persistence;
 
   /**
-   * State machine. Passed from QuorumZab.
+   * State machine. Passed from Zab.
    */
   protected final StateMachine stateMachine;
 
   /**
-   * ID of the participant. Passed from QuorumZab.
+   * ID of the participant. Passed from Zab.
    */
   protected final String serverId;
 
   /**
-   * Shared message queue. Passed from QuorumZab and all the messages are
-   * enqueued from QuorumZab.
+   * Shared message queue. Passed from Zab and all the messages are
+   * enqueued from Zab.
    */
   protected final BlockingQueue<MessageTuple> messageQueue;
 
@@ -79,7 +79,7 @@ public abstract class Participant {
   protected volatile boolean isBroadcasting = false;
 
   /**
-   * The last delivered zxid. Passed from QuorumZab to avoid deliver duplicated
+   * The last delivered zxid. Passed from Zab to avoid deliver duplicated
    * transactions.
    */
   protected Zxid lastDeliveredZxid;
@@ -97,7 +97,7 @@ public abstract class Participant {
   protected static final int SYNC_MAX_BATCH_SIZE = 1000;
 
   /**
-   * The configuration for Zab. It's passed from QuorumZab.
+   * The configuration for Zab. It's passed from Zab.
    */
   protected final ZabConfig config;
 

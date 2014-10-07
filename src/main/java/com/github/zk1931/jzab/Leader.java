@@ -286,7 +286,7 @@ public class Leader extends Participant {
                 this.config.getTimeoutMs());
     } catch (BackToElectionException e) {
       LOG.debug("Got GO_BACK message from queue, going back to electing.");
-    } catch (QuorumZab.SimulatedException e) {
+    } catch (Zab.SimulatedException e) {
       LOG.debug("Got SimulatedException, go back to leader election.");
     } catch (LeftCluster e) {
       LOG.debug("Exit running : {}", e.getMessage());
