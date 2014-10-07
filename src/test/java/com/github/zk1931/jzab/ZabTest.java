@@ -25,8 +25,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import com.github.zk1931.jzab.QuorumZab.FailureCaseCallback;
-import com.github.zk1931.jzab.QuorumZab.SimulatedException;
+import com.github.zk1931.jzab.Zab.FailureCaseCallback;
+import com.github.zk1931.jzab.Zab.SimulatedException;
 import org.junit.Assert;
 import org.junit.Test;
 import org.slf4j.Logger;
@@ -35,7 +35,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Used for tests.
  */
-class QuorumTestCallback implements QuorumZab.StateChangeCallback {
+class QuorumTestCallback implements Zab.StateChangeCallback {
 
   private static final Logger LOG =
       LoggerFactory.getLogger(QuorumTestCallback.class);
@@ -155,12 +155,12 @@ class QuorumTestCallback implements QuorumZab.StateChangeCallback {
 }
 
 /**
- * QuorumZab Test.
+ * Zab Test.
  */
-public class QuorumZabTest extends TestBase  {
+public class ZabTest extends TestBase  {
 
   private static final Logger LOG
-    = LoggerFactory.getLogger(QuorumZabTest.class);
+    = LoggerFactory.getLogger(ZabTest.class);
 
   /**
    * Test if the new epoch is established.
@@ -178,18 +178,18 @@ public class QuorumZabTest extends TestBase  {
     String server3 = getUniqueHostPort();
     String servers = server1 + ";" + server2 + ";" + server3;
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 servers,
                                                 getDirectory())
                                      .setLog(new DummyLog(10))
                                      .setAckEpoch(0);
 
-    QuorumZab zab1 = new QuorumZab(st, cb, null, state1);
+    Zab zab1 = new Zab(st, cb, null, state1);
 
     DummyLog log = new DummyLog(5);
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 servers,
                                                 getDirectory())
@@ -198,9 +198,9 @@ public class QuorumZabTest extends TestBase  {
                                      .setAckEpoch(1);
 
 
-    QuorumZab zab2 = new QuorumZab(st, null, null, state2);
+    Zab zab2 = new Zab(st, null, null, state2);
 
-    QuorumZab.TestState state3 = new QuorumZab
+    Zab.TestState state3 = new Zab
                                      .TestState(server3,
                                                 servers,
                                                 getDirectory())
@@ -208,7 +208,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setProposedEpoch(2)
                                      .setAckEpoch(1);
 
-    QuorumZab zab3 = new QuorumZab(st, null, null, state3);
+    Zab zab3 = new Zab(st, null, null, state3);
 
     cb.waitBroadcasting();
     // The established epoch should be 3.
@@ -242,13 +242,13 @@ public class QuorumZabTest extends TestBase  {
 
     String server1 = getUniqueHostPort();
 
-    QuorumZab.TestState state = new QuorumZab
+    Zab.TestState state = new Zab
                                     .TestState(server1,
                                                server1,
                                                getDirectory())
                                     .setLog(new DummyLog(0));
 
-    QuorumZab zab1 = new QuorumZab(st, cb, null, state);
+    Zab zab1 = new Zab(st, cb, null, state);
 
     cb.waitBroadcasting();
     Assert.assertEquals(0, cb.acknowledgedEpoch);
@@ -292,23 +292,23 @@ public class QuorumZabTest extends TestBase  {
      * <0, 0>
      */
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 servers,
                                                 getDirectory())
                                      .setLog(new DummyLog(1))
                                      .setAckEpoch(0);
 
-    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
+    Zab zab1 = new Zab(st, cb1, null, state1);
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 servers,
                                                 getDirectory())
                                      .setLog(new DummyLog(1))
                                      .setAckEpoch(0);
 
-    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
+    Zab zab2 = new Zab(st, cb2, null, state2);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -354,23 +354,23 @@ public class QuorumZabTest extends TestBase  {
      * <0, 0>, <0, 1>
      */
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 servers,
                                                 getDirectory())
                                      .setLog(new DummyLog(2))
                                      .setAckEpoch(0);
 
-    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
+    Zab zab1 = new Zab(st, cb1, null, state1);
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 servers,
                                                 getDirectory())
                                      .setLog(new DummyLog(0))
                                      .setAckEpoch(0);
 
-    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
+    Zab zab2 = new Zab(st, cb2, null, state2);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -418,24 +418,24 @@ public class QuorumZabTest extends TestBase  {
      * <0, 0>, <0, 1>
      */
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 servers,
                                                 getDirectory())
                                      .setLog(new DummyLog(0))
                                      .setAckEpoch(0);
 
-    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
+    Zab zab1 = new Zab(st, cb1, null, state1);
 
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 servers,
                                                 getDirectory())
                                      .setLog(new DummyLog(2))
                                      .setAckEpoch(0);
 
-    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
+    Zab zab2 = new Zab(st, cb2, null, state2);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -488,23 +488,23 @@ public class QuorumZabTest extends TestBase  {
     log.append(new Transaction(new Zxid(1, 0),
                                ByteBuffer.wrap("1,0".getBytes())));
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 servers,
                                                 getDirectory())
                                      .setLog(log)
                                      .setAckEpoch(1);
 
-    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
+    Zab zab1 = new Zab(st, cb1, null, state1);
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 servers,
                                                 getDirectory())
                                      .setLog(new DummyLog(2))
                                      .setAckEpoch(2);
 
-    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
+    Zab zab2 = new Zab(st, cb2, null, state2);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -552,27 +552,27 @@ public class QuorumZabTest extends TestBase  {
      * <0, 0>, <1, 0>
      */
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 servers,
                                                 getDirectory())
                                      .setLog(new DummyLog(2))
                                      .setAckEpoch(0);
 
-    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
+    Zab zab1 = new Zab(st, cb1, null, state1);
 
     DummyLog log = new DummyLog(1);
     log.append(new Transaction(new Zxid(1, 0),
                                ByteBuffer.wrap("1,0".getBytes())));
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 servers,
                                                 getDirectory())
                                      .setLog(log)
                                      .setAckEpoch(1);
 
-    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
+    Zab zab2 = new Zab(st, cb2, null, state2);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -620,23 +620,23 @@ public class QuorumZabTest extends TestBase  {
      *  <empty>
      */
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 servers,
                                                 getDirectory())
                                      .setLog(new DummyLog(0))
                                      .setAckEpoch(1);
 
-    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
+    Zab zab1 = new Zab(st, cb1, null, state1);
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 servers,
                                                 getDirectory())
                                      .setLog(new DummyLog(2))
                                      .setAckEpoch(0);
 
-    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
+    Zab zab2 = new Zab(st, cb2, null, state2);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -675,20 +675,20 @@ public class QuorumZabTest extends TestBase  {
     String server3 = getUniqueHostPort();
     String servers = server1 + ";" + server2 + ";" + server3;
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 servers,
                                                 getDirectory())
                                      .setLog(new DummyLog(3))
                                      .setAckEpoch(0);
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 servers,
                                                 getDirectory())
                                      .setLog(new DummyLog(2))
                                      .setAckEpoch(0);
-    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
-    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
+    Zab zab1 = new Zab(st, cb1, null, state1);
+    Zab zab2 = new Zab(st, cb2, null, state2);
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
     Assert.assertEquals(3, cb1.initialHistory.size());
@@ -735,7 +735,7 @@ public class QuorumZabTest extends TestBase  {
      *  <0, 0> <0, 1> <2, 0> <2, 1> <2, 2>
      */
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 servers,
                                                 getDirectory())
@@ -743,9 +743,9 @@ public class QuorumZabTest extends TestBase  {
                                      .setLog(new DummyLog(1))
                                      .setAckEpoch(0);
 
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1);
+    Zab zab1 = new Zab(st1, cb1, null, state1);
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 servers,
                                                 getDirectory())
@@ -753,9 +753,9 @@ public class QuorumZabTest extends TestBase  {
                                      .setLog(new DummyLog(2))
                                      .setAckEpoch(1);
 
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2);
+    Zab zab2 = new Zab(st2, cb2, null, state2);
 
-    QuorumZab.TestState state3 = new QuorumZab
+    Zab.TestState state3 = new Zab
                                      .TestState(server3,
                                                 servers,
                                                 getDirectory())
@@ -763,7 +763,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setLog(new DummyLog(2))
                                      .setAckEpoch(1);
 
-    QuorumZab zab3 = new QuorumZab(st3, cb3, null, state3);
+    Zab zab3 = new Zab(st3, cb3, null, state3);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -839,7 +839,7 @@ public class QuorumZabTest extends TestBase  {
       }
     };
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 servers,
                                                 getDirectory())
@@ -847,9 +847,9 @@ public class QuorumZabTest extends TestBase  {
                                      .setLog(new DummyLog(1))
                                      .setAckEpoch(1);
 
-    QuorumZab zab1 = new QuorumZab(st, cb1, fb1, state1);
+    Zab zab1 = new Zab(st, cb1, fb1, state1);
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 servers,
                                                 getDirectory())
@@ -857,9 +857,9 @@ public class QuorumZabTest extends TestBase  {
                                      .setLog(new DummyLog(1))
                                      .setAckEpoch(1);
 
-    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
+    Zab zab2 = new Zab(st, cb2, null, state2);
 
-    QuorumZab.TestState state3 = new QuorumZab
+    Zab.TestState state3 = new Zab
                                      .TestState(server3,
                                                 servers,
                                                 getDirectory())
@@ -867,7 +867,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setLog(new DummyLog(2))
                                      .setAckEpoch(0);
 
-    QuorumZab zab3 = new QuorumZab(st, cb3, null, state3);
+    Zab zab3 = new Zab(st, cb3, null, state3);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -952,7 +952,7 @@ public class QuorumZabTest extends TestBase  {
       }
     };
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 servers,
                                                 getDirectory())
@@ -960,9 +960,9 @@ public class QuorumZabTest extends TestBase  {
                                      .setLog(new DummyLog(1))
                                      .setAckEpoch(1);
 
-    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
+    Zab zab1 = new Zab(st, cb1, null, state1);
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 servers,
                                                 getDirectory())
@@ -970,9 +970,9 @@ public class QuorumZabTest extends TestBase  {
                                      .setLog(new DummyLog(1))
                                      .setAckEpoch(1);
 
-    QuorumZab zab2 = new QuorumZab(st, cb2, fb2, state2);
+    Zab zab2 = new Zab(st, cb2, fb2, state2);
 
-    QuorumZab.TestState state3 = new QuorumZab
+    Zab.TestState state3 = new Zab
                                      .TestState(server3,
                                                 servers,
                                                 getDirectory())
@@ -980,7 +980,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setLog(new DummyLog(2))
                                      .setAckEpoch(0);
 
-    QuorumZab zab3 = new QuorumZab(st, cb3, fb3, state3);
+    Zab zab3 = new Zab(st, cb3, fb3, state3);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -1046,7 +1046,7 @@ public class QuorumZabTest extends TestBase  {
       }
     };
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 servers,
                                                 getDirectory())
@@ -1054,9 +1054,9 @@ public class QuorumZabTest extends TestBase  {
                                      .setLog(new DummyLog(1))
                                      .setAckEpoch(1);
 
-    QuorumZab zab1 = new QuorumZab(st, cb1, fb1, state1);
+    Zab zab1 = new Zab(st, cb1, fb1, state1);
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 servers,
                                                 getDirectory())
@@ -1064,9 +1064,9 @@ public class QuorumZabTest extends TestBase  {
                                      .setLog(new DummyLog(1))
                                      .setAckEpoch(1);
 
-    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
+    Zab zab2 = new Zab(st, cb2, null, state2);
 
-    QuorumZab.TestState state3 = new QuorumZab
+    Zab.TestState state3 = new Zab
                                      .TestState(server3,
                                                 servers,
                                                 getDirectory())
@@ -1074,7 +1074,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setLog(new DummyLog(2))
                                      .setAckEpoch(0);
 
-    QuorumZab zab3 = new QuorumZab(st, cb3, null, state3);
+    Zab zab3 = new Zab(st, cb3, null, state3);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -1159,7 +1159,7 @@ public class QuorumZabTest extends TestBase  {
       }
     };
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 servers,
                                                 getDirectory())
@@ -1167,9 +1167,9 @@ public class QuorumZabTest extends TestBase  {
                                      .setLog(new DummyLog(1))
                                      .setAckEpoch(1);
 
-    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
+    Zab zab1 = new Zab(st, cb1, null, state1);
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 servers,
                                                 getDirectory())
@@ -1177,9 +1177,9 @@ public class QuorumZabTest extends TestBase  {
                                      .setLog(new DummyLog(1))
                                      .setAckEpoch(1);
 
-    QuorumZab zab2 = new QuorumZab(st, cb2, fb2, state2);
+    Zab zab2 = new Zab(st, cb2, fb2, state2);
 
-    QuorumZab.TestState state3 = new QuorumZab
+    Zab.TestState state3 = new Zab
                                      .TestState(server3,
                                                 servers,
                                                 getDirectory())
@@ -1187,7 +1187,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setLog(new DummyLog(2))
                                      .setAckEpoch(0);
 
-    QuorumZab zab3 = new QuorumZab(st, cb3, fb3, state3);
+    Zab zab3 = new Zab(st, cb3, fb3, state3);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -1253,7 +1253,7 @@ public class QuorumZabTest extends TestBase  {
       }
     };
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 servers,
                                                 getDirectory())
@@ -1261,9 +1261,9 @@ public class QuorumZabTest extends TestBase  {
                                      .setLog(new DummyLog(1))
                                      .setAckEpoch(1);
 
-    QuorumZab zab1 = new QuorumZab(st, cb1, fb1, state1);
+    Zab zab1 = new Zab(st, cb1, fb1, state1);
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 servers,
                                                 getDirectory())
@@ -1271,9 +1271,9 @@ public class QuorumZabTest extends TestBase  {
                                      .setLog(new DummyLog(1))
                                      .setAckEpoch(1);
 
-    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
+    Zab zab2 = new Zab(st, cb2, null, state2);
 
-    QuorumZab.TestState state3 = new QuorumZab
+    Zab.TestState state3 = new Zab
                                      .TestState(server3,
                                                 servers,
                                                 getDirectory())
@@ -1281,7 +1281,7 @@ public class QuorumZabTest extends TestBase  {
                                      .setLog(new DummyLog(2))
                                      .setAckEpoch(0);
 
-    QuorumZab zab3 = new QuorumZab(st, cb3, null, state3);
+    Zab zab3 = new Zab(st, cb3, null, state3);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -1333,7 +1333,7 @@ public class QuorumZabTest extends TestBase  {
                                                          server2);
     ClusterConfiguration cnf3 = new ClusterConfiguration(version, peers,
                                                          server3);
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory())
@@ -1341,9 +1341,9 @@ public class QuorumZabTest extends TestBase  {
                                       .setLog(new DummyLog(1))
                                       .setAckEpoch(0)
                                       .setClusterConfiguration(cnf1);
-    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
+    Zab zab1 = new Zab(st, cb1, null, state1);
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
         .TestState(server2,
                    null,
                    getDirectory())
@@ -1351,9 +1351,9 @@ public class QuorumZabTest extends TestBase  {
          .setLog(new DummyLog(1))
          .setAckEpoch(0)
          .setClusterConfiguration(cnf2);
-    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
+    Zab zab2 = new Zab(st, cb2, null, state2);
 
-    QuorumZab.TestState state3 = new QuorumZab
+    Zab.TestState state3 = new Zab
         .TestState(server3,
                    null,
                    getDirectory())
@@ -1361,7 +1361,7 @@ public class QuorumZabTest extends TestBase  {
          .setLog(new DummyLog(1))
          .setAckEpoch(0)
          .setClusterConfiguration(cnf3);
-    QuorumZab zab3 = new QuorumZab(st, cb3, null, state3);
+    Zab zab3 = new Zab(st, cb3, null, state3);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -1417,7 +1417,7 @@ public class QuorumZabTest extends TestBase  {
                                                          server2);
     ClusterConfiguration cnf3 = new ClusterConfiguration(version2, peers2,
                                                          server3);
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory())
@@ -1425,9 +1425,9 @@ public class QuorumZabTest extends TestBase  {
                                       .setLog(new DummyLog(1))
                                       .setAckEpoch(0)
                                       .setClusterConfiguration(cnf1);
-    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
+    Zab zab1 = new Zab(st, cb1, null, state1);
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
         .TestState(server2,
                    null,
                    getDirectory())
@@ -1435,9 +1435,9 @@ public class QuorumZabTest extends TestBase  {
          .setLog(new DummyLog(1))
          .setAckEpoch(0)
          .setClusterConfiguration(cnf2);
-    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
+    Zab zab2 = new Zab(st, cb2, null, state2);
 
-    QuorumZab.TestState state3 = new QuorumZab
+    Zab.TestState state3 = new Zab
         .TestState(server3,
                    null,
                    getDirectory())
@@ -1445,7 +1445,7 @@ public class QuorumZabTest extends TestBase  {
          .setLog(new DummyLog(1))
          .setAckEpoch(0)
          .setClusterConfiguration(cnf3);
-    QuorumZab zab3 = new QuorumZab(st, cb3, null, state3);
+    Zab zab3 = new Zab(st, cb3, null, state3);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -1505,7 +1505,7 @@ public class QuorumZabTest extends TestBase  {
                                                          server2);
     ClusterConfiguration cnf3 = new ClusterConfiguration(version2, peers2,
                                                          server3);
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory())
@@ -1513,9 +1513,9 @@ public class QuorumZabTest extends TestBase  {
                                       .setLog(new DummyLog(1))
                                       .setAckEpoch(0)
                                       .setClusterConfiguration(cnf1);
-    QuorumZab zab1 = new QuorumZab(st, cb1, null, state1);
+    Zab zab1 = new Zab(st, cb1, null, state1);
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
         .TestState(server2,
                    null,
                    getDirectory())
@@ -1523,9 +1523,9 @@ public class QuorumZabTest extends TestBase  {
          .setLog(new DummyLog(2))
          .setAckEpoch(1)
          .setClusterConfiguration(cnf2);
-    QuorumZab zab2 = new QuorumZab(st, cb2, null, state2);
+    Zab zab2 = new Zab(st, cb2, null, state2);
 
-    QuorumZab.TestState state3 = new QuorumZab
+    Zab.TestState state3 = new Zab
         .TestState(server3,
                    null,
                    getDirectory())
@@ -1533,7 +1533,7 @@ public class QuorumZabTest extends TestBase  {
          .setLog(new DummyLog(1))
          .setAckEpoch(1)
          .setClusterConfiguration(cnf3);
-    QuorumZab zab3 = new QuorumZab(st, cb3, null, state3);
+    Zab zab3 = new Zab(st, cb3, null, state3);
 
     //cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -1576,25 +1576,25 @@ public class QuorumZabTest extends TestBase  {
     final String server2 = getUniqueHostPort();
     final String server3 = getUniqueHostPort();
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
     cb1.waitBroadcasting();
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
     cb1.waitCopCommit();
 
-    QuorumZab.TestState state3 = new QuorumZab
+    Zab.TestState state3 = new Zab
                                      .TestState(server3,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab3 = new QuorumZab(st3, cb3, null, state3, server1);
+    Zab zab3 = new Zab(st3, cb3, null, state3, server1);
     cb1.waitCopCommit();
 
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
@@ -1633,28 +1633,28 @@ public class QuorumZabTest extends TestBase  {
     final String server2 = getUniqueHostPort();
     final String server3 = getUniqueHostPort();
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
     cb1.waitBroadcasting();
 
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
     zab1.send(ByteBuffer.wrap("req2".getBytes()));
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
     cb1.waitCopCommit();
 
-    QuorumZab.TestState state3 = new QuorumZab
+    Zab.TestState state3 = new Zab
                                      .TestState(server3,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab3 = new QuorumZab(st3, cb3, null, state3, server1);
+    Zab zab3 = new Zab(st3, cb3, null, state3, server1);
     cb3.waitBroadcasting();
 
     zab1.send(ByteBuffer.wrap("req3".getBytes()));
@@ -1695,19 +1695,19 @@ public class QuorumZabTest extends TestBase  {
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
     cb1.waitBroadcasting();
 
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
 
     cb2.waitBroadcasting();
     // Simulate server2 dies.
@@ -1736,19 +1736,19 @@ public class QuorumZabTest extends TestBase  {
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
     cb1.waitBroadcasting();
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
     cb2.waitBroadcasting();
 
     // Simulate server2 dies.
@@ -1763,11 +1763,11 @@ public class QuorumZabTest extends TestBase  {
     Assert.assertFalse(isCountedDown);
 
     // Restart server2.
-    state2 = new QuorumZab
+    state2 = new Zab
                  .TestState(server2,
                             null,
                             getDirectory());
-    zab2 = new QuorumZab(st2, cb2, null, state2);
+    zab2 = new Zab(st2, cb2, null, state2);
 
     // Now all the transactions should be delivered.
     st1.txnsCount.await();
@@ -1798,18 +1798,18 @@ public class QuorumZabTest extends TestBase  {
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
     cb1.waitBroadcasting();
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
     cb1.waitCopCommit();
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
     st2.txnsCount.await();
@@ -1843,18 +1843,18 @@ public class QuorumZabTest extends TestBase  {
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
     cb1.waitBroadcasting();
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
     cb1.waitCopCommit();
     cb2.waitBroadcasting();
     // serve2 removes server1.
@@ -1885,18 +1885,18 @@ public class QuorumZabTest extends TestBase  {
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
     cb1.waitBroadcasting();
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
     cb1.waitCopCommit();
     zab1.remove(server2);
     // Waits server2 exits.
@@ -1914,21 +1914,21 @@ public class QuorumZabTest extends TestBase  {
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
     // Sends two requests immediatly before broadcasting phase.
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
     zab1.send(ByteBuffer.wrap("req2".getBytes()));
     cb1.waitBroadcasting();
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
     // Gets serverId immediately.
     Assert.assertEquals(server2, zab2.getServerId());
     // Wait for two transactions are delivered on both server2.
@@ -1948,22 +1948,22 @@ public class QuorumZabTest extends TestBase  {
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
     // Waits for clusterChange and leading callback.
     st1.waitMembershipChanged();
     // Make sure first config contains itself.
     Assert.assertTrue(st1.clusters.contains(server1));
     // The cluster size should be 1.
     Assert.assertEquals(1, st1.clusters.size());
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
     st2.waitMembershipChanged();
     // Make sure first config contains itself.
     Assert.assertTrue(st2.clusters.contains(server1));
@@ -1989,18 +1989,18 @@ public class QuorumZabTest extends TestBase  {
     TestStateMachine st2 = new TestStateMachine(100);
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
     cb1.waitBroadcasting();
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
     // While server2 is joining, we start sending 100 requests.
     for (int i = 0; i < 100; ++i) {
       Thread.sleep(5);
@@ -2026,19 +2026,19 @@ public class QuorumZabTest extends TestBase  {
     TestStateMachine st2 = new TestStateMachine(1);
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
     cb1.waitBroadcasting();
     // Send first request.
     zab1.send(ByteBuffer.wrap("txn".getBytes()));
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
     cb2.waitBroadcasting();
     // First transaction should be delivered on server2.
     st2.txnsCount.await();
@@ -2063,22 +2063,22 @@ public class QuorumZabTest extends TestBase  {
     QuorumTestCallback cb1 = new QuorumTestCallback();
     TestStateMachine st1 = new TestStateMachine();
     final String server1 = getUniqueHostPort();
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
     cb1.waitBroadcasting();
     for (int i = 0; i < 10; ++i) {
       // For each iteration, a new server joins in and then gets removed.
       QuorumTestCallback cb = new QuorumTestCallback();
       TestStateMachine st = new TestStateMachine();
       String server = getUniqueHostPort();
-      QuorumZab.TestState state = new QuorumZab
+      Zab.TestState state = new Zab
                                       .TestState(server,
                                                  null,
                                                  getDirectory());
-      QuorumZab zab = new QuorumZab(st, cb, null, state, server1);
+      Zab zab = new Zab(st, cb, null, state, server1);
       // Waits for reconfig completes.
       cb1.waitCopCommit();
       st1.waitMembershipChanged();
@@ -2118,28 +2118,28 @@ public class QuorumZabTest extends TestBase  {
     final String server2 = getUniqueHostPort();
     final String server3 = getUniqueHostPort();
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
     // Waits for leader goes into broadcasting phase.
     st1.waitMembershipChanged();
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
     st2.waitMembershipChanged();
     st1.waitMembershipChanged();
     cb2.waitBroadcasting();
 
-    QuorumZab.TestState state3 = new QuorumZab
+    Zab.TestState state3 = new Zab
                                      .TestState(server3,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab3 = new QuorumZab(st3, cb3, null, state3, server1);
+    Zab zab3 = new Zab(st3, cb3, null, state3, server1);
     st1.waitMembershipChanged();
     st2.waitMembershipChanged();
     st3.waitMembershipChanged();
@@ -2168,11 +2168,11 @@ public class QuorumZabTest extends TestBase  {
     TestStateMachine st1 = new TestStateMachine(2);
     final String server1 = getUniqueHostPort();
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
     // Waits for leader goes into broadcasting phase.
     st1.waitMembershipChanged();
 
@@ -2197,19 +2197,19 @@ public class QuorumZabTest extends TestBase  {
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1);
+    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
     // Waits for leader goes into broadcasting phase.
     st1.waitMembershipChanged();
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1);
+    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
     st2.waitMembershipChanged();
     st1.waitMembershipChanged();
 
@@ -2265,11 +2265,11 @@ public class QuorumZabTest extends TestBase  {
     SslParameters sslParam1 =
       new SslParameters(keyStoreA, password, trustStore, password);
 
-    QuorumZab.TestState state1 = new QuorumZab
+    Zab.TestState state1 = new Zab
                                      .TestState(server1,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab1 = new QuorumZab(st1, cb1, null, state1, server1, sslParam1);
+    Zab zab1 = new Zab(st1, cb1, null, state1, server1, sslParam1);
 
     // Waits for leader goes into broadcasting phase.
     st1.waitMembershipChanged();
@@ -2277,11 +2277,11 @@ public class QuorumZabTest extends TestBase  {
     SslParameters sslParam2 =
       new SslParameters(keyStoreB, password, trustStore, password);
 
-    QuorumZab.TestState state2 = new QuorumZab
+    Zab.TestState state2 = new Zab
                                      .TestState(server2,
                                                 null,
                                                 getDirectory());
-    QuorumZab zab2 = new QuorumZab(st2, cb2, null, state2, server1, sslParam2);
+    Zab zab2 = new Zab(st2, cb2, null, state2, server1, sslParam2);
 
     st2.waitMembershipChanged();
     st1.waitMembershipChanged();

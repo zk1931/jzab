@@ -39,8 +39,8 @@ import org.slf4j.MDC;
  *   ELECTING, FOLLOWING, LEADING.
  * Among all the nodes, there's only one server can be established leader.
  */
-public class QuorumZab {
-  private static final Logger LOG = LoggerFactory.getLogger(QuorumZab.class);
+public class Zab {
+  private static final Logger LOG = LoggerFactory.getLogger(Zab.class);
 
   /**
    * Future for background "main" thread.
@@ -48,7 +48,7 @@ public class QuorumZab {
   private final Future<Void> ft;
 
   /**
-   * Server id for QuorumZab.
+   * Server id for Zab.
    */
   private String serverId;
 
@@ -63,64 +63,64 @@ public class QuorumZab {
   private final StateMachine stateMachine;
 
   /**
-   * Background thread for QuorumZab.
+   * Background thread for Zab.
    */
   private final MainThread mainThread;
 
   /**
-   * Constructs a QuorumZab instance by recovering from log directory.
+   * Constructs a Zab instance by recovering from log directory.
    *
    * @param stateMachine the state machine implementation of clients.
-   * @param prop the Properties object stores the configuration of QuorumZab.
+   * @param prop the Properties object stores the configuration of Zab.
    */
-  public QuorumZab(StateMachine stateMachine, Properties prop) {
+  public Zab(StateMachine stateMachine, Properties prop) {
     this(stateMachine, prop, new SslParameters());
   }
 
   /**
-   * Constructs a QuorumZab instance by joining an existing cluster.
+   * Constructs a Zab instance by joining an existing cluster.
    *
    * @param stateMachine the state machine implementation of clients.
-   * @param prop the Properties object stores the configuration of QuorumZab.
+   * @param prop the Properties object stores the configuration of Zab.
    * @param joinPeer the id of peer you want to join in.
    */
-  public QuorumZab(StateMachine stateMachine, Properties prop,
+  public Zab(StateMachine stateMachine, Properties prop,
                    String joinPeer) {
     this(stateMachine, prop, joinPeer, new SslParameters());
   }
 
   /**
-   * Constructs a QuorumZab instance with Ssl support by recovering from log
+   * Constructs a Zab instance with Ssl support by recovering from log
    * directory.
    *
    * @param stateMachine the state machine implementation of clients.
-   * @param prop the Properties object stores the configuration of QuorumZab.
+   * @param prop the Properties object stores the configuration of Zab.
    * @param sslParam parameters for Ssl.
    */
-  public QuorumZab(StateMachine stateMachine,
+  public Zab(StateMachine stateMachine,
                    Properties prop,
                    SslParameters sslParam) {
     this(stateMachine, prop, null, sslParam);
   }
 
   /**
-   * Constructs a QuorumZab instance with Ssl support by joining an exisintg
+   * Constructs a Zab instance with Ssl support by joining an exisintg
    * cluster.
    *
    * @param stateMachine the state machine implementation of clients.
-   * @param prop the Properties object stores the configuration of QuorumZab.
+   * @param prop the Properties object stores the configuration of Zab.
    * @param joinPeer the id of peer you want to join in.
    *                           password is not set.
    * @param sslParam parameters for Ssl.
    */
-  public QuorumZab(StateMachine stateMachine,
+  public Zab(StateMachine stateMachine,
                    Properties prop,
                    String joinPeer,
                    SslParameters sslParam) {
     this(stateMachine, null, null, new TestState(prop), joinPeer, sslParam);
   }
 
-  QuorumZab(StateMachine stateMachine,
+  Zab(StateMachine stateMachine,
             StateChangeCallback stateCallback,
             FailureCaseCallback failureCallback,
             TestState initialState) {
@@ -128,7 +128,7 @@ public class QuorumZab {
          null);
   }
 
-  QuorumZab(StateMachine stateMachine,
+  Zab(StateMachine stateMachine,
             StateChangeCallback stateCallback,
             FailureCaseCallback failureCallback,
             TestState initialState,
@@ -137,7 +137,7 @@ public class QuorumZab {
          new SslParameters());
   }
 
-  QuorumZab(StateMachine stateMachine,
+  Zab(StateMachine stateMachine,
             StateChangeCallback stateCallback,
             FailureCaseCallback failureCallback,
             TestState initialState,
@@ -152,15 +152,15 @@ public class QuorumZab {
       // Initialize.
       this.mainThread.init(sslParam, initialState);
     } catch (Exception e) {
-      LOG.warn("Caught an exception while initializing QuorumZab.");
-      throw new IllegalStateException("Failed to initialize QuorumZab.", e);
+      LOG.warn("Caught an exception while initializing Zab.");
+      throw new IllegalStateException("Failed to initialize Zab.", e);
     }
     this.ft = es.submit(this.mainThread);
     es.shutdown();
   }
 
   /**
-   * Get the future of the background working thread of QuorumZab.
+   * Get the future of the background working thread of Zab.
    */
   public Future<Void> getFuture() {
     return this.ft;
@@ -299,7 +299,7 @@ public class QuorumZab {
                               ClusterConfiguration config);
 
     /**
-     * Will be called when QuorumZab stops running.
+     * Will be called when Zab stops running.
      */
     void leftCluster();
 
@@ -373,7 +373,7 @@ public class QuorumZab {
   }
 
   /**
-   * Used for initializing the state of QuorumZab for testing purpose.
+   * Used for initializing the state of Zab for testing purpose.
    */
   static class TestState {
     Properties prop;
@@ -385,10 +385,10 @@ public class QuorumZab {
     Log log = null;
 
     /**
-     * Creates the TestState object. It should be passed to QuorumZab to
+     * Creates the TestState object. It should be passed to Zab to
      * initialize its state.
      *
-     * @param serverId the server id of the QuorumZab.
+     * @param serverId the server id of the Zab.
      * @param servers the server list of the ensemble.
      * @param baseLogDir the base log directory of all the peers in ensemble.
      * The specific log directory of each peer is baseLogDir/serverId.
@@ -451,7 +451,7 @@ public class QuorumZab {
   }
 
   /**
-   * Main working thread for QuorumZab.
+   * Main working thread for Zab.
    */
   class MainThread implements Callable<Void> {
     /**

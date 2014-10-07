@@ -129,7 +129,7 @@ public class SnapshotTest extends TestBase {
     prop.setProperty("snapshot_threshold", "32");
     prop.setProperty("serverId", server);
     prop.setProperty("logdir", getDirectory().getPath());
-    QuorumZab zab = new QuorumZab(st1, prop, server);
+    Zab zab = new Zab(st1, prop, server);
     for (int i = 0; i < nTxns; ++i) {
       zab.send(ByteBuffer.wrap(("txns" + i).getBytes()));
       // Sleep a while to avoid all the transactions batch together.
@@ -140,7 +140,7 @@ public class SnapshotTest extends TestBase {
     SnapshotStateMachine stNew = new SnapshotStateMachine(nTxns);
     prop = new Properties();
     prop.setProperty("logdir", getDirectory().getPath());
-    zab = new QuorumZab(stNew, prop);
+    zab = new Zab(stNew, prop);
     stNew.waitMemberChanged();
     Assert.assertEquals(st1.state, stNew.state);
     zab.shutdown();
@@ -167,10 +167,10 @@ public class SnapshotTest extends TestBase {
     prop2.setProperty("serverId", server2);
     prop2.setProperty("logdir",
                       getDirectory().getPath() + File.separator + server2);
-    QuorumZab zab1 = new QuorumZab(st1, prop1, server1);
+    Zab zab1 = new Zab(st1, prop1, server1);
     st1.waitMemberChanged();
     // Server2 joins in.
-    QuorumZab zab2 = new QuorumZab(st2, prop2, server1);
+    Zab zab2 = new Zab(st2, prop2, server1);
     st2.waitMemberChanged();
     st1.waitMemberChanged();
     for (int i = 0; i < nTxns; ++i) {
@@ -193,8 +193,8 @@ public class SnapshotTest extends TestBase {
     prop2 = new Properties();
     prop2.setProperty("logdir",
                       getDirectory().getPath() + File.separator + server2);
-    zab1 = new QuorumZab(stNew1, prop1);
-    zab2 = new QuorumZab(stNew2, prop2);
+    zab1 = new Zab(stNew1, prop1);
+    zab2 = new Zab(stNew2, prop2);
     stNew1.waitMemberChanged();
     stNew2.waitMemberChanged();
     // Make sure the states are consistent.
@@ -228,7 +228,7 @@ public class SnapshotTest extends TestBase {
     prop2.setProperty("serverId", server2);
     prop2.setProperty("logdir",
                       getDirectory().getPath() + File.separator + server2);
-    QuorumZab zab1 = new QuorumZab(st1, prop1, server1);
+    Zab zab1 = new Zab(st1, prop1, server1);
     st1.waitMemberChanged();
     for (int i = 0; i < nTxns; ++i) {
       zab1.send(ByteBuffer.wrap(("txns" + i).getBytes()));
@@ -237,7 +237,7 @@ public class SnapshotTest extends TestBase {
     }
     st1.txnsCount.await();
     // Server2 joins in.
-    QuorumZab zab2 = new QuorumZab(st2, prop2, server1);
+    Zab zab2 = new Zab(st2, prop2, server1);
     st2.waitMemberChanged();
     Assert.assertEquals(st1.state, st2.state);
     zab1.shutdown();
