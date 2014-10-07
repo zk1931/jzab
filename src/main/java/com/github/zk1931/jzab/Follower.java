@@ -90,6 +90,9 @@ public class Follower extends Participant {
           LOG.debug("Lost peer {}.", peerId);
           this.transport.clear(peerId);
         }
+      } else if (tuple.getMessage().getType() == MessageType.SHUT_DOWN) {
+        LOG.debug("Got SHUT_DOWN, going to shut down Zab.");
+        throw new LeftCluster("Shutdown Zab");
       } else {
         return tuple;
       }
@@ -206,6 +209,8 @@ public class Follower extends Participant {
       if (this.electedLeader != null) {
         this.transport.clear(this.electedLeader);
       }
+      // Clears the message queue.
+      clearMessageQueue();
     }
   }
 
@@ -437,8 +442,6 @@ public class Follower extends Participant {
           // Replies HEARTBEAT message to leader.
           Message heartbeatReply = MessageBuilder.buildHeartbeat();
           sendMessage(source, heartbeatReply);
-        } else if (msg.getType() == MessageType.SHUT_DOWN) {
-          throw new LeftCluster("Left cluster!");
         } else if (msg.getType() == MessageType.DELIVERED) {
           onDelivered(msg, snapProcessor);
         } else if (msg.getType() == MessageType.FLUSH) {

@@ -543,6 +543,8 @@ public abstract class Participant {
       Message msg = tuple.getMessage();
       if (msg.getType() == MessageType.DISCONNECTED) {
         this.transport.clear(msg.getDisconnected().getServerId());
+      } else if (msg.getType() == MessageType.SHUT_DOWN) {
+        throw new LeftCluster("Shutdown Zab.");
       }
     }
   }
@@ -703,7 +705,7 @@ public abstract class Participant {
         BlockingQueue<MessageTuple> requestQueue
           = participantState.getRequestQueue();
         while (!stop) {
-          MessageTuple tuple = requestQueue.poll(500, TimeUnit.MILLISECONDS);
+          MessageTuple tuple = requestQueue.poll(100, TimeUnit.MILLISECONDS);
           if (tuple == null) {
             continue;
           }
