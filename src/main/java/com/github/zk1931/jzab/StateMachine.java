@@ -42,7 +42,9 @@ public interface StateMachine {
   /**
    * Upcall to deliver a state update. This method is called from a single
    * thread to ensure that the state updates are applied in the same order
-   * they arrived.
+   * they arrived. Application MUST apply the transaction in the callback,
+   * after deliver returns, Zab assumes the transaction has been applied to
+   * state machine.
    *
    * @param zxid zxid of the message
    * @param stateUpdate the incremental state update
@@ -86,7 +88,8 @@ public interface StateMachine {
    * instance the membership changes of Zab cluster. The membership changes
    * include the detection of recovered members or disconnected members in
    * current configuration or new configuration after some one joined or be
-   * removed from current configuration.
+   * removed from current configuration. This callback will be called from the
+   * same thread as deliver callback.
    *
    * @param activeFollowers current alive followers.
    * @param clusterMembers the members of new configuration.
@@ -97,7 +100,8 @@ public interface StateMachine {
    * Upcall to notify the application who is running on the follower role of ZAB
    * instance the membership changes of Zab cluster. The membership changes
    * include the detection of the leader or the new cluster configuration after
-   * some servers are joined or removed.
+   * some servers are joined or removed. This callback will be called from the
+   * same thread as deliver callback.
    *
    * @param leader current leader.
    * @param clusterMembers the members of new configuration.

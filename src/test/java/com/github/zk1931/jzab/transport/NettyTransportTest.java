@@ -34,6 +34,7 @@ import com.github.zk1931.jzab.MessageBuilder;
 import com.github.zk1931.jzab.TestBase;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
 import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
+import com.github.zk1931.jzab.SslParameters;
 import com.github.zk1931.jzab.Zxid;
 import org.junit.Assert;
 import org.junit.Test;
@@ -556,15 +557,19 @@ public class NettyTransportTest extends TestBase {
     File keyStoreB = new File(sslDir, "keystore_b.jks");
     File keyStoreC = new File(sslDir, "keystore_c.jks");
 
+    SslParameters sslParam1 =
+      new SslParameters(keyStoreA, password, trustStore, password);
+    SslParameters sslParam2 =
+      new SslParameters(keyStoreB, password, trustStore, password);
+    SslParameters sslParam3 =
+      new SslParameters(keyStoreC, password, trustStore, password);
+
     NettyTransport transportA =
-      new NettyTransport(peerA, receiverA, keyStoreA, password, trustStore,
-                         password, getDirectory());
+      new NettyTransport(peerA, receiverA, sslParam1, getDirectory());
     NettyTransport transportB =
-      new NettyTransport(peerB, receiverB, keyStoreB, password, trustStore,
-                         password, getDirectory());
+      new NettyTransport(peerB, receiverB, sslParam2, getDirectory());
     NettyTransport transportC =
-      new NettyTransport(peerC, receiverC, keyStoreC, password, trustStore,
-                         password, getDirectory());
+      new NettyTransport(peerC, receiverC, sslParam3, getDirectory());
     NettyTransport transportD =
       new NettyTransport(peerD, receiverD, getDirectory());
 
@@ -664,11 +669,15 @@ public class NettyTransportTest extends TestBase {
       public void onDisconnected(String source) {
       }
     };
-    NettyTransport transportA = new NettyTransport(peerA, receiverA, keyStoreA,
-                                    password, trustStore, password,
+
+    SslParameters sslParam1 =
+      new SslParameters(keyStoreA, password, trustStore, password);
+    SslParameters sslParam2 =
+      new SslParameters(keyStoreB, password, trustStore, password);
+
+    NettyTransport transportA = new NettyTransport(peerA, receiverA, sslParam1,
                                     getDirectory());
-    NettyTransport transportB = new NettyTransport(peerB, receiverB, keyStoreB,
-                                    password, trustStore, password,
+    NettyTransport transportB = new NettyTransport(peerB, receiverB, sslParam2,
                                     getDirectory());
     transportA.send(peerB, createAck(new Zxid(0, 0)));
     File file = new File("./pom.xml");

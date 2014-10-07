@@ -48,17 +48,6 @@ public class QuorumZab {
   private final Future<Void> ft;
 
   /**
-   * Callback interface for testing purpose.
-   */
-  protected final StateChangeCallback stateChangeCallback;
-
-  /**
-   * Callback which will be called in different points of code path to simulate
-   * different kinds of failure cases.
-   */
-  protected final FailureCaseCallback failureCallback;
-
-  /**
    * Server id for QuorumZab.
    */
   private String serverId;
@@ -85,7 +74,7 @@ public class QuorumZab {
    * @param prop the Properties object stores the configuration of QuorumZab.
    */
   public QuorumZab(StateMachine stateMachine, Properties prop) {
-    this(stateMachine, prop, null, null, null, null);
+    this(stateMachine, prop, new SslParameters());
   }
 
   /**
@@ -97,7 +86,7 @@ public class QuorumZab {
    */
   public QuorumZab(StateMachine stateMachine, Properties prop,
                    String joinPeer) {
-    this(stateMachine, prop, joinPeer, null, null, null, null);
+    this(stateMachine, prop, joinPeer, new SslParameters());
   }
 
   /**
@@ -106,22 +95,12 @@ public class QuorumZab {
    *
    * @param stateMachine the state machine implementation of clients.
    * @param prop the Properties object stores the configuration of QuorumZab.
-   * @param keyStore keystore file that contains the private key and
-   *                 corresponding certificate chain.
-   * @param keyStorePassword password for the keystore, or null if the password
-   *                         is not set.
-   * @param trustStore truststore file that contains trusted CA certificates.
-   * @param trustStorePassword password for the truststore, or null if the
-   *                           password is not set.
+   * @param sslParam parameters for Ssl.
    */
   public QuorumZab(StateMachine stateMachine,
                    Properties prop,
-                   File keyStore,
-                   String keyStorePassword,
-                   File trustStore,
-                   String trustStorePassword) {
-    this(stateMachine, prop, null, keyStore, keyStorePassword, trustStore,
-         trustStorePassword);
+                   SslParameters sslParam) {
+    this(stateMachine, prop, null, sslParam);
   }
 
   /**
@@ -131,29 +110,22 @@ public class QuorumZab {
    * @param stateMachine the state machine implementation of clients.
    * @param prop the Properties object stores the configuration of QuorumZab.
    * @param joinPeer the id of peer you want to join in.
-   * @param keyStore keystore file that contains the private key and
-   *                 corresponding certificate chain.
-   * @param keyStorePassword password for the keystore, or null if the password
-   *                         is not set.
-   * @param trustStore truststore file that contains trusted CA certificates.
-   * @param trustStorePassword password for the truststore, or null if the
    *                           password is not set.
+   * @param sslParam parameters for Ssl.
    */
   public QuorumZab(StateMachine stateMachine,
                    Properties prop,
                    String joinPeer,
-                   File keyStore,
-                   String keyStorePassword, File trustStore,
-                   String trustStorePassword) {
-    this(stateMachine, null, null, new TestState(prop), joinPeer, keyStore,
-         keyStorePassword, trustStore, trustStorePassword);
+                   SslParameters sslParam) {
+    this(stateMachine, null, null, new TestState(prop), joinPeer, sslParam);
   }
 
   QuorumZab(StateMachine stateMachine,
             StateChangeCallback stateCallback,
             FailureCaseCallback failureCallback,
             TestState initialState) {
-    this(stateMachine, stateCallback, failureCallback, initialState, null);
+    this(stateMachine, stateCallback, failureCallback, initialState,
+         null);
   }
 
   QuorumZab(StateMachine stateMachine,
@@ -162,7 +134,7 @@ public class QuorumZab {
             TestState initialState,
             String joinPeer) {
     this(stateMachine, stateCallback, failureCallback, initialState, joinPeer,
-         null, null, null, null);
+         new SslParameters());
   }
 
   QuorumZab(StateMachine stateMachine,
@@ -170,21 +142,15 @@ public class QuorumZab {
             FailureCaseCallback failureCallback,
             TestState initialState,
             String joinPeer,
-            File keyStore,
-            String keyStorePassword,
-            File trustStore,
-            String trustStorePassword) {
+            SslParameters sslParam) {
     this.config = new ZabConfig(initialState.prop);
     this.stateMachine = stateMachine;
-    this.stateChangeCallback = stateCallback;
-    this.failureCallback = failureCallback;
-    this.mainThread = new MainThread(initialState, joinPeer);
+    this.mainThread = new MainThread(joinPeer, stateCallback, failureCallback);
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
     try {
       // Initialize.
-      this.mainThread.init(keyStore, keyStorePassword, trustStore,
-                           trustStorePassword);
+      this.mainThread.init(sslParam, initialState);
     } catch (Exception e) {
       LOG.warn("Caught an exception while initializing QuorumZab.");
       throw new IllegalStateException("Failed to initialize QuorumZab.", e);
@@ -201,25 +167,27 @@ public class QuorumZab {
   }
 
   /**
-   * Sends a message to Zab. Any one can call call this
-   * interface. Under the hood, followers forward requests
-   * to the leader and the leader will be responsible for
-   * broadcasting.
+   * Submits a request to Zab. Any one can call call this send. Under the hood,
+   * followers forward requests to the leader and the leader will be responsible
+   * for converting this request to idempotent transaction and broadcasting.
    *
-   * @param message message to send through Zab
+   * @param request request to send through Zab
    */
-  public void send(ByteBuffer message) {
-    this.mainThread.enqueueRequest(message);
+  public void send(ByteBuffer request) {
+    this.mainThread.enqueueRequest(request);
   }
 
   /**
-   * Flushes the request pipeline. Zab calls StateMachine.flushed() after all
-   * the pending requests get committed.
+   * Flushes a request through pipeline. The flushed request will be delivered
+   * in order with other sending requests, but it will not be convereted to
+   * idempotent transaction and will not be persisted in log. And it will only
+   * be delivered on the server who issued this request. The purpose of flush
+   * is to allow implementing a consistent read-after-write.
    *
-   * @param message the flush message.
+   * @param request the request to be flushed.
    */
-  public void flush(ByteBuffer message) {
-    this.mainThread.enqueueFlush(message);
+  public void flush(ByteBuffer request) {
+    this.mainThread.enqueueFlush(request);
   }
 
   /**
@@ -229,9 +197,6 @@ public class QuorumZab {
    */
   public void remove(String peerId) {
     this.mainThread.enqueueRemove(peerId);
-  }
-
-  public void trimLogTo(Zxid zxid) {
   }
 
   /**
@@ -244,6 +209,12 @@ public class QuorumZab {
     LOG.debug("Shutdown successfully.");
   }
 
+  /**
+   * Returns the server id for this Zab instance. The application which
+   * recovers from log directory probably needs to know the server id of Zab.
+   *
+   * @return the server id of this Zab instance.
+   */
   public String getServerId() {
     return this.serverId;
   }
@@ -406,17 +377,11 @@ public class QuorumZab {
    */
   static class TestState {
     Properties prop;
-
     File logDir = null;
-
     private File fAckEpoch;
-
     private File fProposedEpoch;
-
     private File fLastSeenConfig;
-
     private PersistentState persistence;
-
     Log log = null;
 
     /**
@@ -489,26 +454,30 @@ public class QuorumZab {
    * Main working thread for QuorumZab.
    */
   class MainThread implements Callable<Void> {
-    private final TestState testState;
-
-    /**
-     * The id of server you want join in, or null if it's in the recovery
-     * from log directory.
-     */
-    private final String joinPeer;
-
     /**
      * The State for Zab. It will be passed accross different instances of
      * Leader/Follower class.
      */
     private ParticipantState participantState;
 
-    private void init(File keyStore, String keyStorePassword, File trustStore,
-                      String trustStorePassword)
+    private final String joinPeer;
+    private final StateChangeCallback stateChangeCallback;
+    private final FailureCaseCallback failureCallback;
+
+    MainThread(String joinPeer,
+               StateChangeCallback stateChangeCallback,
+               FailureCaseCallback failureCallback) {
+      this.joinPeer = joinPeer;
+      this.stateChangeCallback = stateChangeCallback;
+      this.failureCallback = failureCallback;
+    }
+
+    private void init(SslParameters sslParam,
+                      TestState testState)
         throws IOException, InterruptedException, GeneralSecurityException {
-      PersistentState persistence = new PersistentState(config.getLogDir(),
-                                                        testState.getLog());
-      if (this.joinPeer != null) {
+      PersistentState persistence =
+        new PersistentState(config.getLogDir(), testState.getLog());
+      if (joinPeer != null) {
         // First time start up. Joining some one.
         if (!persistence.isEmpty()) {
           LOG.error("The log directory is not empty while joining.");
@@ -537,16 +506,13 @@ public class QuorumZab {
           serverId = cnf.getServerId();
         }
       }
-      participantState =
-        new ParticipantState(persistence, serverId, keyStore, keyStorePassword,
-                             trustStore, trustStorePassword,
-                             config.getMinSyncTimeoutMs());
+      participantState = new ParticipantState(persistence,
+                                              serverId,
+                                              sslParam,
+                                              stateChangeCallback,
+                                              failureCallback,
+                                              config.getMinSyncTimeoutMs());
       MDC.put("serverId", serverId);
-    }
-
-    public MainThread(TestState state, String joinPeer) {
-      this.testState = state;
-      this.joinPeer = joinPeer;
     }
 
     @Override
@@ -563,22 +529,19 @@ public class QuorumZab {
           String leader = electionAlg.electLeader(persistence);
           LOG.debug("Select {} as leader.", leader);
           if (leader.equals(serverId)) {
-            Participant participant = new Leader(participantState, stateMachine,
-                                                 config);
-            participant.setStateChangeCallback(stateChangeCallback);
-            participant.setFailureCaseCallback(failureCallback);
+            Participant participant =
+              new Leader(participantState, stateMachine, config);
             ((Leader)participant).lead();
           } else {
-            Participant participant = new Follower(participantState,
-                                                   stateMachine, config);
-            participant.setStateChangeCallback(stateChangeCallback);
-            participant.setFailureCaseCallback(failureCallback);
+            Participant participant =
+              new Follower(participantState, stateMachine, config);
             ((Follower)participant).follow(leader);
           }
         }
       } catch (InterruptedException e) {
         LOG.debug("Caught Interrupted exception, it has been shut down?");
         participantState.getTransport().shutdown();
+        Thread.currentThread().interrupt();
       } catch (Participant.LeftCluster e) {
         LOG.debug("Zab has been shutdown.");
       } catch (Exception e) {
@@ -600,8 +563,6 @@ public class QuorumZab {
         LOG.debug("Trying to join {}.", peer);
         participant = new Follower(participantState, stateMachine, config);
       }
-      participant.setStateChangeCallback(stateChangeCallback);
-      participant.setFailureCaseCallback(failureCallback);
       participant.join(peer);
     }
 

@@ -72,6 +72,7 @@ import javax.net.ssl.SSLEngine;
 import javax.net.ssl.TrustManagerFactory;
 import com.github.zk1931.jzab.MessageBuilder;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
+import com.github.zk1931.jzab.SslParameters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import static com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
@@ -103,7 +104,7 @@ public class NettyTransport extends Transport {
   public NettyTransport(String hostPort, final Receiver receiver,
                         final File dir)
       throws InterruptedException, GeneralSecurityException, IOException {
-    this(hostPort, receiver, null, null, null, null, dir);
+    this(hostPort, receiver, new SslParameters(), dir);
   }
 
   /**
@@ -112,28 +113,21 @@ public class NettyTransport extends Transport {
    * @param hostPort "hostname:port" string. The netty transport binds to the
    *                 port specified in the string.
    * @param receiver receiver callback.
-   * @param keyStore keystore file that contains the private key and
-   *                 corresponding certificate chain.
-   * @param keyStorePassword password for the keystore, or null if the password
-   *                         is not set.
-   * @param trustStore truststore file that contains trusted CA certificates.
-   * @param trustStorePassword password for the truststore, or null if the
-   *                           password is not set.
+   * @param sslParam Ssl parameters.
    * @param dir the directory used to store the received file.
    */
   public NettyTransport(String hostPort, final Receiver receiver,
-                        final File keyStore, final String keyStorePassword,
-                        final File trustStore,
-                        final String trustStorePassword,
+                        SslParameters sslParam,
                         final File dir)
       throws InterruptedException, GeneralSecurityException, IOException {
     super(receiver);
-    this.keyStore = keyStore;
-    this.trustStore = trustStore;
-    this.keyStorePassword =keyStorePassword != null ?
-                           keyStorePassword.toCharArray() : null;
-    this.trustStorePassword = trustStorePassword != null ?
-                              trustStorePassword.toCharArray() : null;
+    this.keyStore = sslParam.getKeyStore();
+    this.trustStore = sslParam.getTrustStore();
+    this.keyStorePassword = sslParam.getKeyStorePassword() != null ?
+                            sslParam.getKeyStorePassword().toCharArray() : null;
+    this.trustStorePassword =
+      sslParam.getTrustStorePassword() != null ?
+      sslParam.getTrustStorePassword().toCharArray() : null;
     this.dir = dir;
     if (isSslEnabled()) {
       initSsl();
