@@ -136,6 +136,8 @@ public abstract class Participant {
   protected final Semaphore semPendingReqs =
     new Semaphore(ZabConfig.MAX_PENDING_REQS);
 
+  protected Phase currentPhase = Phase.DISCOVERING;
+
   private static final Logger LOG = LoggerFactory.getLogger(Participant.class);
 
   protected enum Phase {
@@ -303,7 +305,7 @@ public abstract class Participant {
     // Expects getting message of DIFF or TRUNCATE or SNAPSHOT or PULL_TXN_REQ
     // from elected leader.
     while (true) {
-      MessageTuple tuple = getMessage(config.getSyncTimeoutMs());
+      MessageTuple tuple = getMessage(getSyncTimeoutMs());
       source = tuple.getServerId();
       msg = tuple.getMessage();
       if ((msg.getType() != MessageType.DIFF &&
@@ -334,7 +336,7 @@ public abstract class Participant {
       // After synchronization, leader should have same history as this
       // server, so next message should be an empty DIFF.
       MessageTuple tuple =
-        getExpectedMessage(MessageType.DIFF, peer, config.getSyncTimeoutMs());
+        getExpectedMessage(MessageType.DIFF, peer, getSyncTimeoutMs());
       msg = tuple.getMessage();
       ZabMessage.Diff diff = msg.getDiff();
       lastZxidPeer = MessageBuilder.fromProtoZxid(diff.getLastZxid());
@@ -402,7 +404,7 @@ public abstract class Participant {
     // Get subsequent proposals.
     while (true) {
       MessageTuple tuple = getExpectedMessage(MessageType.PROPOSAL, peer,
-                                              config.getSyncTimeoutMs());
+                                              getSyncTimeoutMs());
       msg = tuple.getMessage();
       source = tuple.getServerId();
       if (LOG.isDebugEnabled()) {
@@ -433,7 +435,7 @@ public abstract class Participant {
   void waitForSyncEnd(String peerId)
       throws TimeoutException, IOException, InterruptedException {
     MessageTuple tuple = getExpectedMessage(MessageType.SYNC_END, peerId,
-                                            config.getSyncTimeoutMs());
+                                            getSyncTimeoutMs());
     ClusterConfiguration cnf
       = ClusterConfiguration.fromProto(tuple.getMessage().getConfig(),
                                        this.serverId);
@@ -550,6 +552,57 @@ public abstract class Participant {
   }
 
   /**
+   * Gets current synchronizing timeout in milliseconds.
+   *
+   * @return synchronizing timeuout in milliseconds.
+   */
+  protected int getSyncTimeoutMs() {
+    return participantState.getSyncTimeoutMs();
+  }
+
+  /**
+   * Doubles the synchronizing timeout.
+   *
+   * @return the old synchronizing timeout in milliseconds.
+   */
+  protected int incSyncTimeout() {
+    int syncTimeoutMs = getSyncTimeoutMs();
+    participantState.setSyncTimeoutMs(syncTimeoutMs * 2);
+    LOG.debug("Increase the sync timeout to {}", getSyncTimeoutMs());
+    return syncTimeoutMs;
+  }
+
+  /**
+   * Sets the synchronizing timeout.
+   *
+   * @param timeout the new synchronizing timeout in milliseconds.
+   */
+  protected void setSyncTimeoutMs(int timeout) {
+    participantState.setSyncTimeoutMs(timeout);
+  }
+
+  /**
+   * Adjusts the synchronizing timeout based on parameter timeoutMs. The new
+   * synchronizing timeout will be smallest timeout which is power of 2 and
+   * larger than timeoutMs.
+   *
+   * @param timeoutMs the last synchronizing timeout in milliseconds.
+   */
+  protected void adjustSyncTimeout(int timeoutMs) {
+    int timeoutSec = (timeoutMs + 999) / 1000;
+    // Finds out the smallest timeout which is powers of 2 and larger than
+    // timeoutMs.
+    for (int i = 0; i < 32; ++i) {
+      if ((1 << i) >= timeoutSec) {
+        LOG.debug("Adjust timeout to {} sec", 1 << i);
+        setSyncTimeoutMs((1 << i) * 1000);
+        return;
+      }
+    }
+    throw new RuntimeException("Timeout is too large!");
+  }
+
+  /**
    * Synchronizes server's history to peer based on the last zxid of peer.
    * This function is called when the follower syncs its history to leader as
    * initial history or the leader syncs its initial history to followers in
@@ -571,6 +624,7 @@ public abstract class Participant {
     private final Zxid peerLatestZxid;
     private final Zxid lastSyncZxid;
     private final ClusterConfiguration clusterConfig;
+    private boolean stop = false;
 
    /**
     * Constructs the SyncPeerTask object.
@@ -590,6 +644,10 @@ public abstract class Participant {
 
     public Zxid getLastSyncZxid() {
       return this.lastSyncZxid;
+    }
+
+    public void stop() {
+      this.stop = true;
     }
 
     public void run() throws IOException {
@@ -654,9 +712,15 @@ public abstract class Participant {
           syncPoint = new Zxid(snapZxid.getEpoch(), snapZxid.getXid() + 1);
         }
       }
+      if (stop) {
+        return;
+      }
       if (syncPoint != null) {
         try (Log.LogIterator iter = log.getIterator(syncPoint)) {
           while (iter.hasNext()) {
+            if (stop) {
+              return;
+            }
             Transaction txn = iter.next();
             if (txn.getZxid().compareTo(this.lastSyncZxid) > 0) {
               break;

@@ -539,7 +539,8 @@ public class QuorumZab {
       }
       participantState =
         new ParticipantState(persistence, serverId, keyStore, keyStorePassword,
-                             trustStore, trustStorePassword);
+                             trustStore, trustStorePassword,
+                             config.getMinSyncTimeoutMs());
       MDC.put("serverId", serverId);
     }
 

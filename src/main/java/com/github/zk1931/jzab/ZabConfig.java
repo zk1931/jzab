@@ -103,12 +103,12 @@ public class ZabConfig {
   }
 
   /**
-   * Gets the timeout for synchronizing peers (default is 20000 milliseconds).
+   * Gets the timeout for synchronizing peers (default is 3000 milliseconds).
    *
    * @return the timeout in milliseconds.
    */
-  public int  getSyncTimeoutMs() {
-    return Integer.parseInt(this.prop.getProperty("sync_timeout_ms", "20000"));
+  public int getMinSyncTimeoutMs() {
+    return Integer.parseInt(prop.getProperty("min_sync_timeout_ms", "3000"));
   }
 
   /**

@@ -131,6 +131,16 @@ public class PeerHandler {
    */
   private Zxid lastProposedZxid = Zxid.ZXID_NOT_EXIST;
 
+  /**
+   * The timeout for synchronization.
+   */
+  private int syncTimeoutMs = 0;
+
+  /**
+   * If the peer is disconnected.
+   */
+  private boolean disconnected = false;
+
   private static final Logger LOG = LoggerFactory.getLogger(PeerHandler.class);
 
   /**
@@ -222,6 +232,22 @@ public class PeerHandler {
     return this.ftSync != null && this.ftBroad == null;
   }
 
+  void setSyncTimeoutMs(int timeout) {
+    this.syncTimeoutMs = timeout;
+  }
+
+  int getSyncTimeoutMs() {
+    return this.syncTimeoutMs;
+  }
+
+  void markDisconnected() {
+    this.disconnected = true;
+  }
+
+  boolean isDisconnected() {
+    return this.disconnected;
+  }
+
   /**
    * Puts message in queue.
    *
@@ -245,6 +271,8 @@ public class PeerHandler {
   void shutdown() throws InterruptedException, ExecutionException {
     if (this.ftSync != null) {
       try {
+        // We can't rely on future.cancel() to terminate thread.
+        this.syncTask.stop();
         this.ftSync.get();
       } catch (Exception ex) {
         throw new RuntimeException(ex);
