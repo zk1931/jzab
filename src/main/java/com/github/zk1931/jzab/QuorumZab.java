@@ -23,6 +23,7 @@ import java.io.File;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -239,8 +240,8 @@ public class QuorumZab {
    * @throws InterruptedException in case of it's interrupted.
    */
   public void shutdown() throws InterruptedException {
-    boolean res = this.ft.cancel(true);
-    LOG.debug("Quorum has been shut down ? {}", res);
+    this.mainThread.shutdown();
+    LOG.debug("Shutdown successfully.");
   }
 
   public String getServerId() {
@@ -578,7 +579,7 @@ public class QuorumZab {
         LOG.debug("Caught Interrupted exception, it has been shut down?");
         participantState.getTransport().shutdown();
       } catch (Participant.LeftCluster e) {
-        LOG.debug("Exit Participant");
+        LOG.debug("Zab has been shutdown.");
       } catch (Exception e) {
         LOG.error("Caught exception :", e);
         throw e;
@@ -613,6 +614,19 @@ public class QuorumZab {
 
     void enqueueFlush(ByteBuffer buffer) {
       this.participantState.enqueueFlush(buffer);
+    }
+
+    // Waits until MainThread thread has been shutdown. This function should be
+    // called from a different thread.
+    void shutdown() throws InterruptedException {
+      this.participantState.enqueueShutdown();
+      try {
+        ft.get();
+      } catch (ExecutionException ex) {
+        throw new RuntimeException(ex);
+      } finally {
+        participantState.clear();
+      }
     }
   }
 }

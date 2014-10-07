@@ -139,6 +139,9 @@ public class Leader extends Participant {
           LOG.debug("Lost follower {} outside quorumSet.", peerId);
           this.transport.clear(peerId);
         }
+      } else if (tuple.getMessage().getType() == MessageType.SHUT_DOWN) {
+        LOG.debug("Got SHUT_DOWN, going to shut down Zab.");
+        throw new LeftCluster("Shutdown Zab");
       } else {
         return tuple;
       }
@@ -223,6 +226,8 @@ public class Leader extends Participant {
         ph.shutdown();
         this.quorumSet.remove(ph.getServerId());
       }
+      // Clears the message queue.
+      clearMessageQueue();
     }
   }
 
@@ -647,8 +652,6 @@ public class Leader extends Participant {
             pendingCopZxid = getNextProposedZxid();
             tuple.setZxid(pendingCopZxid);
             onRemove(tuple, preProcessor, ackProcessor, clusterConfig);
-          } else if (msg.getType() == MessageType.SHUT_DOWN) {
-            throw new LeftCluster("Left cluster");
           } else if (msg.getType() == MessageType.DELIVERED) {
             onDelivered(msg, snapProcessor);
           } else if (msg.getType() == MessageType.JOIN) {

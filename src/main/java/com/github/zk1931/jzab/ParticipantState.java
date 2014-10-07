@@ -153,5 +153,14 @@ public class ParticipantState implements Transport.Receiver {
       throw new RuntimeException("Interrupted Exception");
     }
   }
+
+  public void enqueueShutdown() {
+    Message shutdown = MessageBuilder.buildShutDown();
+    this.messageQueue.add(new MessageTuple(this.serverId, shutdown));
+  }
+
+  public void clear() throws InterruptedException {
+    this.transport.shutdown();
+  }
 }
 

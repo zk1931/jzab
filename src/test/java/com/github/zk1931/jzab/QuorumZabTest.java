@@ -168,7 +168,7 @@ public class QuorumZabTest extends TestBase  {
    * @throws InterruptedException
    * @throws IOException in case of IO failure.
    */
-  @Test(timeout=8000)
+  @Test(timeout=20000)
   public void testEstablishNewEpoch() throws InterruptedException, IOException {
     QuorumTestCallback cb = new QuorumTestCallback();
     TestStateMachine st = new TestStateMachine();
@@ -235,7 +235,7 @@ public class QuorumZabTest extends TestBase  {
   /**
    * Make sure the leader can start up by itself.
    */
-  @Test(timeout=8000)
+  @Test(timeout=20000)
   public void testSingleServer() throws InterruptedException, IOException {
     QuorumTestCallback cb = new QuorumTestCallback();
     TestStateMachine st = new TestStateMachine();
@@ -267,7 +267,7 @@ public class QuorumZabTest extends TestBase  {
    * @throws InterruptedException
    * @throws IOException in case of IO failure.
    */
-  @Test(timeout=8000)
+  @Test(timeout=20000)
   public void testSynchronizationCase1()
       throws InterruptedException, IOException {
     QuorumTestCallback cb1 = new QuorumTestCallback();
@@ -329,7 +329,7 @@ public class QuorumZabTest extends TestBase  {
    * @throws InterruptedException
    * @throws IOException in case of IO failure.
    */
-  @Test(timeout=8000)
+  @Test(timeout=20000)
   public void testSynchronizationCase2()
       throws InterruptedException, IOException {
     QuorumTestCallback cb1 = new QuorumTestCallback();
@@ -393,7 +393,7 @@ public class QuorumZabTest extends TestBase  {
    * @throws InterruptedException
    * @throws IOException in case of IO failure.
    */
-  @Test(timeout=8000)
+  @Test(timeout=20000)
   public void testSynchronizationCase3()
       throws InterruptedException, IOException {
     QuorumTestCallback cb1 = new QuorumTestCallback();
@@ -458,7 +458,7 @@ public class QuorumZabTest extends TestBase  {
    * @throws InterruptedException
    * @throws IOException in case of IO failure.
    */
-  @Test(timeout=8000)
+  @Test(timeout=20000)
   public void testSynchronizationCase4()
       throws InterruptedException, IOException {
     QuorumTestCallback cb1 = new QuorumTestCallback();
@@ -527,7 +527,7 @@ public class QuorumZabTest extends TestBase  {
    * @throws InterruptedException
    * @throws IOException in case of IO failure.
    */
-  @Test(timeout=8000)
+  @Test(timeout=20000)
   public void testSynchronizationCase5()
       throws InterruptedException, IOException {
     QuorumTestCallback cb1 = new QuorumTestCallback();
@@ -595,7 +595,7 @@ public class QuorumZabTest extends TestBase  {
    * @throws InterruptedException
    * @throws IOException in case of IO failure.
    */
-  @Test(timeout=8000)
+  @Test(timeout=20000)
   public void testSynchronizationCase6()
       throws InterruptedException, IOException {
     QuorumTestCallback cb1 = new QuorumTestCallback();
@@ -663,7 +663,7 @@ public class QuorumZabTest extends TestBase  {
    * @throws InterruptedException
    * @throws IOException in case of IO failure.
    */
-  @Test(timeout=8000)
+  @Test(timeout=20000)
   public void testSynchronizationCase7()
       throws InterruptedException, IOException {
     QuorumTestCallback cb1 = new QuorumTestCallback();
@@ -704,7 +704,7 @@ public class QuorumZabTest extends TestBase  {
    * @throws InterruptedException if it's interrupted.
    * @throws IOException in case of IO failure.
    */
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testBroadcasting()
       throws InterruptedException, IOException {
     QuorumTestCallback cb1 = new QuorumTestCallback();
@@ -793,7 +793,7 @@ public class QuorumZabTest extends TestBase  {
    * @throws InterruptedException if it's interrupted.
    * @throws IOException in case of IO failure.
    */
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testFailureCase1()
       throws InterruptedException, IOException {
     QuorumTestCallback cb1 = new QuorumTestCallback();
@@ -888,7 +888,7 @@ public class QuorumZabTest extends TestBase  {
    * @throws InterruptedException if it's interrupted.
    * @throws IOException in case of IO failure.
    */
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testFailureCase2()
       throws InterruptedException, IOException {
     QuorumTestCallback cb1 = new QuorumTestCallback();
@@ -1001,7 +1001,7 @@ public class QuorumZabTest extends TestBase  {
    * @throws InterruptedException if it's interrupted.
    * @throws IOException in case of IO failure.
    */
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testFailureCase3()
       throws InterruptedException, IOException {
     QuorumTestCallback cb1 = new QuorumTestCallback();
@@ -1296,7 +1296,7 @@ public class QuorumZabTest extends TestBase  {
     zab3.shutdown();
   }
 
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testReconfigRecoveryCase1()
       throws IOException, InterruptedException {
     /**
@@ -1376,7 +1376,7 @@ public class QuorumZabTest extends TestBase  {
     zab3.shutdown();
   }
 
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testReconfigRecoveryCase2()
       throws IOException, InterruptedException {
     /**
@@ -1461,7 +1461,7 @@ public class QuorumZabTest extends TestBase  {
     zab3.shutdown();
   }
 
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testReconfigRecoveryCase3()
       throws IOException, InterruptedException {
     /**
@@ -1553,7 +1553,7 @@ public class QuorumZabTest extends TestBase  {
     zab3.shutdown();
   }
 
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testJoinCase1()
       throws IOException, InterruptedException {
     /**
@@ -1608,7 +1608,7 @@ public class QuorumZabTest extends TestBase  {
     zab3.shutdown();
   }
 
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testJoinCase2()
       throws IOException, InterruptedException {
     /**
@@ -1668,7 +1668,7 @@ public class QuorumZabTest extends TestBase  {
     zab3.shutdown();
   }
 
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testJoinCase3()
       throws IOException, InterruptedException {
     /**
@@ -1753,6 +1753,9 @@ public class QuorumZabTest extends TestBase  {
 
     // Simulate server2 dies.
     zab2.shutdown();
+    cb1.waitDiscovering();
+    cb1.waitDiscovering();
+
     zab1.send(ByteBuffer.wrap("req2".getBytes()));
     // Waits the both txn1 and txn2 to be delivered or timeout on server1.
     boolean isCountedDown = st1.txnsCount.await(500, TimeUnit.MILLISECONDS);
@@ -1765,13 +1768,15 @@ public class QuorumZabTest extends TestBase  {
                             null,
                             getDirectory());
     zab2 = new QuorumZab(st2, cb2, null, state2);
+
     // Now all the transactions should be delivered.
     st1.txnsCount.await();
     st2.txnsCount.await();
     zab1.shutdown();
+    zab2.shutdown();
   }
 
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testRemoveCase1()
       throws IOException, InterruptedException {
     /**
@@ -1816,9 +1821,10 @@ public class QuorumZabTest extends TestBase  {
     // Waits for the transaction delivered.
     st1.txnsCount.await();
     zab1.shutdown();
+    zab2.shutdown();
   }
 
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testRemoveCase2()
       throws IOException, InterruptedException {
     /**
@@ -1861,7 +1867,7 @@ public class QuorumZabTest extends TestBase  {
     zab2.shutdown();
   }
 
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testRemoveCase3()
       throws IOException, InterruptedException {
     /**
@@ -1899,7 +1905,7 @@ public class QuorumZabTest extends TestBase  {
     zab1.shutdown();
   }
 
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testBufferingRequest() throws Exception {
     QuorumTestCallback cb1 = new QuorumTestCallback();
     QuorumTestCallback cb2 = new QuorumTestCallback();
@@ -1932,7 +1938,7 @@ public class QuorumZabTest extends TestBase  {
     zab2.shutdown();
   }
 
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testCallback() throws Exception {
     // Tests the clients' callback.
     QuorumTestCallback cb1 = new QuorumTestCallback();
@@ -1973,7 +1979,7 @@ public class QuorumZabTest extends TestBase  {
     zab2.shutdown();
   }
 
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testSendingWhileJoining() throws Exception {
     // Tests keep sending request while someone joins in, in the end two
     // servers should have the same state.
@@ -2011,7 +2017,7 @@ public class QuorumZabTest extends TestBase  {
     zab2.shutdown();
   }
 
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testSendingWhileRemoving() throws Exception {
     // Tests keep sending request while someone is removed.
     QuorumTestCallback cb1 = new QuorumTestCallback();
@@ -2051,7 +2057,7 @@ public class QuorumZabTest extends TestBase  {
     zab2.shutdown();
   }
 
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testContinuousConfig() throws Exception {
     // Tests continuous reconfiguration.
     QuorumTestCallback cb1 = new QuorumTestCallback();
@@ -2091,7 +2097,7 @@ public class QuorumZabTest extends TestBase  {
     Assert.assertTrue(st1.clusters.contains(server1));
   }
 
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testLeaderExit() throws Exception {
     /**
      * Starts server1.
@@ -2156,17 +2162,11 @@ public class QuorumZabTest extends TestBase  {
     zab3.shutdown();
   }
 
-  @Test(timeout=3000)
+  @Test(timeout=20000)
   public void testFlushFromLeader() throws Exception {
     QuorumTestCallback cb1 = new QuorumTestCallback();
-    QuorumTestCallback cb2 = new QuorumTestCallback();
-    QuorumTestCallback cb3 = new QuorumTestCallback();
     TestStateMachine st1 = new TestStateMachine(2);
-    TestStateMachine st2 = new TestStateMachine();
-    TestStateMachine st3 = new TestStateMachine();
     final String server1 = getUniqueHostPort();
-    final String server2 = getUniqueHostPort();
-    final String server3 = getUniqueHostPort();
 
     QuorumZab.TestState state1 = new QuorumZab
                                      .TestState(server1,
@@ -2188,7 +2188,7 @@ public class QuorumZabTest extends TestBase  {
     zab1.shutdown();
   }
 
-  @Test(timeout=3000)
+  @Test(timeout=20000)
   public void testFlushFromFollower() throws Exception {
     QuorumTestCallback cb1 = new QuorumTestCallback();
     QuorumTestCallback cb2 = new QuorumTestCallback();
@@ -2245,7 +2245,7 @@ public class QuorumZabTest extends TestBase  {
     zab2.shutdown();
   }
 
-  @Test(timeout=3000)
+  @Test(timeout=20000)
   public void testFlushFromFollowerSsl() throws Exception {
     QuorumTestCallback cb1 = new QuorumTestCallback();
     QuorumTestCallback cb2 = new QuorumTestCallback();
