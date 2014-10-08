@@ -1722,7 +1722,7 @@ public class ZabTest extends TestBase  {
     zab1.shutdown();
   }
 
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testJoinCase4()
       throws IOException, InterruptedException {
     /**

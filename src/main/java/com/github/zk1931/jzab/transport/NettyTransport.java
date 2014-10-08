@@ -221,8 +221,14 @@ public class NettyTransport extends Transport {
       senders.clear();
       LOG.debug("Shutdown complete");
     } finally {
-      workerGroup.shutdownGracefully();
-      bossGroup.shutdownGracefully();
+      try {
+        io.netty.util.concurrent.Future wf = workerGroup.shutdownGracefully();
+        io.netty.util.concurrent.Future bf = bossGroup.shutdownGracefully();
+        wf.await();
+        bf.await();
+      } catch (InterruptedException ex) {
+        LOG.debug("Interrupted while shutting down NioEventLoopGroup", ex);
+      }
     }
   }
 
@@ -459,7 +465,6 @@ public class NettyTransport extends Transport {
     private Bootstrap bootstrap = null;
     private Channel channel;
     private Future<Void> future;
-    private EventLoopGroup workerGroup = new NioEventLoopGroup();
     final BlockingDeque<Object> requests = new LinkedBlockingDeque<>();
 
     public Sender(String destination, Channel channel) {
@@ -611,8 +616,6 @@ public class NettyTransport extends Transport {
         }
       } catch (RejectedExecutionException ex) {
         LOG.debug("Ignoring rejected execution exception", ex);
-      } finally {
-        workerGroup.shutdownGracefully();
       }
     }
 

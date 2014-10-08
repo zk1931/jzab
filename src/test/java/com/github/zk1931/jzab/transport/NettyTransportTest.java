@@ -237,7 +237,7 @@ public class NettyTransportTest extends TestBase {
     transportB.shutdown();
   }
 
-  @Test(timeout=5000)
+  @Test(timeout=10000)
   public void testDisconnectServer() throws Exception {
     final String peerA = getUniqueHostPort();
     final String peerB = getUniqueHostPort();
@@ -467,7 +467,7 @@ public class NettyTransportTest extends TestBase {
     transportB.shutdown();
   }
 
-  @Test(timeout=5000)
+  @Test(timeout=10000)
   public void testBroadcast() throws Exception {
     final int messageCount = 100;
     final String peerA = getUniqueHostPort();
@@ -516,7 +516,7 @@ public class NettyTransportTest extends TestBase {
     transportC.shutdown();
   }
 
-  @Test(timeout=10000)
+  @Test(timeout=20000)
   public void testSsl() throws Exception {
     String peerA = getUniqueHostPort();
     String peerB = getUniqueHostPort();
@@ -634,7 +634,7 @@ public class NettyTransportTest extends TestBase {
     transportB.shutdown();
   }
 
-  @Test(timeout=5000)
+  @Test(timeout=10000)
   public void testSendFileSsl() throws Exception {
     int messageCount = 3;
     final String peerA = getUniqueHostPort();
