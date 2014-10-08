@@ -128,7 +128,7 @@ public class NettyTransportTest extends TestBase {
     disconnected.await();
   }
 
-  @Test(timeout=5000)
+  @Test(timeout=10000)
   public void testSend() throws Exception {
     final String peerA = getUniqueHostPort();
     final String peerB = getUniqueHostPort();
