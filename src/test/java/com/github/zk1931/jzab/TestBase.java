@@ -47,26 +47,20 @@ public class TestBase {
   public TestWatcher watchman= new TestWatcher() {
     @Override
     protected void starting(Description description) {
-      LOG.info("STARTING: {}", description);
-      LOG.debug("Before {} : Number of threads {}",
-                description,
-                Thread.getAllStackTraces().keySet().size());
+      int numThreads = Thread.getAllStackTraces().keySet().size();
+      LOG.info("STARTING: {}, # of threads: {}", description, numThreads);
     }
 
     @Override
     protected void failed(Throwable e, Description description) {
-      LOG.error("FAILED: {}", description, e);
-      LOG.debug("After {} : Number of threads {}",
-                description,
-                Thread.getAllStackTraces().keySet().size());
+      int numThreads = Thread.getAllStackTraces().keySet().size();
+      LOG.error("FAILED: {}, # of threads: {}", description, numThreads, e);
     }
 
     @Override
     protected void succeeded(Description description) {
-      LOG.info("SUCCEEDED: {}", description);
-      LOG.debug("After {} : Number of threads {}",
-          description,
-          Thread.getAllStackTraces().keySet().size());
+      int numThreads = Thread.getAllStackTraces().keySet().size();
+      LOG.info("SUCCEEDED: {}, # of threads: {}", description, numThreads);
     }
   };
 
