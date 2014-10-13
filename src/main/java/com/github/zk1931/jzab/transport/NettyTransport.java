@@ -66,6 +66,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
@@ -222,10 +223,17 @@ public class NettyTransport extends Transport {
       LOG.debug("Shutdown complete");
     } finally {
       try {
-        io.netty.util.concurrent.Future wf = workerGroup.shutdownGracefully();
-        io.netty.util.concurrent.Future bf = bossGroup.shutdownGracefully();
+        long quietPeriodSec = 0;
+        long timeoutSec = 10;
+        io.netty.util.concurrent.Future wf =
+          workerGroup.shutdownGracefully(quietPeriodSec, timeoutSec,
+                                         TimeUnit.SECONDS);
+        io.netty.util.concurrent.Future bf =
+          bossGroup.shutdownGracefully(quietPeriodSec, timeoutSec,
+                                       TimeUnit.SECONDS);
         wf.await();
         bf.await();
+        LOG.debug("Shutdown complete");
       } catch (InterruptedException ex) {
         LOG.debug("Interrupted while shutting down NioEventLoopGroup", ex);
       }
