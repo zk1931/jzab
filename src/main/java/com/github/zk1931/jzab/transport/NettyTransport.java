@@ -572,7 +572,7 @@ public class NettyTransport extends Transport {
       }
       // Restores pipeline to original state.
       channel.pipeline().remove(cwh);
-      channel.pipeline().addLast(prepender);
+      channel.pipeline().addLast("frameEncoder", prepender);
     }
 
     @Override
