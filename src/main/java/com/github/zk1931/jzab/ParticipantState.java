@@ -24,10 +24,9 @@ import java.security.GeneralSecurityException;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
+import com.github.zk1931.jzab.transport.Transport;
 import com.github.zk1931.jzab.Zab.StateChangeCallback;
 import com.github.zk1931.jzab.Zab.FailureCaseCallback;
-import com.github.zk1931.jzab.transport.NettyTransport;
-import com.github.zk1931.jzab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,7 +34,7 @@ import org.slf4j.LoggerFactory;
  * Participant state. It will be passed accross different instances of
  * Leader/Follower class during the lifetime of Zab.
  */
-public class ParticipantState implements Transport.Receiver {
+public class ParticipantState {
   /**
    * Persistent variables for Zab.
    */
@@ -52,8 +51,7 @@ public class ParticipantState implements Transport.Receiver {
    * it in queue, it's up to Leader/Follower/Election to take out
    * and process the message.
    */
-  private final BlockingQueue<MessageTuple> messageQueue =
-    new LinkedBlockingQueue<MessageTuple>();
+  private final BlockingQueue<MessageTuple> messageQueue;
 
   /**
    * Request queue. This queue buffers all the outgoing requests from clients,
@@ -79,6 +77,11 @@ public class ParticipantState implements Transport.Receiver {
   private int syncTimeoutMs;
 
   /**
+   * The object for leader election.
+   */
+  private final Election election;
+
+  /**
    * Callbacks for state change. Used for testing only.
    */
   private StateChangeCallback stateChangeCallback = null;
@@ -93,31 +96,21 @@ public class ParticipantState implements Transport.Receiver {
 
   ParticipantState(PersistentState persistence,
                    String serverId,
-                   SslParameters sslParam,
+                   Transport transport,
+                   BlockingQueue<MessageTuple> messageQueue,
                    StateChangeCallback stCallback,
                    FailureCaseCallback failureCallback,
-                   int syncTimeoutMs)
-      throws InterruptedException, IOException , GeneralSecurityException {
+                   int syncTimeoutMs,
+                   Election election)
+      throws IOException , GeneralSecurityException {
     this.persistence = persistence;
     this.serverId = serverId;
+    this.messageQueue = messageQueue;
     this.stateChangeCallback = stCallback;
     this.failureCallback = failureCallback;
-    this.transport = new NettyTransport(this.serverId, this,
-                                        sslParam, persistence.getLogDir());
+    this.transport = transport;
     this.syncTimeoutMs = syncTimeoutMs;
-  }
-
-  @Override
-  public void onReceived(String source, Message message) {
-    this.messageQueue.add(new MessageTuple(source, message));
-  }
-
-  @Override
-  public void onDisconnected(String server) {
-    LOG.debug("ONDISCONNECTED from {}", server);
-    Message disconnected = MessageBuilder.buildDisconnected(server);
-    this.messageQueue.add(new MessageTuple(this.serverId,
-                                           disconnected));
+    this.election = election;
   }
 
   public BlockingQueue<MessageTuple> getMessageQueue() {
@@ -164,6 +157,10 @@ public class ParticipantState implements Transport.Receiver {
     return this.failureCallback;
   }
 
+  public Election getElection() {
+    return this.election;
+  }
+
   public void enqueueRequest(ByteBuffer buffer) {
     Message msg = MessageBuilder.buildRequest(buffer);
     try {
@@ -196,8 +193,8 @@ public class ParticipantState implements Transport.Receiver {
     this.messageQueue.add(new MessageTuple(this.serverId, shutdown));
   }
 
-  public void clear() throws InterruptedException {
-    this.transport.shutdown();
+  public void enqueueMessage(MessageTuple tuple) {
+    this.messageQueue.add(tuple);
   }
 }
 

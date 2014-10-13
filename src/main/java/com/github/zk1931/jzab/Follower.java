@@ -65,6 +65,9 @@ public class Follower extends Participant {
       } else if (tuple == MessageTuple.GO_BACK) {
         // Goes back to leader election.
         throw new BackToElectionException();
+      } else if (tuple.getMessage().getType() == MessageType.ELECTION_INFO) {
+        // If it's election message, replies it directly.
+        this.election.reply(tuple);
       } else if (tuple.getMessage().getType() == MessageType.PROPOSED_EPOCH) {
         // Explicitly close the connection when gets PROPOSED_EPOCH message in
         // FOLLOWING state to help the peer selecting the right leader faster.
@@ -185,6 +188,8 @@ public class Follower extends Participant {
       deliverUndeliveredTxns();
 
       /* -- Broadcasting phase -- */
+      // Initialize the vote for leader election.
+      this.election.specifyLeader(this.electedLeader);
       changePhase(Phase.BROADCASTING);
       accepting();
     } catch (InterruptedException e) {
@@ -245,6 +250,7 @@ public class Follower extends Participant {
 
       /* -- Broadcasting phase -- */
       changePhase(Phase.BROADCASTING);
+      LOG.info("FOLLOWING");
       accepting();
     } catch (InterruptedException e) {
       LOG.debug("Participant is canceled by user.");

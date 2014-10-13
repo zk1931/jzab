@@ -131,4 +131,19 @@ public class ZabConfig {
     return Long.parseLong(this.prop.getProperty("snapshot_threshold_bytes",
                                                 "-1"));
   }
+
+  /**
+   * Gets the method for leader election. (All the servers in the cluster MUST
+   * use the SAME election method.)
+   *
+   * For now, we have 2 election methods:
+   *
+   * 1)fast_leader_election
+   * 2)round_robin_election (default)
+   *
+   * @return the configured election method.
+   */
+  public String getElectionMethod() {
+    return this.prop.getProperty("election", "round_robin_election");
+  }
 }

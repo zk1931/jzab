@@ -18,15 +18,21 @@
 
 package com.github.zk1931.jzab;
 
+import com.github.zk1931.jzab.proto.ZabMessage.Message;
+import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
+import com.github.zk1931.jzab.transport.NettyTransport;
+import com.github.zk1931.jzab.transport.Transport;
 import java.io.IOException;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.List;
 import java.util.Properties;
 import org.slf4j.Logger;
@@ -145,12 +151,15 @@ public class Zab {
             SslParameters sslParam) {
     this.config = new ZabConfig(initialState.prop);
     this.stateMachine = stateMachine;
-    this.mainThread = new MainThread(joinPeer, stateCallback, failureCallback);
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
     try {
       // Initialize.
-      this.mainThread.init(sslParam, initialState);
+      this.mainThread = new MainThread(joinPeer,
+                                       stateCallback,
+                                       failureCallback,
+                                       initialState,
+                                       sslParam);
     } catch (Exception e) {
       LOG.warn("Caught an exception while initializing Zab.");
       throw new IllegalStateException("Failed to initialize Zab.", e);
@@ -453,29 +462,37 @@ public class Zab {
   /**
    * Main working thread for Zab.
    */
-  class MainThread implements Callable<Void> {
+  class MainThread implements Callable<Void>,
+                              Transport.Receiver {
     /**
-     * The State for Zab. It will be passed accross different instances of
-     * Leader/Follower class.
+     * The state of Zab, it will be shared through different instance of
+     * Participant object.
      */
     private ParticipantState participantState;
-
+    /**
+     * Message queue. The receiving callback simply parses the message and puts
+     * it in queue, it's up to Leader/Follower/Election to take out
+     * and process the message.
+     */
+    private final BlockingQueue<MessageTuple> messageQueue =
+      new LinkedBlockingQueue<>();
     private final String joinPeer;
     private final StateChangeCallback stateChangeCallback;
     private final FailureCaseCallback failureCallback;
+    private final Transport transport;
+    private final Election election;
+    private final PersistentState persistence;
 
     MainThread(String joinPeer,
                StateChangeCallback stateChangeCallback,
-               FailureCaseCallback failureCallback) {
+               FailureCaseCallback failureCallback,
+               TestState testState,
+               SslParameters sslParam)
+        throws IOException, InterruptedException, GeneralSecurityException {
       this.joinPeer = joinPeer;
       this.stateChangeCallback = stateChangeCallback;
       this.failureCallback = failureCallback;
-    }
-
-    private void init(SslParameters sslParam,
-                      TestState testState)
-        throws IOException, InterruptedException, GeneralSecurityException {
-      PersistentState persistence =
+      this.persistence =
         new PersistentState(config.getLogDir(), testState.getLog());
       if (joinPeer != null) {
         // First time start up. Joining some one.
@@ -506,18 +523,29 @@ public class Zab {
           serverId = cnf.getServerId();
         }
       }
+      MDC.put("serverId", serverId);
+      // Creates transport.
+      this.transport =
+        new NettyTransport(serverId, this, sslParam, persistence.getLogDir());
+      // Use the configured election method.
+      if (config.getElectionMethod().equals("round_robin_election")) {
+        this.election = new RoundRobinElection(persistence);
+      } else {
+        LOG.error("Unknown election method : {}", config.getElectionMethod());
+        throw new RuntimeException("Unknwon election method");
+      }
       participantState = new ParticipantState(persistence,
                                               serverId,
-                                              sslParam,
+                                              transport,
+                                              messageQueue,
                                               stateChangeCallback,
                                               failureCallback,
-                                              config.getMinSyncTimeoutMs());
-      MDC.put("serverId", serverId);
+                                              config.getMinSyncTimeoutMs(),
+                                              this.election);
     }
 
     @Override
     public Void call() throws Exception {
-      Election electionAlg = new RoundRobinElection();
       try {
         if (this.joinPeer != null) {
           stateMachine.recovering();
@@ -525,9 +553,13 @@ public class Zab {
         }
         while (true) {
           stateMachine.recovering();
-          PersistentState persistence = participantState.getPersistence();
-          String leader = electionAlg.electLeader(persistence);
+          if (stateChangeCallback != null) {
+            stateChangeCallback.electing();
+          }
+          LOG.debug("Waiting for electing a leader.");
+          String leader = this.election.electLeader();
           LOG.debug("Select {} as leader.", leader);
+          // Clears the message queue before going to recovery.
           if (leader.equals(serverId)) {
             Participant participant =
               new Leader(participantState, stateMachine, config);
@@ -552,6 +584,20 @@ public class Zab {
         stateChangeCallback.leftCluster();
       }
       return null;
+    }
+
+    @Override
+    public void onReceived(String source, Message message) {
+      MessageTuple tuple = new MessageTuple(source, message);
+      this.messageQueue.add(tuple);
+    }
+
+    @Override
+    public void onDisconnected(String server) {
+      LOG.debug("ONDISCONNECTED from {}", server);
+      Message disconnected = MessageBuilder.buildDisconnected(server);
+      this.participantState.enqueueMessage(new MessageTuple(serverId,
+                                                            disconnected));
     }
 
     void join(String peer) throws Exception {
@@ -587,7 +633,25 @@ public class Zab {
       } catch (ExecutionException ex) {
         throw new RuntimeException(ex);
       } finally {
-        participantState.clear();
+        // Make sure we shutdown the transport in the end.
+        this.transport.shutdown();
+      }
+    }
+
+    /**
+     * Clears all the messages in the message queue, clears the peer in
+     * transport if it's the DISCONNECTED message. This function should be
+     * called only right before going back to recovery.
+     */
+    protected void clearMessageQueue() {
+      MessageTuple tuple = null;
+      while ((tuple = messageQueue.poll()) != null) {
+        Message msg = tuple.getMessage();
+        if (msg.getType() == MessageType.DISCONNECTED) {
+          this.transport.clear(msg.getDisconnected().getServerId());
+        } else if (msg.getType() == MessageType.SHUT_DOWN) {
+          throw new Participant.LeftCluster("Shutdown Zab.");
+        }
       }
     }
   }

@@ -26,12 +26,17 @@ import org.slf4j.LoggerFactory;
 public class RoundRobinElection implements Election {
   private int round = 0;
   private long lastEpoch = -1;
+  private PersistentState persistence;
 
   private static final Logger LOG =
       LoggerFactory.getLogger(RoundRobinElection.class);
 
+  RoundRobinElection(PersistentState persistence) {
+    this.persistence = persistence;
+  }
+
   @Override
-  public String electLeader(PersistentState persistence) throws Exception {
+  public String electLeader() throws Exception {
     ClusterConfiguration cnf = persistence.getLastSeenConfig();
     if (persistence.getProposedEpoch() != this.lastEpoch) {
       LOG.debug("Last proposed epoch is changed from {} to {}, resets round.",
@@ -55,8 +60,11 @@ public class RoundRobinElection implements Election {
   }
 
   @Override
-  public void processMessage() {
-    // Ignore the process message.
+  public void specifyLeader(String leader) {
   }
 
+  @Override
+  public void reply(MessageTuple tuple) {
+    // Ignore the process message.
+  }
 }

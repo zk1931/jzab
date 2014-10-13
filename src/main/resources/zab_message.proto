@@ -38,6 +38,7 @@ message Message {
     // The request of synchronizing the log.
     SYNC_HISTORY = 29;
     SYNC_HISTORY_REPLY = 30;
+    ELECTION_INFO = 31;
     INVALID_MESSAGE = 100;
   }
 
@@ -71,6 +72,7 @@ message Message {
   optional Join join = 24;
   optional SyncHistory sync_history = 25;
   optional SyncHistoryReply sync_history_reply = 26;
+  optional ElectionInfo election_info = 27;
   optional InvalidMessage invalid = 30;
 }
 
@@ -166,7 +168,7 @@ message Handshake {
 // Once onDisconnected callback is called, passe this message to main thread to
 // let it handles the disconnection. This message will not go through network.
 message Disconnected {
-  required string serverId = 1;
+  required string server_id = 1;
 }
 
 message ClusterConfiguration {
@@ -209,9 +211,17 @@ message Flush {
 }
 
 message SyncHistory {
-  required Zxid lastZxid = 1;
+  required Zxid last_zxid = 1;
 }
 
 message SyncHistoryReply {
-  required int32 syncTimeout = 1;
+  required int32 sync_timeout = 1;
+}
+
+message ElectionInfo {
+  required string vote = 1;
+  required Zxid zxid = 2;
+  required int64 ack_epoch = 3;
+  required bool is_electing = 4;
+  required int64 round = 5;
 }
