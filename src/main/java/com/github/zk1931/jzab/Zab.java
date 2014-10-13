@@ -528,7 +528,10 @@ public class Zab {
       this.transport =
         new NettyTransport(serverId, this, sslParam, persistence.getLogDir());
       // Use the configured election method.
-      if (config.getElectionMethod().equals("round_robin_election")) {
+      if (config.getElectionMethod().equals("fast_leader_election")) {
+        this.election =
+          new FastLeaderElection(persistence, transport, messageQueue);
+      } else if (config.getElectionMethod().equals("round_robin_election")) {
         this.election = new RoundRobinElection(persistence);
       } else {
         LOG.error("Unknown election method : {}", config.getElectionMethod());

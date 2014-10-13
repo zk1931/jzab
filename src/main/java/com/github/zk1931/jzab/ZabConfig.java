@@ -138,12 +138,12 @@ public class ZabConfig {
    *
    * For now, we have 2 election methods:
    *
-   * 1)fast_leader_election
-   * 2)round_robin_election (default)
+   * 1)fast_leader_election (default)
+   * 2)round_robin_election
    *
    * @return the configured election method.
    */
   public String getElectionMethod() {
-    return this.prop.getProperty("election", "round_robin_election");
+    return this.prop.getProperty("election", "fast_leader_election");
   }
 }
