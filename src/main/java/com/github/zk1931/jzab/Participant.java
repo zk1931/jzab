@@ -380,7 +380,7 @@ public abstract class Participant {
       // Truncates the whole log.
       log.truncate(Zxid.ZXID_NOT_EXIST);
       // Checks if there's any proposals after snapshot.
-      if (lastZxidPeer.compareTo(Zxid.ZXID_NOT_EXIST) == 0) {
+      if (lastZxidPeer.compareTo(snapZxid) == 0) {
         // If no, done with synchronization.
         waitForSyncEnd(peer);
         return;
