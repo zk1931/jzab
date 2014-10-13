@@ -61,6 +61,7 @@ import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -586,6 +587,9 @@ public class NettyTransport extends Transport {
           } else if (req instanceof File) {
             File file = (File)req;
             sendFile(file);
+          } else if (req instanceof Shutdown) {
+            LOG.debug("Got shutdown request.");
+            break;
           }
         }
       } catch (InterruptedException ex) {
@@ -595,8 +599,9 @@ public class NettyTransport extends Transport {
         LOG.warn("Sender failed with an exception", ex);
         throw ex;
       } finally {
-        channel.close().syncUninterruptibly();
+        channel.close();
       }
+      return null;
     }
 
     public void start() {
@@ -609,7 +614,12 @@ public class NettyTransport extends Transport {
       LOG.debug("Shutting down the sender: {} => {}", hostPort, destination);
       try {
         if (future != null) {
-          future.cancel(true);
+          try {
+            this.requests.add(new Shutdown());
+            future.get();
+          } catch (InterruptedException | ExecutionException ex) {
+            LOG.debug("Ignore the exception", ex);
+          }
         }
         if (channel != null) {
           channel.close().syncUninterruptibly();
@@ -617,6 +627,10 @@ public class NettyTransport extends Transport {
       } catch (RejectedExecutionException ex) {
         LOG.debug("Ignoring rejected execution exception", ex);
       }
+    }
+
+    class Shutdown {
+      // We use it to shutdown the sender thread.
     }
 
     /**
