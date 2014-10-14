@@ -31,7 +31,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Configurations(ensemble of cluster, serverId, version).
  */
-class ClusterConfiguration {
+class ClusterConfiguration implements Cloneable {
   private Zxid version;
   private final List<String> peers;
   private final String serverId;

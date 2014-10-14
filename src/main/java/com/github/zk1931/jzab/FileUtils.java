@@ -23,7 +23,9 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.util.Properties;
 import org.slf4j.Logger;
@@ -59,7 +61,9 @@ public final class FileUtils {
     File temp = File.createTempFile(file.getName(), null,
                                     file.getAbsoluteFile().getParentFile());
     try (FileOutputStream fos = new FileOutputStream(temp);
-         PrintWriter pw = new PrintWriter(fos)) {
+         OutputStreamWriter os =
+          new OutputStreamWriter(fos, Charset.forName("UTF-8"));
+         PrintWriter pw = new PrintWriter(os)) {
       pw.print(Long.toString(value));
       fos.getChannel().force(true);
     }
@@ -77,7 +81,8 @@ public final class FileUtils {
    */
   public static long readLongFromFile(File file) throws IOException {
     try (FileInputStream fis = new FileInputStream(file);
-         BufferedReader br = new BufferedReader(new InputStreamReader(fis))) {
+         BufferedReader br = new BufferedReader(
+           new InputStreamReader(fis, Charset.forName("UTF-8")))) {
       long value = Long.parseLong(br.readLine());
       return value;
     }
