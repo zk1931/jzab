@@ -371,6 +371,7 @@ public class Leader extends Participant {
       PeerHandler ph = new PeerHandler(source, transport,
                                        config.getTimeoutMs()/3);
       ph.setLastProposedEpoch(peerProposedEpoch);
+      ph.setSyncTimeoutMs(syncTimeoutMs);
       this.quorumSet.put(source, ph);
     }
     LOG.debug("Got proposed epoch from a quorum.");
