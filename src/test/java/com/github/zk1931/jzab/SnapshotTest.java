@@ -28,6 +28,8 @@ import java.nio.ByteBuffer;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import org.junit.Assert;
@@ -84,7 +86,13 @@ class SnapshotStateMachine implements StateMachine {
     LOG.debug("RESTORE is called.");
     try {
       ObjectInputStream oin = new ObjectInputStream(is);
-      state = (ConcurrentHashMap<String, String>)oin.readObject();
+      ConcurrentHashMap<?, ?> map = (ConcurrentHashMap<?, ?>)oin.readObject();
+      state = new ConcurrentHashMap<String, String>();
+      Iterator it = map.entrySet().iterator();
+      while (it.hasNext()) {
+        Map.Entry pairs = (Map.Entry)it.next();
+        state.put((String)pairs.getKey(), (String)pairs.getValue());
+      }
       LOG.debug("The size of map after recovery from snapshot file is {}",
                 state.size());
     } catch (Exception e) {

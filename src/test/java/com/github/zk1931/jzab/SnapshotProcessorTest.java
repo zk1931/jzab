@@ -106,7 +106,7 @@ public class SnapshotProcessorTest extends TestBase {
     sp.shutdown();
     File snap = persistence.getSnapshotFile();
     ObjectInputStream oi = new ObjectInputStream(new FileInputStream(snap));
-    HashSet<String> stateRestored = (HashSet<String>)oi.readObject();
+    HashSet stateRestored = (HashSet)oi.readObject();
     // Make sure the snapshot is correct.
     Assert.assertEquals(state, stateRestored);
   }

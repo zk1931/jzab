@@ -42,7 +42,7 @@ public class LogTest extends TestBase {
 
   private static final Logger LOG = LoggerFactory.getLogger(LogTest.class);
 
-  Class logClass;
+  Class<Log> logClass;
 
   String fileName;
 
@@ -55,7 +55,7 @@ public class LogTest extends TestBase {
       });
   }
 
-  public LogTest(Class logClass, String fileName) {
+  public LogTest(Class<Log> logClass, String fileName) {
     LOG.debug("Testting impelementation of {}", logClass);
     this.logClass = logClass;
     this.fileName = fileName;
@@ -63,12 +63,12 @@ public class LogTest extends TestBase {
 
   Log getLog() throws Exception {
     File f = new File(getDirectory(), this.fileName);
-    if (logClass == RollingLog.class) {
+    if (logClass == (Class<?>)RollingLog.class) {
       // For testing purpose, set the rolling size to be very small.
-      return (Log)logClass.getConstructor(File.class, Long.TYPE)
+      return logClass.getConstructor(File.class, Long.TYPE)
                           .newInstance(f, 128);
     } else {
-      return (Log)logClass.getConstructor(File.class).newInstance(f);
+      return logClass.getConstructor(File.class).newInstance(f);
     }
   }
 
@@ -221,7 +221,7 @@ public class LogTest extends TestBase {
 
   @Test(expected=RuntimeException.class)
   public void testCorruptChecksum() throws Exception {
-    if (logClass == SimpleLog.class) {
+    if (logClass == (Class<?>)SimpleLog.class) {
       Log log = getLog();
       appendTxns(log, new Zxid(0, 0), 1);
       // Corrupts checksum.
@@ -236,7 +236,7 @@ public class LogTest extends TestBase {
 
   @Test(expected=RuntimeException.class)
   public void testCorruptLength() throws Exception {
-    if (logClass == SimpleLog.class) {
+    if (logClass == (Class<?>)SimpleLog.class) {
       Log log = getLog();
       appendTxns(log, new Zxid(0, 0), 1);
       // Corrupts length.
@@ -251,7 +251,7 @@ public class LogTest extends TestBase {
 
   @Test(expected=RuntimeException.class)
   public void testCorruptZxid() throws Exception {
-    if (logClass == SimpleLog.class) {
+    if (logClass == (Class<?>)SimpleLog.class) {
       Log log = getLog();
       appendTxns(log, new Zxid(0, 0), 1);
       // Corrupts zxid.
@@ -266,7 +266,7 @@ public class LogTest extends TestBase {
 
   @Test(expected=RuntimeException.class)
   public void testCorruptType() throws Exception {
-    if (logClass == SimpleLog.class) {
+    if (logClass == (Class<?>)SimpleLog.class) {
       Log log = getLog();
       appendTxns(log, new Zxid(0, 0), 1);
       // Corrupts type.
@@ -281,7 +281,7 @@ public class LogTest extends TestBase {
 
   @Test(expected=RuntimeException.class)
   public void testCorruptTxn() throws Exception {
-    if (logClass == SimpleLog.class) {
+    if (logClass == (Class<?>)SimpleLog.class) {
       Log log = getLog();
       appendTxns(log, new Zxid(0, 0), 1);
       // Corrupts Transaction.
