@@ -74,8 +74,8 @@ public class RoundRobinElectionTest extends TestBase {
   public void testSingleRoundElection() throws Exception {
     PersistentState ps
       = DummyPersistentState.make(getDirectory(), "server1;server2");
-    Election election = new RoundRobinElection();
-    String electedLeader = election.electLeader(ps);
+    Election election = new RoundRobinElection(ps);
+    String electedLeader = election.electLeader();
     Assert.assertEquals(electedLeader, "server1");
   }
 
@@ -86,14 +86,14 @@ public class RoundRobinElectionTest extends TestBase {
   public void testMultiRoundsElection() throws Exception {
     PersistentState ps
       = DummyPersistentState.make(getDirectory(), "server1;server2;server3");
-    Election election = new RoundRobinElection();
-    String electedLeader = election.electLeader(ps);
+    Election election = new RoundRobinElection(ps);
+    String electedLeader = election.electLeader();
     // First round should select server 1.
     Assert.assertEquals(electedLeader, "server1");
-    electedLeader = election.electLeader(ps);
+    electedLeader = election.electLeader();
     // Second round should select server 2.
     Assert.assertEquals(electedLeader, "server2");
-    electedLeader = election.electLeader(ps);
+    electedLeader = election.electLeader();
     // Third round should select server 3.
     Assert.assertEquals(electedLeader, "server3");
   }
@@ -105,17 +105,17 @@ public class RoundRobinElectionTest extends TestBase {
   public void testResetRound() throws Exception {
     PersistentState ps
       = DummyPersistentState.make(getDirectory(), "server1;server2");
-    Election election = new RoundRobinElection();
+    Election election = new RoundRobinElection(ps);
     // First round election, the round number will be set to 1.
-    String electedLeader = election.electLeader(ps);
+    String electedLeader = election.electLeader();
     Assert.assertEquals(electedLeader, "server1");
     // Increase epoch number by 1.
-    ps = DummyPersistentState.make(getDirectory(), "server1;server2", 0);
-    electedLeader = election.electLeader(ps);
+    DummyPersistentState.make(getDirectory(), "server1;server2", 0);
+    electedLeader = election.electLeader();
     // Now since the round number is reset to 0, it should select server1.
     Assert.assertEquals(electedLeader, "server1");
     // Third election.
-    electedLeader = election.electLeader(ps);
+    electedLeader = election.electLeader();
     // Since the epoch remains same, it should select server2.
     Assert.assertEquals(electedLeader, "server2");
   }

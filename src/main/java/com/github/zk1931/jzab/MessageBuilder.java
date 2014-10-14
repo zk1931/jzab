@@ -581,11 +581,44 @@ public final class MessageBuilder {
                                .setSyncHistory(sync).build();
   }
 
+  /**
+   * Creates the SYNC_HISTORY_REPLY message. It's the first time to tell the
+   * joiner the synchronization timeout.
+   *
+   * @param timeout timeout in milliseconds.
+   * @return a protobuf message.
+   */
   public static Message buildSyncHistoryReply(int timeout) {
     ZabMessage.SyncHistoryReply reply =
       ZabMessage.SyncHistoryReply.newBuilder().setSyncTimeout(timeout).build();
     return Message.newBuilder().setType(MessageType.SYNC_HISTORY_REPLY)
                                .setSyncHistoryReply(reply).build();
+  }
+
+  /**
+   * Creates the ELECTION_INFO message.
+   *
+   * @param vote the server who is selected as the leader.
+   * @param lastZxid the last zxid of the selected leader.
+   * @param round the round number.
+   * @param electing true if current server is in electing phase, false otw.
+   * @return a protobuf message.
+   */
+  public static Message buildElectionInfo(String vote, Zxid lastZxid,
+                                          long ackEpoch,
+                                          long round,
+                                          boolean electing) {
+    ZabMessage.Zxid zxid = toProtoZxid(lastZxid);
+    ZabMessage.ElectionInfo ei = ZabMessage.ElectionInfo.newBuilder()
+                                                        .setVote(vote)
+                                                        .setZxid(zxid)
+                                                        .setAckEpoch(ackEpoch)
+                                                        .setIsElecting(electing)
+                                                        .setRound(round)
+                                                        .build();
+    return Message.newBuilder().setType(MessageType.ELECTION_INFO)
+                               .setElectionInfo(ei)
+                               .build();
   }
 }
 

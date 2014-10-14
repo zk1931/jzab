@@ -107,6 +107,9 @@ public class Leader extends Participant {
       } else if (tuple == MessageTuple.GO_BACK) {
         // Goes back to leader election.
         throw new BackToElectionException();
+      } else if (tuple.getMessage().getType() == MessageType.ELECTION_INFO) {
+        // If it's election message, replies it directly.
+        this.election.reply(tuple);
       } else if (tuple.getMessage().getType() == MessageType.DISCONNECTED) {
         // Got DISCONNECTED message enqueued by onDisconnected callback.
         Message msg = tuple.getMessage();
@@ -204,6 +207,8 @@ public class Leader extends Participant {
       persistence.setAckEpoch(0);
 
       /* -- Broadcasting phase -- */
+      // Initialize the vote for leader election.
+      this.election.specifyLeader(this.serverId);
       changePhase(Phase.BROADCASTING);
       broadcasting();
     } catch (InterruptedException e) {
@@ -276,6 +281,7 @@ public class Leader extends Participant {
         ph.startBroadcastingTask();
         ph.updateHeartbeatTime();
       }
+      LOG.info("LEADING");
       broadcasting();
     } catch (InterruptedException e) {
       LOG.debug("Participant is canceled by user.");

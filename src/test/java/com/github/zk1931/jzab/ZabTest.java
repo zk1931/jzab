@@ -163,76 +163,6 @@ public class ZabTest extends TestBase  {
     = LoggerFactory.getLogger(ZabTest.class);
 
   /**
-   * Test if the new epoch is established.
-   *
-   * @throws InterruptedException
-   * @throws IOException in case of IO failure.
-   */
-  @Test(timeout=20000)
-  public void testEstablishNewEpoch() throws InterruptedException, IOException {
-    QuorumTestCallback cb = new QuorumTestCallback();
-    TestStateMachine st = new TestStateMachine();
-
-    String server1 = getUniqueHostPort();
-    String server2 = getUniqueHostPort();
-    String server3 = getUniqueHostPort();
-    String servers = server1 + ";" + server2 + ";" + server3;
-
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                servers,
-                                                getDirectory())
-                                     .setLog(new DummyLog(10))
-                                     .setAckEpoch(0);
-
-    Zab zab1 = new Zab(st, cb, null, state1);
-
-    DummyLog log = new DummyLog(5);
-
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                servers,
-                                                getDirectory())
-                                     .setLog(log)
-                                     .setProposedEpoch(2)
-                                     .setAckEpoch(1);
-
-
-    Zab zab2 = new Zab(st, null, null, state2);
-
-    Zab.TestState state3 = new Zab
-                                     .TestState(server3,
-                                                servers,
-                                                getDirectory())
-                                     .setLog(log)
-                                     .setProposedEpoch(2)
-                                     .setAckEpoch(1);
-
-    Zab zab3 = new Zab(st, null, null, state3);
-
-    cb.waitBroadcasting();
-    // The established epoch should be 3.
-    Assert.assertEquals(cb.establishedEpoch, 3);
-
-    // The elected leader should be server1.
-    Assert.assertEquals(cb.electedLeader, server1);
-
-    // server 2 and server 3 should have the "best" history.
-    Assert.assertTrue(cb.syncFollower.equals(server2) ||
-                      cb.syncFollower.equals(server3));
-
-    // The last zxid of the owner of initial history should be (0, 4)
-    Assert.assertEquals(cb.syncZxid.compareTo(new Zxid(0, 4)), 0);
-
-    // The last ack epoch of the owner of initial history should be 1.
-    Assert.assertEquals(cb.syncAckEpoch, 1);
-
-    zab1.shutdown();
-    zab2.shutdown();
-    zab3.shutdown();
-  }
-
-  /**
    * Make sure the leader can start up by itself.
    */
   @Test(timeout=20000)
@@ -1753,8 +1683,7 @@ public class ZabTest extends TestBase  {
 
     // Simulate server2 dies.
     zab2.shutdown();
-    cb1.waitDiscovering();
-    cb1.waitDiscovering();
+    cb1.waitElection();
 
     zab1.send(ByteBuffer.wrap("req2".getBytes()));
     // Waits the both txn1 and txn2 to be delivered or timeout on server1.
@@ -2343,5 +2272,60 @@ public class ZabTest extends TestBase  {
     cb2.waitBroadcasting();
     zab1.shutdown();
     zab2.shutdown();
+  }
+
+  @Test(timeout=20000)
+  public void testRecoveryAfterJoin()
+      throws IOException, InterruptedException {
+    /**
+     * Case 1 :
+     *
+     * 1. starts server1
+     * 2. starts server2 join in server1
+     * 3. starts server3 join in server1
+     * 4. server3 crashes.
+     *
+     * 5 server3 recovers and finds out who is the leader.
+     */
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    QuorumTestCallback cb3 = new QuorumTestCallback();
+    TestStateMachine st1 = new TestStateMachine();
+    TestStateMachine st2 = new TestStateMachine();
+    TestStateMachine st3 = new TestStateMachine();
+    final String server1 = getUniqueHostPort();
+    final String server2 = getUniqueHostPort();
+    final String server3 = getUniqueHostPort();
+
+    Zab.TestState state1 = new Zab.TestState(server1,
+                                             null,
+                                             getDirectory());
+    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
+    cb1.waitBroadcasting();
+
+    Zab.TestState state2 = new Zab.TestState(server2,
+                                             null,
+                                             getDirectory());
+    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
+    cb1.waitCopCommit();
+
+    Zab.TestState state3 = new Zab.TestState(server3,
+                                             null,
+                                             getDirectory());
+    Zab zab3 = new Zab(st3, cb3, null, state3, server1);
+    cb1.waitCopCommit();
+    cb3.waitBroadcasting();
+
+    // Simulates zab3 failures.
+    zab3.shutdown();
+
+    // Recovers from the log directory.
+    cb3 = new QuorumTestCallback();
+    zab3 = new Zab(st3, cb3, null, state3);
+    cb3.waitBroadcasting();
+
+    zab1.shutdown();
+    zab2.shutdown();
+    zab3.shutdown();
   }
 }

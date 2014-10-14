@@ -135,6 +135,13 @@ public abstract class Participant {
   protected final Semaphore semPendingReqs =
     new Semaphore(ZabConfig.MAX_PENDING_REQS);
 
+  /**
+   * The object used for election, the participant might receive election
+   * message from peers when it's in non-electing phase, it still needs to
+   * reply its vote to them.
+   */
+  protected final Election election;
+
   protected Phase currentPhase = Phase.DISCOVERING;
 
   private static final Logger LOG = LoggerFactory.getLogger(Participant.class);
@@ -184,6 +191,7 @@ public abstract class Participant {
     this.stateChangeCallback = participantState.getStateChangeCallback();
     this.failCallback = participantState.getFailureCaseCallback();
     this.config = config;
+    this.election = participantState.getElection();
   }
 
   protected abstract void join(String peer) throws Exception;

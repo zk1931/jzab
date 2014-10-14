@@ -525,7 +525,7 @@ public class NettyTransport extends Transport {
           } else {
             LOG.debug("Failed to connect to {}: {}", destination,
                       cfuture.cause().getMessage());
-            handshakeFailed();
+            handshakeFailed(false);
           }
         }
       });
@@ -542,11 +542,20 @@ public class NettyTransport extends Transport {
       sender.start();
     }
 
-    public void handshakeFailed() {
+    public void handshakeFailed(boolean tie) {
       LOG.debug("Client handshake failed: {} => {}", hostPort, destination);
       Sender sender = senders.get(destination);
       if (sender != null) {
         sender.shutdown();
+      }
+      if (tie) {
+        try {
+          // If the handshake failure is caused by the tie, does the random
+          // sleep.
+          Thread.sleep((int)(Math.random() * 300));
+        } catch (InterruptedException ex) {
+          Thread.currentThread().interrupt();
+        }
       }
       receiver.onDisconnected(destination);
     }
@@ -688,7 +697,7 @@ public class NettyTransport extends Transport {
       public void channelInactive(ChannelHandlerContext ctx) throws Exception {
         LOG.debug("Got disconnected from {}", destination);
         ctx.close();
-        handshakeFailed();
+        handshakeFailed(true);
       }
     }
   }
