@@ -118,7 +118,7 @@ public class SnapshotTest extends TestBase {
   private static final Logger LOG =
     LoggerFactory.getLogger(SnapshotTest.class);
 
-  @Test
+  @Test(timeout=30000)
   public void testSnapshotSingleServer() throws Exception {
     final int nTxns = 20;
     QuorumTestCallback cb1 = new QuorumTestCallback();
@@ -146,7 +146,7 @@ public class SnapshotTest extends TestBase {
     zab.shutdown();
   }
 
-  @Test
+  @Test(timeout=30000)
   public void testSnapshotCluster() throws Exception {
     final int nTxns = 20;
     QuorumTestCallback cb1 = new QuorumTestCallback();
@@ -205,7 +205,7 @@ public class SnapshotTest extends TestBase {
     zab2.shutdown();
   }
 
-  @Test
+  @Test(timeout=30000)
   public void testSnapshotSynchronization() throws Exception {
     // Starts server1, sends transactions txn1,txn2 ... txnn.
     // Starts server2 joins server1, the snapshot will be used to synchronize
@@ -218,8 +218,10 @@ public class SnapshotTest extends TestBase {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     Properties prop1 = new Properties();
-    // For testing purpose, set the threshold to 64 bytes..
-    prop1.setProperty("snapshot_threshold_bytes", "64");
+    // In order to reproduce the bug we found in snapshot transferring, we set
+    // the threshold to 290 bytes. In this case, both the last zxid and snap
+    // zxid will be (0, 50), which triggered the bug in old code.
+    prop1.setProperty("snapshot_threshold_bytes", "290");
     prop1.setProperty("serverId", server1);
     prop1.setProperty("logdir",
                       getDirectory().getPath() + File.separator + server1);
@@ -233,7 +235,7 @@ public class SnapshotTest extends TestBase {
     for (int i = 0; i < nTxns; ++i) {
       zab1.send(ByteBuffer.wrap(("txns" + i).getBytes()));
       // Sleep a while to avoid all the transactions batch together.
-      Thread.sleep(20);
+      Thread.sleep(5);
     }
     st1.txnsCount.await();
     // Server2 joins in.
