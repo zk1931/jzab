@@ -132,7 +132,11 @@ public class RollingLog implements Log {
       // Deletes all the log files after the file which contains the
       // transaction with zxid.
       File file = logFiles.get(i);
-      file.delete();
+      boolean result = file.delete();
+      if (!result) {
+        LOG.warn("The file {} might not be deleted successfully.",
+                  file.getName());
+      }
     }
     if (lastKeepIdx != -1) {
       File file = this.logFiles.get(lastKeepIdx);

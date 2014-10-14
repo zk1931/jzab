@@ -380,7 +380,6 @@ public class Zab {
     File logDir = null;
     private File fAckEpoch;
     private File fProposedEpoch;
-    private File fLastSeenConfig;
     private PersistentState persistence;
     Log log = null;
 

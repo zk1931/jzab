@@ -156,7 +156,7 @@ public class Follower extends Participant {
           tuple = getExpectedMessage(MessageType.QUERY_LEADER_REPLY, peer);
           break;
         } catch (TimeoutException ex) {
-          int retryInterval = 1;
+          long retryInterval = 1;
           LOG.warn("Timeout while contacting leader, going to retry after {} "
               + "second.", retryInterval);
           // Waits for 1 second.
