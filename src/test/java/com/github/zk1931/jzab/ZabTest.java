@@ -2317,4 +2317,31 @@ public class ZabTest extends TestBase  {
     zab1.shutdown();
     zab2.shutdown();
   }
+
+  @Test(timeout=20000)
+  public void testRetryJoin()
+      throws IOException, InterruptedException {
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    TestStateMachine st1 = new TestStateMachine(1);
+    TestStateMachine st2 = new TestStateMachine(1);
+    final String server1 = getUniqueHostPort();
+    final String server2 = getUniqueHostPort();
+    // Starts the joiner first.
+    Zab.TestState state2 = new Zab.TestState(server2,
+                                             null,
+                                             getDirectory());
+    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
+    // Waits for a while to make zab2 first joining fails.
+    Thread.sleep(1000);
+    // The starts the leader.
+    Zab.TestState state1 = new Zab.TestState(server1,
+                                             null,
+                                             getDirectory());
+    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
+    // Finally the joiner will join the cluster.
+    cb2.waitBroadcasting();
+    zab1.shutdown();
+    zab2.shutdown();
+  }
 }

@@ -146,29 +146,39 @@ public class Follower extends Participant {
     try {
       LOG.debug("Query leader from {}", peer);
       Message query = MessageBuilder.buildQueryLeader();
-      sendMessage(peer, query);
-      MessageTuple tuple = getExpectedMessage(MessageType.QUERY_LEADER_REPLY,
-                                              peer);
+      MessageTuple tuple = null;
+      while (true) {
+        // The joiner might gets started before the cluster gets started.
+        // Instead of reporting failure immediately, the follower will retry
+        // joining the cluster until joining the cluster successfully.
+        try {
+          sendMessage(peer, query);
+          tuple = getExpectedMessage(MessageType.QUERY_LEADER_REPLY, peer);
+          break;
+        } catch (TimeoutException ex) {
+          int retryInterval = 1;
+          LOG.warn("Timeout while contacting leader, going to retry after {} "
+              + "second.", retryInterval);
+          // Waits for 1 second.
+          Thread.sleep(retryInterval * 1000);
+        }
+      }
       this.electedLeader = tuple.getMessage().getReply().getLeader();
       LOG.debug("Got current leader {}", this.electedLeader);
 
       /* -- Synchronizing phase -- */
-      boolean retry = false;
-      do {
+      while (true) {
         try {
-          retry = false;
           joinSynchronization();
+          break;
         } catch (TimeoutException | BackToElectionException ex) {
           LOG.debug("Timeout({} ms) in synchronizing, retrying. Last zxid : {}",
                     getSyncTimeoutMs(),
                     persistence.getLog().getLatestZxid());
-          // If the join fails in synchronizing phase, retry.
-          // The leader side should have adjusted the sync timeout.
-          retry = true;
           transport.clear(electedLeader);
           clearMessageQueue();
         }
-      } while (retry);
+      }
       // See if it can be restored from the snapshot file.
       restoreFromSnapshot();
       // Delivers all transactions in log before entering broadcasting phase.
