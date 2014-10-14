@@ -49,7 +49,7 @@ public class SyncProposalProcessorTest extends TestBase {
     LOG.setLevel(Level.INFO);
   }
 
-  Class logClass;
+  Class<Log> logClass;
 
   String fileName;
 
@@ -62,7 +62,7 @@ public class SyncProposalProcessorTest extends TestBase {
       });
   }
 
-  public SyncProposalProcessorTest(Class logClass, String fileName) {
+  public SyncProposalProcessorTest(Class<Log> logClass, String fileName) {
     LOG.debug("Testting impelementation of {}", logClass.getName());
     this.logClass = logClass;
     this.fileName = fileName;
@@ -72,12 +72,12 @@ public class SyncProposalProcessorTest extends TestBase {
     File fSub = new File(getDirectory(), subdir);
     fSub.mkdir();
     File f = new File(fSub, this.fileName);
-    if (logClass == RollingLog.class) {
+    if (logClass == (Class<?>)RollingLog.class) {
       // For testing purpose, set the rolling size be small.
-      return (Log)logClass.getConstructor(File.class, Long.TYPE)
-                          .newInstance(f, 10 * 1024 * 1024);
+      return logClass.getConstructor(File.class, Long.TYPE)
+                     .newInstance(f, 10 * 1024 * 1024);
     } else {
-      return (Log)logClass.getConstructor(File.class).newInstance(f);
+      return logClass.getConstructor(File.class).newInstance(f);
     }
   }
 
