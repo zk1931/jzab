@@ -151,7 +151,9 @@ public class Leader extends Participant {
   }
 
   @Override
-  protected void changePhase(Phase phase) throws IOException {
+  protected void changePhase(Phase phase)
+      throws IOException, InterruptedException, ExecutionException {
+    this.currentPhase = phase;
     if (phase == Phase.DISCOVERING) {
       MDC.put("phase", "discovering");
       if (stateChangeCallback != null) {
@@ -179,8 +181,20 @@ public class Leader extends Participant {
                                                getAllTxns(),
                                                persistence.getLastSeenConfig());
       }
+    } else if (phase == Phase.FINALIZING) {
+      MDC.put("phase", "finalizing");
+      this.stateMachine.recovering();
+      // Shuts down all the handler of followers.
+      for (PeerHandler ph : this.quorumSet.values()) {
+        ph.shutdown();
+        this.quorumSet.remove(ph.getServerId());
+      }
+      // Clears the message queue.
+      clearMessageQueue();
+      // Releases all the pending transactions while going to next epoch,
+      // probably someone is blocking on acquiring the sempahore.
+      this.semPendingReqs.release(ZabConfig.MAX_PENDING_REQS);
     }
-    this.currentPhase = phase;
   }
 
   /**
@@ -227,12 +241,7 @@ public class Leader extends Participant {
       LOG.error("Caught exception", e);
       throw e;
     } finally {
-      for (PeerHandler ph : this.quorumSet.values()) {
-        ph.shutdown();
-        this.quorumSet.remove(ph.getServerId());
-      }
-      // Clears the message queue.
-      clearMessageQueue();
+      changePhase(Phase.FINALIZING);
     }
   }
 
@@ -301,17 +310,12 @@ public class Leader extends Participant {
       LOG.error("Caught exception", e);
       throw e;
     } finally {
-      for (PeerHandler ph : this.quorumSet.values()) {
-        ph.shutdown();
-        this.quorumSet.remove(ph.getServerId());
-      }
-      // Clears the message queue.
-      clearMessageQueue();
       if (this.currentPhase == Phase.SYNCHRONIZING) {
         incSyncTimeout();
         LOG.debug("Go back to recovery in synchronization phase, increase " +
             "sync timeout to {} milliseconds.", getSyncTimeoutMs());
       }
+      changePhase(Phase.FINALIZING);
     }
   }
 
@@ -598,8 +602,6 @@ public class Leader extends Participant {
     // First time notifies the client active members and cluster configuration.
     stateMachine.leading(new HashSet<String>(quorumSet.keySet()),
                          new HashSet<String>(clusterConfig.getPeers()));
-    // Starts thread to process request in request queue.
-    SendRequestTask sendTask = new SendRequestTask(this.serverId);
     this.lastCommittedZxid = lastZxid;
     this.lastProposedZxid = lastZxid;
     this.lastAckedZxid = lastZxid;
@@ -716,7 +718,6 @@ public class Leader extends Participant {
           + "quorum size {}, goes back to electing phase.",
           getQuorumSize());
     } finally {
-      sendTask.shutdown();
       ackProcessor.shutdown();
       preProcessor.shutdown();
       commitProcessor.shutdown();

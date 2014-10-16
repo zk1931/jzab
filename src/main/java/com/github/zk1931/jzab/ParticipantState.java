@@ -19,10 +19,8 @@
 package com.github.zk1931.jzab;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
 import com.github.zk1931.jzab.transport.Transport;
 import com.github.zk1931.jzab.Zab.StateChangeCallback;
@@ -52,13 +50,6 @@ public class ParticipantState {
    * and process the message.
    */
   private final BlockingQueue<MessageTuple> messageQueue;
-
-  /**
-   * Request queue. This queue buffers all the outgoing requests from clients,
-   * they will be processed once Participant enters broadcasting phase.
-   */
-  private final BlockingQueue<MessageTuple> requestQueue =
-    new LinkedBlockingQueue<MessageTuple>(ZabConfig.MAX_PENDING_REQS);
 
   /**
    * Used for communication between nodes.
@@ -117,10 +108,6 @@ public class ParticipantState {
     return this.messageQueue;
   }
 
-  public BlockingQueue<MessageTuple> getRequestQueue() {
-    return this.requestQueue;
-  }
-
   public String getServerId() {
     return this.serverId;
   }
@@ -159,33 +146,6 @@ public class ParticipantState {
 
   public Election getElection() {
     return this.election;
-  }
-
-  public void enqueueRequest(ByteBuffer buffer) {
-    Message msg = MessageBuilder.buildRequest(buffer);
-    try {
-      this.requestQueue.put(new MessageTuple(this.serverId, msg));
-    } catch (InterruptedException e) {
-      throw new RuntimeException("Interrupted Exception");
-    }
-  }
-
-  public void enqueueRemove(String peerId) {
-    Message msg = MessageBuilder.buildRemove(peerId);
-    try {
-      this.requestQueue.put(new MessageTuple(this.serverId, msg));
-    } catch (InterruptedException e) {
-      throw new RuntimeException("Interrupted Exception");
-    }
-  }
-
-  public void enqueueFlush(ByteBuffer buffer) {
-    Message msg = MessageBuilder.buildFlushRequest(buffer);
-    try {
-      this.requestQueue.put(new MessageTuple(this.serverId, msg));
-    } catch (InterruptedException e) {
-      throw new RuntimeException("Interrupted Exception");
-    }
   }
 
   public void enqueueShutdown() {

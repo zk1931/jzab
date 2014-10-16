@@ -104,6 +104,7 @@ public class Follower extends Participant {
 
   @Override
   protected void changePhase(Phase phase) throws IOException {
+    this.currentPhase = phase;
     if (phase == Phase.DISCOVERING) {
       MDC.put("phase", "discovering");
       if (stateChangeCallback != null) {
@@ -133,8 +134,19 @@ public class Follower extends Participant {
       if (failCallback != null) {
         failCallback.followerBroadcasting();
       }
+    } else if (phase == Phase.FINALIZING) {
+      MDC.put("phase", "finalizing");
+      this.stateMachine.recovering();
+      // Closes the connection to leader.
+      if (this.electedLeader != null) {
+        this.transport.clear(this.electedLeader);
+      }
+      // Clears the message queue.
+      clearMessageQueue();
+      // Releases all the pending transactions while going to next epoch,
+      // probably someone is blocking on acquiring the sempahore.
+      this.semPendingReqs.release(ZabConfig.MAX_PENDING_REQS);
     }
-    this.currentPhase = phase;
   }
 
   /**
@@ -215,11 +227,7 @@ public class Follower extends Participant {
       LOG.error("Caught exception", e);
       throw e;
     } finally {
-      if (this.electedLeader != null) {
-        this.transport.clear(this.electedLeader);
-      }
-      // Clears the message queue.
-      clearMessageQueue();
+      changePhase(Phase.FINALIZING);
     }
   }
 
@@ -271,14 +279,12 @@ public class Follower extends Participant {
       LOG.error("Caught exception", e);
       throw e;
     } finally {
-      this.transport.clear(this.electedLeader);
-      // Clears the message queue.
-      clearMessageQueue();
       if (this.currentPhase == Phase.SYNCHRONIZING) {
         incSyncTimeout();
         LOG.debug("Go back to recovery in synchronization phase, increase " +
             "sync timeout to {} milliseconds.", getSyncTimeoutMs());
       }
+      changePhase(Phase.FINALIZING);
     }
   }
 
@@ -412,8 +418,6 @@ public class Follower extends Participant {
     // Notifies the client current configuration.
     stateMachine.following(electedLeader,
                            new HashSet<String>(clusterConfig.getPeers()));
-    // Starts thread to process request in request queue.
-    SendRequestTask sendTask = new SendRequestTask(this.electedLeader);
     try {
       while (true) {
         MessageTuple tuple = getMessage();
@@ -480,7 +484,6 @@ public class Follower extends Participant {
         }
       }
     } finally {
-      sendTask.shutdown();
       commitProcessor.shutdown();
       syncProcessor.shutdown();
       snapProcessor.shutdown();
