@@ -138,6 +138,15 @@ public class LogTest extends TestBase {
   }
 
   @Test
+  public void testTruncateAll() throws Exception {
+    Log log = getLog();
+    // Appends  100 transactions.
+    appendTxns(log, new Zxid(0, 0), 100);
+    log.truncate(new Zxid(0, -1));
+    appendTxns(log, new Zxid(0, 0), 100);
+  }
+
+  @Test
   public void testTruncateAndAppend() throws Exception {
     Log log = getLog();
     // Appends  100 transactions.
