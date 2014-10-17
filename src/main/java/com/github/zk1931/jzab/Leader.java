@@ -189,8 +189,6 @@ public class Leader extends Participant {
         ph.shutdown();
         this.quorumSet.remove(ph.getServerId());
       }
-      // Clears the message queue.
-      clearMessageQueue();
       // Releases all the pending transactions while going to next epoch,
       // probably someone is blocking on acquiring the sempahore.
       this.semPendingReqs.release(ZabConfig.MAX_PENDING_REQS);

@@ -141,8 +141,6 @@ public class Follower extends Participant {
       if (this.electedLeader != null) {
         this.transport.clear(this.electedLeader);
       }
-      // Clears the message queue.
-      clearMessageQueue();
       // Releases all the pending transactions while going to next epoch,
       // probably someone is blocking on acquiring the sempahore.
       this.semPendingReqs.release(ZabConfig.MAX_PENDING_REQS);
