@@ -421,12 +421,6 @@ public class Follower extends Participant {
         MessageTuple tuple = getMessage();
         Message msg = tuple.getMessage();
         String source = tuple.getServerId();
-        if (msg.getType() == MessageType.QUERY_LEADER) {
-          LOG.debug("Got QUERY_LEADER from {}", source);
-          Message reply = MessageBuilder.buildQueryReply(this.electedLeader);
-          sendMessage(source, reply);
-          continue;
-        }
         // The follower only expect receiving message from leader and
         // itself(REQUEST).
         if (source.equals(this.electedLeader)) {
@@ -441,10 +435,14 @@ public class Follower extends Participant {
                 this.electedLeader);
             throw new TimeoutException("HEARTBEAT timeout!");
           }
-          if (!source.equals(this.serverId)) {
+          if (msg.getType() == MessageType.QUERY_LEADER) {
+            LOG.debug("Got QUERY_LEADER from {}", source);
+            Message reply = MessageBuilder.buildQueryReply(this.electedLeader);
+            sendMessage(source, reply);
+          } else {
             LOG.debug("Got unexpected message from {}, ignores.", source);
-            continue;
           }
+          continue;
         }
         if (msg.getType() != MessageType.HEARTBEAT && LOG.isDebugEnabled()) {
           LOG.debug("Got message {} from {}",
