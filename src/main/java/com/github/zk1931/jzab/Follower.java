@@ -65,9 +65,6 @@ public class Follower extends Participant {
       } else if (tuple == MessageTuple.GO_BACK) {
         // Goes back to leader election.
         throw new BackToElectionException();
-      } else if (tuple.getMessage().getType() == MessageType.ELECTION_INFO) {
-        // If it's election message, replies it directly.
-        this.election.reply(tuple);
       } else if (tuple.getMessage().getType() == MessageType.PROPOSED_EPOCH) {
         // Explicitly close the connection when gets PROPOSED_EPOCH message in
         // FOLLOWING state to help the peer selecting the right leader faster.
@@ -93,6 +90,13 @@ public class Follower extends Participant {
           LOG.debug("Lost peer {}.", peerId);
           this.transport.clear(peerId);
         }
+      } else if (this.currentPhase != Phase.BROADCASTING &&
+                 tuple.getMessage().getType() == MessageType.ELECTION_INFO) {
+        // If it's not in broadcasting phase, replies peer directly. Otherwise
+        // return it to main thread and let it processes it because the peer
+        // might keep sending the election message, if the message is processed
+        // here the main thread couldn't detect the timeout.
+        this.election.reply(tuple);
       } else if (tuple.getMessage().getType() == MessageType.SHUT_DOWN) {
         LOG.debug("Got SHUT_DOWN, going to shut down Zab.");
         throw new LeftCluster("Shutdown Zab");
@@ -124,7 +128,6 @@ public class Follower extends Participant {
       }
     } else if (phase == Phase.BROADCASTING) {
       MDC.put("phase", "broadcasting");
-      this.isBroadcasting = true;
       if (stateChangeCallback != null) {
         stateChangeCallback
         .followerBroadcasting(persistence.getAckEpoch(),
@@ -256,7 +259,6 @@ public class Follower extends Participant {
 
       /* -- Broadcasting phase -- */
       changePhase(Phase.BROADCASTING);
-      LOG.info("FOLLOWING");
       accepting();
     } catch (InterruptedException e) {
       LOG.debug("Participant is canceled by user.");
@@ -439,6 +441,8 @@ public class Follower extends Participant {
             LOG.debug("Got QUERY_LEADER from {}", source);
             Message reply = MessageBuilder.buildQueryReply(this.electedLeader);
             sendMessage(source, reply);
+          } else if (msg.getType() == MessageType.ELECTION_INFO) {
+            this.election.reply(tuple);
           } else {
             LOG.debug("Got unexpected message from {}, ignores.", source);
           }

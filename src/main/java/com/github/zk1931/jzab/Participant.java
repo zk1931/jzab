@@ -71,11 +71,6 @@ public abstract class Participant {
   protected final BlockingQueue<MessageTuple> messageQueue;
 
   /**
-   * Whether the participant is in broadcasting phase or not.
-   */
-  protected volatile boolean isBroadcasting = false;
-
-  /**
    * The last delivered zxid. Passed from Zab to avoid deliver duplicated
    * transactions.
    */
