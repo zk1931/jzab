@@ -1,6 +1,6 @@
 #!/bin/bash -ex
 
-if [ "$TRAVIS_REPO_SLUG" == "z1931/jzab" ] &&
+if [ "$TRAVIS_REPO_SLUG" == "zk1931/jzab" ] &&
    [ "$TRAVIS_JDK_VERSION" == "oraclejdk7" ] &&
    [ "$TRAVIS_PULL_REQUEST" == "false" ]; then
 
