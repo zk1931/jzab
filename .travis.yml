@@ -7,7 +7,7 @@ jdk:
 
 env:
   global:
-    secure: ZEVr2OGZAPv+Vtna82xekRldh96KedM+0fa4YKbPw7tqQH7J9bjZ+dc/dOEG0Ycao71brmIjcgZV95HHHjhBvJtnR0GJZ5UDtJv3AJ9Id9fUd6IcBuPbsUfkAj939ec72lzM4KfNxGn0RRAsaCo2aD9pHT93SEUN8lZgFIoZkKA=
+    secure: X49it0ImkmAwo1X1gX4H22xQfa8pwTKxpjvvIFI21Deif17VEpaIn0QB1cZ4PyAqv44Y7sXbMIiUrq53Lge5TqgigvNM6KjQsvDr6r+6kPhPwfLHS90V0GRkNF49sMpq68J88rbwMqM44l2fpR4Ke0KBjWraqIQ8XgAdAKnCP/o=
 
 before_install:
   - sudo apt-get update
@@ -21,7 +21,7 @@ before_script:
 script:
   - .utility/build.sh
 
-# Publish javadoc to http://zk-1931.github.io/javazab/javadoc
+# Publish javadoc to http://zk1931.github.io/jzab
 after_success:
   - .utility/publish-artifacts.sh
 
