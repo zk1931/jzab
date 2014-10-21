@@ -16,7 +16,7 @@ if [ "$TRAVIS_REPO_SLUG" == "zk1931/jzab" ] &&
 
   cd gh-pages
   mkdir -p $TRAVIS_BRANCH
-  git rm -rf $TRAVIS_BRANCH/javadoc
+  git rm -rf --ignore-unmatch $TRAVIS_BRANCH/javadoc
   cp -Rf $HOME/javadoc-latest $TRAVIS_BRANCH/javadoc
   git add -f .
   git commit -m "Push javadoc from travis build $TRAVIS_BUILD_NUMBER to gh-pages."
