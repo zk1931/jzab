@@ -22,23 +22,20 @@ import com.google.protobuf.TextFormat;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.TimeUnit;
 import java.util.ArrayList;
 import java.util.List;
 import com.github.zk1931.jzab.proto.ZabMessage;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
 import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
+import com.github.zk1931.jzab.transport.Transport;
 import com.github.zk1931.jzab.Zab.FailureCaseCallback;
 import com.github.zk1931.jzab.Zab.StateChangeCallback;
-import com.github.zk1931.jzab.transport.Transport;
+import com.github.zk1931.jzab.ZabException.NotBroadcastingPhaseException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import static com.github.zk1931.jzab.proto.ZabMessage.Proposal.ProposalType;
@@ -72,11 +69,6 @@ public abstract class Participant {
    * enqueued from Zab.
    */
   protected final BlockingQueue<MessageTuple> messageQueue;
-
-  /**
-   * Whether the participant is in broadcasting phase or not.
-   */
-  protected volatile boolean isBroadcasting = false;
 
   /**
    * The last delivered zxid. Passed from Zab to avoid deliver duplicated
@@ -149,7 +141,8 @@ public abstract class Participant {
   protected enum Phase {
     DISCOVERING,
     SYNCHRONIZING,
-    BROADCASTING
+    BROADCASTING,
+    FINALIZING
   }
 
   /**
@@ -192,6 +185,30 @@ public abstract class Participant {
     this.failCallback = participantState.getFailureCaseCallback();
     this.config = config;
     this.election = participantState.getElection();
+  }
+
+  void send(ByteBuffer request) throws NotBroadcastingPhaseException {
+    if (this.currentPhase != Phase.BROADCASTING) {
+      throw new NotBroadcastingPhaseException("Not in Broadcasting phase!");
+    }
+    Message msg = MessageBuilder.buildRequest(request);
+    this.transport.send(this.electedLeader, msg);
+  }
+
+  void remove(String peerId) throws NotBroadcastingPhaseException {
+    if (this.currentPhase != Phase.BROADCASTING) {
+      throw new NotBroadcastingPhaseException("Not in Broadcasting phase!");
+    }
+    Message msg = MessageBuilder.buildRemove(peerId);
+    this.transport.send(this.electedLeader, msg);
+  }
+
+  void flush(ByteBuffer request) throws NotBroadcastingPhaseException {
+    if (this.currentPhase != Phase.BROADCASTING) {
+      throw new NotBroadcastingPhaseException("Not in Broadcasting phase!");
+    }
+    Message msg = MessageBuilder.buildFlushRequest(request);
+    this.transport.send(this.electedLeader, msg);
   }
 
   protected abstract void join(String peer) throws Exception;
@@ -499,8 +516,10 @@ public abstract class Participant {
    *
    * @param phase the phase change(DISCOVERING/SYNCHRONIZING/BROADCASTING).
    * @throws IOException in case of IO failure.
+   * @throws InterruptedException in case of interruption.
    */
-  protected abstract void changePhase(Phase phase) throws IOException;
+  protected abstract void changePhase(Phase phase)
+      throws IOException, InterruptedException, ExecutionException;
 
   /**
    * Handled the DELIVERED message comes from CommitProcessor.
@@ -532,8 +551,7 @@ public abstract class Participant {
    * Clears all the messages in the message queue, clears the peer in transport
    * if it's the DISCONNECTED message. This function should be called only
    * right before going back to recovery.
-   */
-  protected void clearMessageQueue() {
+   */ protected void clearMessageQueue() {
     MessageTuple tuple = null;
     while ((tuple = messageQueue.poll()) != null) {
       Message msg = tuple.getMessage();
@@ -727,55 +745,6 @@ public abstract class Participant {
       // At the end of the synchronization, send COP.
       Message syncEnd = MessageBuilder.buildSyncEnd(this.clusterConfig);
       sendMessage(peerId, syncEnd);
-    }
-  }
-
-  /**
-   * Task that processes client's send/leave requests. It will be started
-   * once Participant enters broadcasting phase.
-   */
-  protected class SendRequestTask implements Callable<Void> {
-    private final Future<Void> ft;
-    private final String leader;
-    private boolean stop = false;
-
-    public SendRequestTask(String leader) {
-      this.leader = leader;
-      ExecutorService es =
-          Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
-      this.ft = es.submit(this);
-      es.shutdown();
-    }
-
-    public void shutdown() throws ExecutionException, InterruptedException {
-      this.stop = true;
-      // Release semaphore in case the thread is blocked on acuiqring of the
-      // semaphore.
-      semPendingReqs.release();
-      this.ft.get();
-      LOG.debug("SendRequestTask has been shut down.");
-    }
-
-    @Override
-    public Void call() throws Exception {
-      LOG.debug("SendRequestTask gets started.");
-      try {
-        BlockingQueue<MessageTuple> requestQueue
-          = participantState.getRequestQueue();
-        while (!stop) {
-          MessageTuple tuple = requestQueue.poll(100, TimeUnit.MILLISECONDS);
-          if (tuple == null) {
-            continue;
-          }
-          // Blocks if the maximum pending requests have been reached.
-          semPendingReqs.acquire();
-          sendMessage(this.leader, tuple.getMessage());
-        }
-      } catch (Exception e) {
-        LOG.error("Caught exception in SendRequest!");
-        throw e;
-      }
-      return null;
     }
   }
 }

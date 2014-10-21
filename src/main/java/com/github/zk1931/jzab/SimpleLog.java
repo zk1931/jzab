@@ -165,6 +165,7 @@ public class SimpleLog implements Log {
   @Override
   public void truncate(Zxid zxid) throws IOException {
     try (SimpleLogIterator iter = new SimpleLogIterator(this.logFile)) {
+      this.lastSeenZxid = Zxid.ZXID_NOT_EXIST;
       while (iter.hasNext()) {
         Transaction txn = iter.next();
         if (txn.getZxid().compareTo(zxid) == 0) {

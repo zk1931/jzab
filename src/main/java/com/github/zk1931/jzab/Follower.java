@@ -65,9 +65,6 @@ public class Follower extends Participant {
       } else if (tuple == MessageTuple.GO_BACK) {
         // Goes back to leader election.
         throw new BackToElectionException();
-      } else if (tuple.getMessage().getType() == MessageType.ELECTION_INFO) {
-        // If it's election message, replies it directly.
-        this.election.reply(tuple);
       } else if (tuple.getMessage().getType() == MessageType.PROPOSED_EPOCH) {
         // Explicitly close the connection when gets PROPOSED_EPOCH message in
         // FOLLOWING state to help the peer selecting the right leader faster.
@@ -93,6 +90,13 @@ public class Follower extends Participant {
           LOG.debug("Lost peer {}.", peerId);
           this.transport.clear(peerId);
         }
+      } else if (this.currentPhase != Phase.BROADCASTING &&
+                 tuple.getMessage().getType() == MessageType.ELECTION_INFO) {
+        // If it's not in broadcasting phase, replies peer directly. Otherwise
+        // return it to main thread and let it processes it because the peer
+        // might keep sending the election message, if the message is processed
+        // here the main thread couldn't detect the timeout.
+        this.election.reply(tuple);
       } else if (tuple.getMessage().getType() == MessageType.SHUT_DOWN) {
         LOG.debug("Got SHUT_DOWN, going to shut down Zab.");
         throw new LeftCluster("Shutdown Zab");
@@ -104,6 +108,7 @@ public class Follower extends Participant {
 
   @Override
   protected void changePhase(Phase phase) throws IOException {
+    this.currentPhase = phase;
     if (phase == Phase.DISCOVERING) {
       MDC.put("phase", "discovering");
       if (stateChangeCallback != null) {
@@ -123,7 +128,6 @@ public class Follower extends Participant {
       }
     } else if (phase == Phase.BROADCASTING) {
       MDC.put("phase", "broadcasting");
-      this.isBroadcasting = true;
       if (stateChangeCallback != null) {
         stateChangeCallback
         .followerBroadcasting(persistence.getAckEpoch(),
@@ -133,8 +137,17 @@ public class Follower extends Participant {
       if (failCallback != null) {
         failCallback.followerBroadcasting();
       }
+    } else if (phase == Phase.FINALIZING) {
+      MDC.put("phase", "finalizing");
+      this.stateMachine.recovering();
+      // Closes the connection to leader.
+      if (this.electedLeader != null) {
+        this.transport.clear(this.electedLeader);
+      }
+      // Releases all the pending transactions while going to next epoch,
+      // probably someone is blocking on acquiring the sempahore.
+      this.semPendingReqs.release(ZabConfig.MAX_PENDING_REQS);
     }
-    this.currentPhase = phase;
   }
 
   /**
@@ -215,11 +228,7 @@ public class Follower extends Participant {
       LOG.error("Caught exception", e);
       throw e;
     } finally {
-      if (this.electedLeader != null) {
-        this.transport.clear(this.electedLeader);
-      }
-      // Clears the message queue.
-      clearMessageQueue();
+      changePhase(Phase.FINALIZING);
     }
   }
 
@@ -250,7 +259,6 @@ public class Follower extends Participant {
 
       /* -- Broadcasting phase -- */
       changePhase(Phase.BROADCASTING);
-      LOG.info("FOLLOWING");
       accepting();
     } catch (InterruptedException e) {
       LOG.debug("Participant is canceled by user.");
@@ -271,14 +279,12 @@ public class Follower extends Participant {
       LOG.error("Caught exception", e);
       throw e;
     } finally {
-      this.transport.clear(this.electedLeader);
-      // Clears the message queue.
-      clearMessageQueue();
       if (this.currentPhase == Phase.SYNCHRONIZING) {
         incSyncTimeout();
         LOG.debug("Go back to recovery in synchronization phase, increase " +
             "sync timeout to {} milliseconds.", getSyncTimeoutMs());
       }
+      changePhase(Phase.FINALIZING);
     }
   }
 
@@ -412,19 +418,11 @@ public class Follower extends Participant {
     // Notifies the client current configuration.
     stateMachine.following(electedLeader,
                            new HashSet<String>(clusterConfig.getPeers()));
-    // Starts thread to process request in request queue.
-    SendRequestTask sendTask = new SendRequestTask(this.electedLeader);
     try {
       while (true) {
         MessageTuple tuple = getMessage();
         Message msg = tuple.getMessage();
         String source = tuple.getServerId();
-        if (msg.getType() == MessageType.QUERY_LEADER) {
-          LOG.debug("Got QUERY_LEADER from {}", source);
-          Message reply = MessageBuilder.buildQueryReply(this.electedLeader);
-          sendMessage(source, reply);
-          continue;
-        }
         // The follower only expect receiving message from leader and
         // itself(REQUEST).
         if (source.equals(this.electedLeader)) {
@@ -439,10 +437,16 @@ public class Follower extends Participant {
                 this.electedLeader);
             throw new TimeoutException("HEARTBEAT timeout!");
           }
-          if (!source.equals(this.serverId)) {
+          if (msg.getType() == MessageType.QUERY_LEADER) {
+            LOG.debug("Got QUERY_LEADER from {}", source);
+            Message reply = MessageBuilder.buildQueryReply(this.electedLeader);
+            sendMessage(source, reply);
+          } else if (msg.getType() == MessageType.ELECTION_INFO) {
+            this.election.reply(tuple);
+          } else {
             LOG.debug("Got unexpected message from {}, ignores.", source);
-            continue;
           }
+          continue;
         }
         if (msg.getType() != MessageType.HEARTBEAT && LOG.isDebugEnabled()) {
           LOG.debug("Got message {} from {}",
@@ -480,7 +484,6 @@ public class Follower extends Participant {
         }
       }
     } finally {
-      sendTask.shutdown();
       commitProcessor.shutdown();
       syncProcessor.shutdown();
       snapProcessor.shutdown();

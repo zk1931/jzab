@@ -107,9 +107,6 @@ public class Leader extends Participant {
       } else if (tuple == MessageTuple.GO_BACK) {
         // Goes back to leader election.
         throw new BackToElectionException();
-      } else if (tuple.getMessage().getType() == MessageType.ELECTION_INFO) {
-        // If it's election message, replies it directly.
-        this.election.reply(tuple);
       } else if (tuple.getMessage().getType() == MessageType.DISCONNECTED) {
         // Got DISCONNECTED message enqueued by onDisconnected callback.
         Message msg = tuple.getMessage();
@@ -119,7 +116,7 @@ public class Leader extends Participant {
                     TextFormat.shortDebugString(msg));
         }
         if (this.quorumSet.containsKey(peerId)) {
-          if (!this.isBroadcasting) {
+          if (this.currentPhase != Phase.BROADCASTING) {
             // If you lost someone in your quorumSet before broadcasting
             // phase, you are for sure not have a quorum of followers, just go
             // back to leader election. The clearance of the transport happens
@@ -141,6 +138,13 @@ public class Leader extends Participant {
           LOG.debug("Lost follower {} outside quorumSet.", peerId);
           this.transport.clear(peerId);
         }
+      } else if (this.currentPhase != Phase.BROADCASTING &&
+                 tuple.getMessage().getType() == MessageType.ELECTION_INFO) {
+        // If it's not in broadcasting phase, replies peer directly. Otherwise
+        // return it to main thread and let it processes it because the peer
+        // might keep sending the election message, if the message is processed
+        // here the main thread couldn't detect the timeout.
+        this.election.reply(tuple);
       } else if (tuple.getMessage().getType() == MessageType.SHUT_DOWN) {
         LOG.debug("Got SHUT_DOWN, going to shut down Zab.");
         throw new LeftCluster("Shutdown Zab");
@@ -151,7 +155,9 @@ public class Leader extends Participant {
   }
 
   @Override
-  protected void changePhase(Phase phase) throws IOException {
+  protected void changePhase(Phase phase)
+      throws IOException, InterruptedException, ExecutionException {
+    this.currentPhase = phase;
     if (phase == Phase.DISCOVERING) {
       MDC.put("phase", "discovering");
       if (stateChangeCallback != null) {
@@ -170,7 +176,6 @@ public class Leader extends Participant {
       }
     } else if (phase == Phase.BROADCASTING) {
       MDC.put("phase", "broadcasting");
-      this.isBroadcasting = true;
       if (failCallback != null) {
         failCallback.leaderBroadcasting();
       }
@@ -179,8 +184,18 @@ public class Leader extends Participant {
                                                getAllTxns(),
                                                persistence.getLastSeenConfig());
       }
+    } else if (phase == Phase.FINALIZING) {
+      MDC.put("phase", "finalizing");
+      this.stateMachine.recovering();
+      // Shuts down all the handler of followers.
+      for (PeerHandler ph : this.quorumSet.values()) {
+        ph.shutdown();
+        this.quorumSet.remove(ph.getServerId());
+      }
+      // Releases all the pending transactions while going to next epoch,
+      // probably someone is blocking on acquiring the sempahore.
+      this.semPendingReqs.release(ZabConfig.MAX_PENDING_REQS);
     }
-    this.currentPhase = phase;
   }
 
   /**
@@ -227,12 +242,7 @@ public class Leader extends Participant {
       LOG.error("Caught exception", e);
       throw e;
     } finally {
-      for (PeerHandler ph : this.quorumSet.values()) {
-        ph.shutdown();
-        this.quorumSet.remove(ph.getServerId());
-      }
-      // Clears the message queue.
-      clearMessageQueue();
+      changePhase(Phase.FINALIZING);
     }
   }
 
@@ -281,7 +291,6 @@ public class Leader extends Participant {
         ph.startBroadcastingTask();
         ph.updateHeartbeatTime();
       }
-      LOG.info("LEADING");
       broadcasting();
     } catch (InterruptedException e) {
       LOG.debug("Participant is canceled by user.");
@@ -301,17 +310,12 @@ public class Leader extends Participant {
       LOG.error("Caught exception", e);
       throw e;
     } finally {
-      for (PeerHandler ph : this.quorumSet.values()) {
-        ph.shutdown();
-        this.quorumSet.remove(ph.getServerId());
-      }
-      // Clears the message queue.
-      clearMessageQueue();
       if (this.currentPhase == Phase.SYNCHRONIZING) {
         incSyncTimeout();
         LOG.debug("Go back to recovery in synchronization phase, increase " +
             "sync timeout to {} milliseconds.", getSyncTimeoutMs());
       }
+      changePhase(Phase.FINALIZING);
     }
   }
 
@@ -598,8 +602,6 @@ public class Leader extends Participant {
     // First time notifies the client active members and cluster configuration.
     stateMachine.leading(new HashSet<String>(quorumSet.keySet()),
                          new HashSet<String>(clusterConfig.getPeers()));
-    // Starts thread to process request in request queue.
-    SendRequestTask sendTask = new SendRequestTask(this.serverId);
     this.lastCommittedZxid = lastZxid;
     this.lastProposedZxid = lastZxid;
     this.lastAckedZxid = lastZxid;
@@ -639,6 +641,8 @@ public class Leader extends Participant {
           // The new joiner will issue SYNC_HISTORY message first to make its
           // history synchronized.
           onSyncHistory(tuple);
+        } else if (msg.getType() == MessageType.ELECTION_INFO) {
+          this.election.reply(tuple);
         } else {
           // In broadcasting phase, the only expected messages come outside
           // the quorum set is PROPOSED_EPOCH, ACK_EPOCH, QUERY_LEADER and
@@ -716,7 +720,6 @@ public class Leader extends Participant {
           + "quorum size {}, goes back to electing phase.",
           getQuorumSize());
     } finally {
-      sendTask.shutdown();
       ackProcessor.shutdown();
       preProcessor.shutdown();
       commitProcessor.shutdown();

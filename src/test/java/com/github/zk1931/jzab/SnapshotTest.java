@@ -138,6 +138,7 @@ public class SnapshotTest extends TestBase {
     prop.setProperty("serverId", server);
     prop.setProperty("logdir", getDirectory().getPath());
     Zab zab = new Zab(st1, prop, server);
+    st1.waitMemberChanged();
     for (int i = 0; i < nTxns; ++i) {
       zab.send(ByteBuffer.wrap(("txns" + i).getBytes()));
       // Sleep a while to avoid all the transactions batch together.

@@ -22,6 +22,7 @@ import com.github.zk1931.jzab.proto.ZabMessage.Message;
 import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
 import com.github.zk1931.jzab.transport.NettyTransport;
 import com.github.zk1931.jzab.transport.Transport;
+import com.github.zk1931.jzab.ZabException.NotBroadcastingPhaseException;
 import java.io.IOException;
 import java.io.File;
 import java.nio.ByteBuffer;
@@ -178,12 +179,14 @@ public class Zab {
   /**
    * Submits a request to Zab. Any one can call call this send. Under the hood,
    * followers forward requests to the leader and the leader will be responsible
-   * for converting this request to idempotent transaction and broadcasting.
+   * for converting this request to idempotent transaction and broadcasting. If
+   * you send request in non-broadcasting phase, the operation will fail.
    *
    * @param request request to send through Zab
+   * @throws NotBroadcastingPhaseException if Zab is not in broadcasting phase.
    */
-  public void send(ByteBuffer request) {
-    this.mainThread.enqueueRequest(request);
+  public void send(ByteBuffer request) throws NotBroadcastingPhaseException {
+    this.mainThread.send(request);
   }
 
   /**
@@ -191,21 +194,25 @@ public class Zab {
    * in order with other sending requests, but it will not be convereted to
    * idempotent transaction and will not be persisted in log. And it will only
    * be delivered on the server who issued this request. The purpose of flush
-   * is to allow implementing a consistent read-after-write.
+   * is to allow implementing a consistent read-after-write. If you send flush
+   * request in non-broadcasting phase, the operation will fail.
    *
    * @param request the request to be flushed.
+   * @throws NotBroadcastingPhaseException if Zab is not in broadcasting phase.
    */
-  public void flush(ByteBuffer request) {
-    this.mainThread.enqueueFlush(request);
+  public void flush(ByteBuffer request) throws NotBroadcastingPhaseException {
+    this.mainThread.flush(request);
   }
 
   /**
-   * Removes a peer from the cluster.
+   * Removes a peer from the cluster. If you send remove request in
+   * non-broadcasting phase, the operation will fail.
    *
    * @param peerId the id of the peer who will be removed from the cluster.
+   * @throws NotBroadcastingPhaseException if Zab is not in broadcasting phase.
    */
-  public void remove(String peerId) {
-    this.mainThread.enqueueRemove(peerId);
+  public void remove(String peerId) throws NotBroadcastingPhaseException {
+    this.mainThread.remove(peerId);
   }
 
   /**
@@ -481,6 +488,7 @@ public class Zab {
     private final Transport transport;
     private final Election election;
     private final PersistentState persistence;
+    private Participant participant = null;
 
     MainThread(String joinPeer,
                StateChangeCallback stateChangeCallback,
@@ -550,11 +558,9 @@ public class Zab {
     public Void call() throws Exception {
       try {
         if (this.joinPeer != null) {
-          stateMachine.recovering();
           join(this.joinPeer);
         }
         while (true) {
-          stateMachine.recovering();
           if (stateChangeCallback != null) {
             stateChangeCallback.electing();
           }
@@ -563,12 +569,10 @@ public class Zab {
           LOG.debug("Select {} as leader.", leader);
           // Clears the message queue before going to recovery.
           if (leader.equals(serverId)) {
-            Participant participant =
-              new Leader(participantState, stateMachine, config);
+            participant = new Leader(participantState, stateMachine, config);
             ((Leader)participant).lead();
           } else {
-            Participant participant =
-              new Follower(participantState, stateMachine, config);
+            participant = new Follower(participantState, stateMachine, config);
             ((Follower)participant).follow(leader);
           }
         }
@@ -603,7 +607,6 @@ public class Zab {
     }
 
     void join(String peer) throws Exception {
-      Participant participant;
       if (peer.equals(serverId)) {
         LOG.debug("Trying to join itself. Becomes leader directly.");
         participant = new Leader(participantState, stateMachine, config);
@@ -614,16 +617,25 @@ public class Zab {
       participant.join(peer);
     }
 
-    void enqueueRequest(ByteBuffer buffer) {
-      this.participantState.enqueueRequest(buffer);
+    void send(ByteBuffer buffer) throws NotBroadcastingPhaseException {
+      if (this.participant == null) {
+        throw new NotBroadcastingPhaseException("Not in Broadcasting phase!");
+      }
+      this.participant.send(buffer);
     }
 
-    void enqueueRemove(String peerId) {
-      this.participantState.enqueueRemove(peerId);
+    void remove(String peerId) throws NotBroadcastingPhaseException {
+      if (this.participant == null) {
+        throw new NotBroadcastingPhaseException("Not in Broadcasting phase!");
+      }
+      this.participant.remove(peerId);
     }
 
-    void enqueueFlush(ByteBuffer buffer) {
-      this.participantState.enqueueFlush(buffer);
+    void flush(ByteBuffer buffer) throws NotBroadcastingPhaseException {
+      if (this.participant == null) {
+        throw new NotBroadcastingPhaseException("Not in Broadcasting phase!");
+      }
+      this.participant.flush(buffer);
     }
 
     // Waits until MainThread thread has been shutdown. This function should be

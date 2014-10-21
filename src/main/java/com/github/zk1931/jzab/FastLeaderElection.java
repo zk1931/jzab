@@ -66,7 +66,8 @@ public class FastLeaderElection implements Election {
     this.voteInfo = new VoteInfo(serverId, ackEpoch, lastZxid, round, true);
     int timeoutMs = 100;
     int maxTimeoutMs = 1600;
-
+    // Broadcasts its own vote first.
+    broadcast(clusterConfig);
     while (true) {
       VoteTuple tuple = getVote(timeoutMs);
       if (tuple == null) {
