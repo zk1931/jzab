@@ -194,6 +194,85 @@ public class NettyTransportTest extends TestBase {
     transportB.shutdown();
   }
 
+  @Test(timeout=10000)
+  public void testTieBreaking() throws Exception {
+    // PeerA and PeerB will send message at the same time, will cause tie
+    // breaking and we need to guarantee no message gets lost.
+    final String peerA = getUniqueHostPort();
+    final String peerB = getUniqueHostPort();
+
+    int messageCount = 1;
+    final CountDownLatch latchA = new CountDownLatch(messageCount);
+    final CountDownLatch latchB = new CountDownLatch(messageCount);
+
+    Transport.Receiver receiverA = new Transport.Receiver() {
+      public void onReceived(String source, Message message) {
+        latchA.countDown();
+      }
+      public void onDisconnected(String source) {
+      }
+    };
+    Transport.Receiver receiverB = new Transport.Receiver() {
+      public void onReceived(String source, Message message) {
+        latchB.countDown();
+      }
+      public void onDisconnected(String source) {
+      }
+    };
+    NettyTransport transportA = new NettyTransport(peerA, receiverA,
+                                                   getDirectory());
+    NettyTransport transportB = new NettyTransport(peerB, receiverB,
+                                                   getDirectory());
+    for (int i = 0; i < messageCount; i++) {
+      transportA.send(peerB, createAck(new Zxid(0, i)));
+      transportB.send(peerA, createAck(new Zxid(0, i)));
+    }
+    latchA.await();
+    latchB.await();
+    transportA.shutdown();
+    transportB.shutdown();
+  }
+
+  @Test(timeout=10000)
+  public void testClear() throws Exception {
+    final String peerA = getUniqueHostPort();
+    final String peerB = getUniqueHostPort();
+    final CountDownLatch latchA = new CountDownLatch(1);
+    final CountDownLatch latchB = new CountDownLatch(1);
+    final CountDownLatch latchReceiveB = new CountDownLatch(1);
+
+    Transport.Receiver receiverA = new Transport.Receiver() {
+      public void onReceived(String source, Message message) {
+      }
+      public void onDisconnected(String source) {
+        latchA.countDown();
+      }
+    };
+    Transport.Receiver receiverB = new Transport.Receiver() {
+      public void onReceived(String source, Message message) {
+        latchReceiveB.countDown();
+      }
+      public void onDisconnected(String source) {
+        latchB.countDown();
+      }
+    };
+    NettyTransport transportA = new NettyTransport(peerA, receiverA,
+                                                   getDirectory());
+    NettyTransport transportB = new NettyTransport(peerB, receiverB,
+                                                   getDirectory());
+    transportA.send(peerB, createAck(new Zxid(0, 1)));
+    // Waits for connection established.
+    latchReceiveB.await();
+    // Clear B.
+    transportA.clear(peerB);
+    // B should receive DISCONNECT message.
+    latchB.await();
+    // A shouldn't receive DISCONNECT message.
+    Assert.assertFalse(latchA.await(500, TimeUnit.MILLISECONDS));
+    transportA.shutdown();
+    transportB.shutdown();
+  }
+
   @Test(timeout=5000)
   public void testDisconnectClient() throws Exception {
     final String peerA = getUniqueHostPort();
