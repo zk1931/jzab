@@ -31,7 +31,7 @@ public class ZabConfig {
   /**
    * Maximum number of pending requests allowed for each server.
    */
-  static final int MAX_PENDING_REQS = 20000;
+  static final int MAX_PENDING_REQS = 10000;
 
   protected Properties prop;
 

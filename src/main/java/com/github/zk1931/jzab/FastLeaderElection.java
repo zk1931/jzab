@@ -138,7 +138,7 @@ public class FastLeaderElection implements Election {
       // initialize its vote information until first synchronization from
       // leader is done. The vote might be null before the synchronization is
       // done. In this case, we won't reply its vote to other querier.
-      LOG.debug("Replie to {} with leader info : {}",
+      LOG.debug("Replies to {} with leader info : {}",
                 tuple.getServerId(),
                 voteInfo.vote);
       this.transport.send(tuple.getServerId(), this.voteInfo.toMessage());

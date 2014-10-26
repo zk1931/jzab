@@ -182,15 +182,15 @@ public class FastLeaderElectionTest extends TestBase {
                                   .setAckEpoch(0);
     Zab zab3 = new Zab(st, cb3, null, state3);
 
-    cb1.waitDiscovering();
-    cb2.waitDiscovering();
-    cb3.waitDiscovering();
+    cb1.waitBroadcasting();
+    cb2.waitBroadcasting();
+    cb3.waitBroadcasting();
     // Verify they have selected the same leader.
     Assert.assertEquals(cb2.electedLeader , cb1.electedLeader);
     Assert.assertEquals(cb2.electedLeader , cb3.electedLeader);
     // The leader should be either server1 or server2.
     Assert.assertTrue(server1.equals(cb1.electedLeader) ||
-                      server2.equals(cb1.electedLeader));
+                      server3.equals(cb1.electedLeader));
 
     zab1.shutdown();
     zab2.shutdown();
