@@ -191,6 +191,11 @@ public abstract class Participant {
     if (this.currentPhase != Phase.BROADCASTING) {
       throw new NotBroadcastingPhaseException("Not in Broadcasting phase!");
     }
+    try {
+      semPendingReqs.acquire();
+    } catch (InterruptedException e) {
+      LOG.error("interupted");
+    }
     Message msg = MessageBuilder.buildRequest(request);
     this.transport.send(this.electedLeader, msg);
   }
