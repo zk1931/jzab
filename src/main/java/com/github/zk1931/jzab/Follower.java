@@ -298,6 +298,10 @@ public class Follower extends Participant {
                                           persistence.getAckEpoch(),
                                           persistence.getLastSeenConfig(),
                                           getSyncTimeoutMs());
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Sends {} to leader {}", TextFormat.shortDebugString(message),
+                this.electedLeader);
+    }
     sendMessage(this.electedLeader, message);
   }
 

@@ -57,9 +57,9 @@ public class FastLeaderElection implements Election {
     ClusterConfiguration clusterConfig = persistence.getLastSeenConfig();
     Zxid lastZxid = persistence.getLog().getLatestZxid();
     String serverId = clusterConfig.getServerId();
+    long ackEpoch = persistence.getAckEpoch();
     // The map stores all the votes from the servers who are in the same round.
     HashMap<String, VoteInfo> receivedVotes = new HashMap<String, VoteInfo>();
-    long ackEpoch = persistence.getAckEpoch();
     // Everytime enters election, increments the round number.
     this.round++;
     // The first vote should be itself.
@@ -138,7 +138,7 @@ public class FastLeaderElection implements Election {
       // initialize its vote information until first synchronization from
       // leader is done. The vote might be null before the synchronization is
       // done. In this case, we won't reply its vote to other querier.
-      LOG.debug("Replie to {} with leader info : {}",
+      LOG.debug("Replies to {} with leader info : {}",
                 tuple.getServerId(),
                 voteInfo.vote);
       this.transport.send(tuple.getServerId(), this.voteInfo.toMessage());
@@ -156,7 +156,7 @@ public class FastLeaderElection implements Election {
    * @param the timeout in milliseconds.
    * @return the VoteTuple, or null if it's timeout.
    */
-  VoteTuple getVote(int timeoutMs) throws InterruptedException {
+  VoteTuple getVote(int timeoutMs) throws Exception {
     long startTime = System.nanoTime();
     while (true) {
       MessageTuple tuple =
@@ -173,6 +173,15 @@ public class FastLeaderElection implements Election {
         LOG.debug("DISCONNECT FROM {}", msg.getDisconnected().getServerId());
         this.transport.clear(msg.getDisconnected().getServerId());
         continue;
+      } else if (msg.getType() == MessageType.PROPOSED_EPOCH) {
+        ClusterConfiguration clusterConfig = persistence.getLastSeenConfig();
+        Zxid lastZxid = persistence.getLog().getLatestZxid();
+        String serverId = clusterConfig.getServerId();
+        long ackEpoch = persistence.getAckEpoch();
+        VoteInfo info =
+          new VoteInfo(serverId, ackEpoch, lastZxid, round, false);
+        messageQueue.add(tuple);
+        return new VoteTuple(info, source);
       } else if (msg.getType() != MessageType.ELECTION_INFO) {
         // If it's not the expected message, we nened to check if it has been
         // timeout.

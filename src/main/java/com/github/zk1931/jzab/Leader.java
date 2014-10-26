@@ -378,6 +378,7 @@ public class Leader extends Participant {
         throw new RuntimeException("Quorum set has already contained "
             + source + ", probably a bug?");
       }
+      LOG.debug("Got PROPOSED_EPOCH from {}", source);
       PeerHandler ph = new PeerHandler(source, transport,
                                        config.getTimeoutMs()/3);
       ph.setLastProposedEpoch(peerProposedEpoch);
