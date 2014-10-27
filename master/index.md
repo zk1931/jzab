@@ -1,3 +1,10 @@
 ---
+layout: page
+title: Home
 ---
-jzab is great.
+
+<p class="message">
+  home
+</p>
+
+home
