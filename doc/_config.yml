@@ -1,0 +1,25 @@
+# Dependencies
+markdown:         redcarpet
+highlighter:      pygments
+
+# Permalinks
+permalink:        pretty
+relative_permalinks: true
+
+# Setup
+title:            jzab
+tagline:          'An implementation of ZooKeeper Atomic Broadcast in Java'
+description:      'An implementation of ZooKeeper Atomic Broadcast in Java'
+url:              https://github.com/zk1931/jzab
+baseurl:          /
+
+author:
+  name:           'zk1931'
+  url:            https://github.com/zk1931
+
+# Custom vars
+# TODO don't hardcode version here
+version:          0.2.0
+
+github:
+  repo:           https://github.com/zk1931/jzab
