@@ -1,10 +1,10 @@
 ---
 layout: page
-title: Home
+title: About
 ---
 
 <p class="message">
-  home
+about
 </p>
 
-home
+about
