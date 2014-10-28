@@ -214,7 +214,7 @@ public class NettyTransport extends Transport {
    * Destroys the transport.
    */
   @Override
-  public synchronized void shutdown() throws InterruptedException {
+  public void shutdown() throws InterruptedException {
     try {
       channel.close();
       for(Map.Entry<String, Sender> entry: senders.entrySet()) {
@@ -480,7 +480,7 @@ public class NettyTransport extends Transport {
         // The disconnection happens in handshake phase. Does the random
         // backoff.
         try {
-          Thread.sleep((int)(new Random().nextFloat() * 500));
+          Thread.sleep((int)(new Random().nextFloat() * 200));
         } catch (InterruptedException ex) {
           Thread.currentThread().interrupt();
         }
