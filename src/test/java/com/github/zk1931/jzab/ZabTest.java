@@ -1389,7 +1389,7 @@ public class ZabTest extends TestBase  {
      * last seen config : {peers : server1,server2,server3, version : 0 0}
      * f.a = 1
      *
-     * server 3 : <0, 0>
+     * server 3 : <0, 0> <1, 0>
      * last seen config : {peers : server1,server2,server3, version : 0 0}
      * f.a = 1
      *
@@ -1444,7 +1444,7 @@ public class ZabTest extends TestBase  {
                    null,
                    getDirectory())
          .setProposedEpoch(1)
-         .setLog(new DummyLog(1))
+         .setLog(new DummyLog(2))
          .setAckEpoch(1)
          .setClusterConfiguration(cnf3);
     Zab zab3 = new Zab(st, cb3, null, state3);

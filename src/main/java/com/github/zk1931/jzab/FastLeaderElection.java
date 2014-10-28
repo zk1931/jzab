@@ -88,6 +88,13 @@ public class FastLeaderElection implements Election {
       }
       VoteInfo vote = tuple.voteInfo;
       String source = tuple.source;
+      if (!clusterConfig.contains(source)) {
+        // If the vote comes from a server who is not in your curernt
+        // configuration, ignores it.
+        LOG.debug("The vote is from server {} who is not in current " +
+            "configuration, ignores it.", source);
+        continue;
+      }
       if (vote.electing) {
         // The vote comes from a server who is also in electing phase.
         if (vote.round > this.voteInfo.round) {

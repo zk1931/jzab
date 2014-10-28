@@ -56,6 +56,7 @@ public class Follower extends Participant {
   @Override
   protected MessageTuple getMessage(int timeoutMs)
       throws TimeoutException, InterruptedException {
+    long startTime = System.nanoTime() / 1000000;
     while (true) {
       MessageTuple tuple = messageQueue.poll(timeoutMs,
                                              TimeUnit.MILLISECONDS);
@@ -90,18 +91,18 @@ public class Follower extends Participant {
           LOG.debug("Lost peer {}.", peerId);
           this.transport.clear(peerId);
         }
-      } else if (this.currentPhase != Phase.BROADCASTING &&
-                 tuple.getMessage().getType() == MessageType.ELECTION_INFO) {
-        // If it's not in broadcasting phase, replies peer directly. Otherwise
-        // return it to main thread and let it processes it because the peer
-        // might keep sending the election message, if the message is processed
-        // here the main thread couldn't detect the timeout.
+      } else if (tuple.getMessage().getType() == MessageType.ELECTION_INFO) {
+        // If it's election message, replies it directly.
         this.election.reply(tuple);
       } else if (tuple.getMessage().getType() == MessageType.SHUT_DOWN) {
         LOG.debug("Got SHUT_DOWN, going to shut down Zab.");
         throw new LeftCluster("Shutdown Zab");
       } else {
         return tuple;
+      }
+      long curTime = System.nanoTime() / 1000000;
+      if (curTime - startTime >= (long)timeoutMs) {
+        throw new TimeoutException();
       }
     }
   }
