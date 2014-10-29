@@ -11,7 +11,7 @@
 
   <title>
     
-      404: Page not found &middot; Jzab
+      Jzab &middot; Jzab
     
   </title>
 
@@ -57,8 +57,42 @@
 
     <div class="content container">
       <div class="page">
-  <h1 class="page-title">404: Page not found</h1>
-  <p class="lead">Sorry, we've misplaced that URL or it's pointing to something that doesn't exist. <a href="/master/">Head back home</a> to try finding it again.</p>
+  <h1 class="page-title">Jzab</h1>
+  <h2>What&#39;s Zab</h2>
+
+<p><a href="http://web.stanford.edu/class/cs347/reading/zab.pdf">Zab</a> is a
+atomic broadcast protocol designed for the <a href="http://zookeeper.apache.org/">Apache ZooKeeper</a>. ZooKeeper uses Zab to replicate its in-memory
+state to a set of backups consistently to provide high availability.
+It has similar goal with
+<a href="http://en.wikipedia.org/wiki/Paxos_(computer_science)">Paxos</a> and
+<a href="http://raftconsensus.github.io/">Raft</a> with high performance.</p>
+
+<h2>Jzab</h2>
+
+<p>Since ZooKeeper&#39;s Zab implementation is rather entangled with ZooKeeper code
+base, we implement <a href="https://github.com/zk1931/jzab">Jzab</a> as an independent
+implementation of Zab protocol to facilitate other users who want to build
+applications on top of it.</p>
+
+<h3>Features</h3>
+
+<ul>
+<li>Channel encryption and authentication (SSL)</li>
+<li>Dynamic reconfiguration (Add/Remove one server at a time)</li>
+<li>Snapshot</li>
+</ul>
+
+<h3>Install</h3>
+
+<p>Jzab is available on Maven.If your project uses Maven, please add these
+lines to your pom.xml.</p>
+
+<div class="highlight"><pre><code class="language-xml" data-lang="xml"><span class="nt">&lt;dependency&gt;</span>
+    <span class="nt">&lt;groupId&gt;</span>com.github.zk1931<span class="nt">&lt;/groupId&gt;</span>
+    <span class="nt">&lt;artifactId&gt;</span>jzab<span class="nt">&lt;/artifactId&gt;</span>
+    <span class="nt">&lt;version&gt;</span>0.2.0<span class="nt">&lt;/version&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span></code></pre></div>
+
 </div>
 
     </div>
