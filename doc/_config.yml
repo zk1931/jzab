@@ -11,7 +11,7 @@ title:            Jzab
 tagline:          'An implementation of ZooKeeper Atomic Broadcast in Java'
 description:      'An implementation of ZooKeeper Atomic Broadcast in Java'
 url:              https://github.com/zk1931/jzab
-baseurl:          /
+baseurl:          /jzab/master/
 
 author:
   name:           'zk1931'
