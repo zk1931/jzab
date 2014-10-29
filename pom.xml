@@ -3,7 +3,7 @@
   <groupId>com.github.zk1931</groupId>
   <artifactId>jzab</artifactId>
   <packaging>jar</packaging>
-  <version>0.2.0-SNAPSHOT</version>
+  <version>0.2.0</version>
   <name>jzab</name>
   <description>An implementation of ZooKeeper Atomic Broadcast.</description>
   <url>https://github.com/zk1931/jzab</url>
