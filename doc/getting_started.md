@@ -15,7 +15,7 @@ transactions get applied to all replicas in the same order. Transactions get
 persisted (i.e. fdatasync'ed) to a majority of servers before they get
 acknowledged to the application.
 
-<img align="middle" src="/imgs/overview.png"/>
+<img align="middle" src="{{ site.baseurl }}/imgs/overview.png"/>
 
 You can write the replicated application as easy as writing a standalone
 application. The only difference is that whenever you want to execute a command
@@ -29,7 +29,7 @@ be in. They are `recovering`, `leading` and `following`. When Jzab is in
 the state change via callbacks (See interface [StateMachine]
 (http://zk1931.github.io/jzab/master/javadoc/com/github/zk1931/jzab/StateMachine.html)).
 
-<img align="middle" src="/imgs/state_transition.png"/>
+<img align="middle" src="{{ site.baseurl }}/imgs/state_transition.png"/>
 
 This is the state transition diagram of Jzab. It begins with ```recovering```
 state, afte that it goes to either ```leading``` or ```following``` state depends

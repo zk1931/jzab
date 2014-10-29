@@ -14,6 +14,9 @@ before_install:
 
 install:
   - sudo apt-get install protobuf-compiler
+  # Install packages needed for document generation.
+  - sudo apt-get install nodejs
+  - sudo gem install bundler
 
 before_script:
   - .utility/before_script.sh
