@@ -5,6 +5,10 @@ jdk:
   - oraclejdk7
   - oraclejdk8
 
+language: ruby
+rvm:
+  - 1.9.3
+
 env:
   global:
     secure: X49it0ImkmAwo1X1gX4H22xQfa8pwTKxpjvvIFI21Deif17VEpaIn0QB1cZ4PyAqv44Y7sXbMIiUrq53Lge5TqgigvNM6KjQsvDr6r+6kPhPwfLHS90V0GRkNF49sMpq68J88rbwMqM44l2fpR4Ke0KBjWraqIQ8XgAdAKnCP/o=
@@ -15,8 +19,8 @@ before_install:
 install:
   - sudo apt-get install protobuf-compiler
   # Install packages needed for document generation.
-  - sudo apt-get install nodejs rubygems
-  - sudo gem install bundler
+  - sudo apt-get install nodejs
+  - gem install bundler
 
 before_script:
   - .utility/before_script.sh
