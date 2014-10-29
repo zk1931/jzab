@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en-us">
+
+  <head>
+  <link href="http://gmpg.org/xfn/11" rel="profile">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+  <!-- Enable responsiveness on mobile devices-->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+
+  <title>
+    
+      Jzab &middot; Jzab
+    
+  </title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="/jzab/0.2.1-SNAPSHOT/public/css/poole.css">
+  <link rel="stylesheet" href="/jzab/0.2.1-SNAPSHOT/public/css/syntax.css">
+  <link rel="stylesheet" href="/jzab/0.2.1-SNAPSHOT/public/css/hyde.css">
+  <link rel="stylesheet" href="http://fonts.googleapis.com/css?family=PT+Sans:400,400italic,700|Abril+Fatface">
+
+  <!-- Icons -->
+  <link rel="apple-touch-icon-precomposed" sizes="144x144" href="/jzab/0.2.1-SNAPSHOT/public/apple-touch-icon-144-precomposed.png">
+                                 <link rel="shortcut icon" href="/jzab/0.2.1-SNAPSHOT/public/favicon.ico">
+
+  <!-- RSS -->
+  <link rel="alternate" type="application/rss+xml" title="RSS" href="/atom.xml">
+</head>
+
+
+  <body>
+
+    <div class="sidebar">
+  <div class="container sidebar-sticky">
+    <div class="sidebar-about">
+      <h1>
+        <a href="/jzab/0.2.1-SNAPSHOT/">
+          Jzab
+        </a>
+      </h1>
+      <p class="lead">An implementation of ZooKeeper Atomic Broadcast in Java</p>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a class="sidebar-nav-item active" href="/jzab/0.2.1-SNAPSHOT/">Home</a>
+      <a class="sidebar-nav-item" href="/jzab/0.2.1-SNAPSHOT/getting_started/">Getting started</a>
+      <a class="sidebar-nav-item" href="https://github.com/zk1931/jzab">GitHub project</a>
+      <a class="sidebar-nav-item" href="/jzab/0.2.1-SNAPSHOT//javadoc/">Javadoc</a>
+      <span class="sidebar-nav-item">v0.2.1-SNAPSHOT</span>
+    </nav>
+
+  </div>
+</div>
+
+
+    <div class="content container">
+      <div class="page">
+  <h1 class="page-title">Jzab</h1>
+  <h2>What&#39;s Zab</h2>
+
+<p><a href="http://web.stanford.edu/class/cs347/reading/zab.pdf">Zab</a> is a
+atomic broadcast protocol designed for the <a href="http://zookeeper.apache.org/">Apache ZooKeeper</a>. ZooKeeper uses Zab to replicate its in-memory
+state to a set of backups consistently to provide high availability.
+It has similar goal with
+<a href="http://en.wikipedia.org/wiki/Paxos_(computer_science)">Paxos</a> and
+<a href="http://raftconsensus.github.io/">Raft</a> with high performance.</p>
+
+<h2>Jzab</h2>
+
+<p>Since ZooKeeper&#39;s Zab implementation is rather entangled with ZooKeeper code
+base, we implement <a href="https://github.com/zk1931/jzab">Jzab</a> as an independent
+implementation of Zab protocol to facilitate other users who want to build
+applications on top of it.</p>
+
+<h3>Features</h3>
+
+<ul>
+<li>Channel encryption and authentication (SSL)</li>
+<li>Dynamic reconfiguration (Add/Remove one server at a time)</li>
+<li>Snapshot</li>
+</ul>
+
+<h3>Install</h3>
+
+<p>Jzab is available on Maven.If your project uses Maven, please add these
+lines to your pom.xml.</p>
+
+<div class="highlight"><pre><code class="language-xml" data-lang="xml"><span class="nt">&lt;dependency&gt;</span>
+    <span class="nt">&lt;groupId&gt;</span>com.github.zk1931<span class="nt">&lt;/groupId&gt;</span>
+    <span class="nt">&lt;artifactId&gt;</span>jzab<span class="nt">&lt;/artifactId&gt;</span>
+    <span class="nt">&lt;version&gt;</span>0.2.0<span class="nt">&lt;/version&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span></code></pre></div>
+
+</div>
+
+    </div>
+
+  </body>
+</html>

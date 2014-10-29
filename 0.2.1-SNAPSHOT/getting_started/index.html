@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en-us">
+
+  <head>
+  <link href="http://gmpg.org/xfn/11" rel="profile">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+  <!-- Enable responsiveness on mobile devices-->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+
+  <title>
+    
+      Getting started &middot; Jzab
+    
+  </title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="/jzab/0.2.1-SNAPSHOT/public/css/poole.css">
+  <link rel="stylesheet" href="/jzab/0.2.1-SNAPSHOT/public/css/syntax.css">
+  <link rel="stylesheet" href="/jzab/0.2.1-SNAPSHOT/public/css/hyde.css">
+  <link rel="stylesheet" href="http://fonts.googleapis.com/css?family=PT+Sans:400,400italic,700|Abril+Fatface">
+
+  <!-- Icons -->
+  <link rel="apple-touch-icon-precomposed" sizes="144x144" href="/jzab/0.2.1-SNAPSHOT/public/apple-touch-icon-144-precomposed.png">
+                                 <link rel="shortcut icon" href="/jzab/0.2.1-SNAPSHOT/public/favicon.ico">
+
+  <!-- RSS -->
+  <link rel="alternate" type="application/rss+xml" title="RSS" href="/atom.xml">
+</head>
+
+
+  <body>
+
+    <div class="sidebar">
+  <div class="container sidebar-sticky">
+    <div class="sidebar-about">
+      <h1>
+        <a href="/jzab/0.2.1-SNAPSHOT/">
+          Jzab
+        </a>
+      </h1>
+      <p class="lead">An implementation of ZooKeeper Atomic Broadcast in Java</p>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a class="sidebar-nav-item" href="/jzab/0.2.1-SNAPSHOT/">Home</a>
+      <a class="sidebar-nav-item active" href="/jzab/0.2.1-SNAPSHOT/getting_started/">Getting started</a>
+      <a class="sidebar-nav-item" href="https://github.com/zk1931/jzab">GitHub project</a>
+      <a class="sidebar-nav-item" href="/jzab/0.2.1-SNAPSHOT//javadoc/">Javadoc</a>
+      <span class="sidebar-nav-item">v0.2.1-SNAPSHOT</span>
+    </nav>
+
+  </div>
+</div>
+
+
+    <div class="content container">
+      <div class="page">
+  <h1 class="page-title">Getting started</h1>
+  <p>Jzab is designed for hiding the complexities of underlying Zab protocol and
+providing an easy-to-use user interface, but a brief understanding of Zab
+protocol will help you use Jzab correctly.</p>
+
+<h3>Overview</h3>
+
+<p>Here is a simple diagram of how an application works with Jzab. You can use
+Jzab to replicate state of the application consistently, which means that
+transactions get applied to all replicas in the same order. Transactions get
+persisted (i.e. fdatasync&#39;ed) to a majority of servers before they get
+acknowledged to the application.</p>
+
+<p><img align="middle" src="/jzab/0.2.1-SNAPSHOT//imgs/overview.png"/></p>
+
+<p>You can write the replicated application as easy as writing a standalone
+application. The only difference is that whenever you want to execute a command
+that will change the state of your application, instead of executing it
+immediately, you pass it to Jzab and Jzab will replicate it and deliver it back
+to your application when it&#39;s safe to execute.</p>
+
+<p>Another thing you need to notice is that there are three states that Jzab might
+be in. They are <code>recovering</code>, <code>leading</code> and <code>following</code>. When Jzab is in
+<code>recovering</code> phase, any requests you passed to it will fail. Jzab will notify you
+the state change via callbacks (See interface <a href="http://zk1931.github.io/jzab/master/javadoc/com/github/zk1931/jzab/StateMachine.html">StateMachine</a>).</p>
+
+<p><img align="middle" src="/jzab/0.2.1-SNAPSHOT//imgs/state_transition.png"/></p>
+
+<p>This is the state transition diagram of Jzab. It begins with <code>recovering</code>
+state, afte that it goes to either <code>leading</code> or <code>following</code> state depends
+on whether it&#39;s follower or leader. These two are the states Jzab will spend
+most of its time in. Once leader dies or there&#39;s no quorum of servers in
+cluster, Zab will go back to <code>recovering</code> state again.</p>
+
+<h3>Example</h3>
+
+<p>This is the <a href="http://zk1931.github.io/jzab/master/javadoc/">Javadoc</a> from latest
+master branch build.</p>
+
+<p>In general, if you want to build application on top of Jzab, you only need to
+know one class <code>Zab</code> and implement one interface <code>StateMachine</code>.</p>
+
+<p>Here is a simple example:</p>
+
+<div class="highlight"><pre><code class="language-java" data-lang="java"><span class="cm">/**</span>
+<span class="cm"> * StateMachine interface contains a bunch of callbacks which will be called</span>
+<span class="cm"> * by Zab.</span>
+<span class="cm"> */</span>
+<span class="kd">class</span> <span class="nc">AppState</span> <span class="kd">implements</span> <span class="n">StateMachine</span> <span class="o">{</span>
+
+  <span class="kd">private</span> <span class="kd">final</span> <span class="n">CountDownLatch</span> <span class="n">broadcasting</span><span class="o">;</span>
+
+  <span class="kd">public</span> <span class="nf">AppState</span><span class="o">(</span><span class="n">CountDownLatch</span> <span class="n">broadcasting</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">this</span><span class="o">.</span><span class="na">broadcasting</span> <span class="o">=</span> <span class="n">broadcasting</span><span class="o">;</span>
+  <span class="o">}</span>
+
+  <span class="nd">@Override</span>
+  <span class="kd">public</span> <span class="kt">void</span> <span class="nf">deliver</span><span class="o">(</span><span class="n">Zxid</span> <span class="n">zxid</span><span class="o">,</span> <span class="n">ByteBuffer</span> <span class="n">stateUpdate</span><span class="o">,</span> <span class="n">String</span> <span class="n">clientId</span><span class="o">)</span> <span class="o">{</span>
+    <span class="kt">byte</span><span class="o">[]</span> <span class="n">bytes</span> <span class="o">=</span> <span class="k">new</span> <span class="kt">byte</span><span class="o">[</span><span class="n">stateUpdate</span><span class="o">.</span><span class="na">remaining</span><span class="o">()];</span>
+    <span class="n">stateUpdate</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">bytes</span><span class="o">);</span>
+    <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">&quot;Received &quot;</span> <span class="o">+</span> <span class="k">new</span> <span class="nf">String</span><span class="o">(</span><span class="n">bytes</span><span class="o">));</span>
+  <span class="o">}</span>
+
+  <span class="nd">@Override</span>
+  <span class="kd">public</span> <span class="kt">void</span> <span class="nf">save</span><span class="o">(</span><span class="n">OutputStream</span> <span class="n">os</span><span class="o">)</span> <span class="o">{</span>
+  <span class="o">}</span>
+
+  <span class="nd">@Override</span>
+  <span class="kd">public</span> <span class="kt">void</span> <span class="nf">restore</span><span class="o">(</span><span class="n">InputStream</span> <span class="n">is</span><span class="o">)</span> <span class="o">{</span>
+  <span class="o">}</span>
+
+  <span class="nd">@Override</span>
+  <span class="kd">public</span> <span class="kt">void</span> <span class="nf">flushed</span><span class="o">(</span><span class="n">ByteBuffer</span> <span class="n">request</span><span class="o">)</span> <span class="o">{</span>
+  <span class="o">}</span>
+
+  <span class="nd">@Override</span>
+  <span class="kd">public</span> <span class="n">ByteBuffer</span> <span class="nf">preprocess</span><span class="o">(</span><span class="n">Zxid</span> <span class="n">zxid</span><span class="o">,</span> <span class="n">ByteBuffer</span> <span class="n">message</span><span class="o">)</span> <span class="o">{</span>
+    <span class="c1">// Does nothing.</span>
+    <span class="k">return</span> <span class="n">message</span><span class="o">;</span>
+  <span class="o">}</span>
+
+  <span class="nd">@Override</span>
+  <span class="kd">public</span> <span class="kt">void</span> <span class="nf">leading</span><span class="o">(</span><span class="n">Set</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span> <span class="n">activeFollowers</span><span class="o">,</span> <span class="n">Set</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span> <span class="n">members</span><span class="o">)</span> <span class="o">{</span>
+    <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">&quot;LEADING with active followers : &quot;</span><span class="o">);</span>
+    <span class="k">for</span> <span class="o">(</span><span class="n">String</span> <span class="n">server</span> <span class="o">:</span> <span class="n">activeFollowers</span><span class="o">)</span> <span class="o">{</span>
+      <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">&quot; - &quot;</span> <span class="o">+</span> <span class="n">server</span><span class="o">);</span>
+    <span class="o">}</span>
+    <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">&quot;Current configuration has servers : &quot;</span><span class="o">);</span>
+    <span class="k">for</span> <span class="o">(</span><span class="n">String</span> <span class="n">server</span> <span class="o">:</span> <span class="n">members</span><span class="o">)</span> <span class="o">{</span>
+      <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">&quot; - &quot;</span> <span class="o">+</span> <span class="n">server</span><span class="o">);</span>
+    <span class="o">}</span>
+    <span class="k">this</span><span class="o">.</span><span class="na">broadcasting</span><span class="o">.</span><span class="na">countDown</span><span class="o">();</span>
+  <span class="o">}</span>
+
+  <span class="nd">@Override</span>
+  <span class="kd">public</span> <span class="kt">void</span> <span class="nf">following</span><span class="o">(</span><span class="n">String</span> <span class="n">leader</span><span class="o">,</span> <span class="n">Set</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span> <span class="n">members</span><span class="o">)</span> <span class="o">{</span>
+    <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">&quot;Following &quot;</span> <span class="o">+</span> <span class="n">leader</span><span class="o">);</span>
+    <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">&quot;Current configuration has servers : &quot;</span><span class="o">);</span>
+    <span class="k">for</span> <span class="o">(</span><span class="n">String</span> <span class="n">server</span> <span class="o">:</span> <span class="n">members</span><span class="o">)</span> <span class="o">{</span>
+      <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">&quot; - &quot;</span> <span class="o">+</span> <span class="n">server</span><span class="o">);</span>
+    <span class="o">}</span>
+    <span class="k">this</span><span class="o">.</span><span class="na">broadcasting</span><span class="o">.</span><span class="na">countDown</span><span class="o">();</span>
+  <span class="o">}</span>
+
+  <span class="nd">@Override</span>
+  <span class="kd">public</span> <span class="kt">void</span> <span class="nf">recovering</span><span class="o">()</span> <span class="o">{</span>
+    <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">&quot;Recovering&quot;</span><span class="o">);</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+
+<span class="cm">/**</span>
+<span class="cm"> * Main.</span>
+<span class="cm"> */</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">Main</span> <span class="o">{</span>
+
+  <span class="kd">protected</span> <span class="nf">Main</span><span class="o">()</span> <span class="o">{}</span>
+
+  <span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">main</span><span class="o">(</span><span class="n">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="kd">throws</span> <span class="n">Exception</span> <span class="o">{</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">args</span><span class="o">.</span><span class="na">length</span> <span class="o">==</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+      <span class="n">System</span><span class="o">.</span><span class="na">err</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">&quot;Invalid arguments!&quot;</span><span class="o">);</span>
+      <span class="k">return</span><span class="o">;</span>
+    <span class="o">}</span>
+    <span class="n">String</span> <span class="n">serverId</span> <span class="o">=</span> <span class="n">args</span><span class="o">[</span><span class="mi">0</span><span class="o">];</span>
+    <span class="n">String</span> <span class="n">joinPeer</span> <span class="o">=</span> <span class="n">serverId</span><span class="o">;</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">args</span><span class="o">.</span><span class="na">length</span> <span class="o">==</span> <span class="mi">2</span><span class="o">)</span> <span class="o">{</span>
+      <span class="n">joinPeer</span> <span class="o">=</span> <span class="n">args</span><span class="o">[</span><span class="mi">1</span><span class="o">];</span>
+    <span class="o">}</span>
+    <span class="n">CountDownLatch</span> <span class="n">broadcasting</span> <span class="o">=</span> <span class="k">new</span> <span class="nf">CountDownLatch</span><span class="o">(</span><span class="mi">1</span><span class="o">);</span>
+    <span class="n">AppState</span> <span class="n">stateMachine</span> <span class="o">=</span> <span class="k">new</span> <span class="nf">AppState</span><span class="o">(</span><span class="n">broadcasting</span><span class="o">);</span>
+    <span class="n">Properties</span> <span class="n">prop</span> <span class="o">=</span> <span class="k">new</span> <span class="nf">Properties</span><span class="o">();</span>
+    <span class="n">prop</span><span class="o">.</span><span class="na">setProperty</span><span class="o">(</span><span class="s">&quot;serverId&quot;</span><span class="o">,</span> <span class="n">serverId</span><span class="o">);</span>
+    <span class="n">prop</span><span class="o">.</span><span class="na">setProperty</span><span class="o">(</span><span class="s">&quot;logdir&quot;</span><span class="o">,</span> <span class="n">serverId</span><span class="o">);</span>
+    <span class="n">Zab</span> <span class="n">zab</span> <span class="o">=</span> <span class="k">new</span> <span class="nf">Zab</span><span class="o">(</span><span class="n">stateMachine</span><span class="o">,</span> <span class="n">prop</span><span class="o">,</span> <span class="n">joinPeer</span><span class="o">);</span>
+    <span class="c1">// Waits until broadcasting.</span>
+    <span class="n">broadcasting</span><span class="o">.</span><span class="na">await</span><span class="o">();</span>
+    <span class="c1">// Broadcasts &quot;HelloWord&quot;.</span>
+    <span class="n">zab</span><span class="o">.</span><span class="na">send</span><span class="o">(</span><span class="n">ByteBuffer</span><span class="o">.</span><span class="na">wrap</span><span class="o">((</span><span class="s">&quot;HelloWorld from &quot;</span> <span class="o">+</span> <span class="n">serverId</span><span class="o">).</span><span class="na">getBytes</span><span class="o">()));</span>
+    <span class="k">while</span> <span class="o">(</span><span class="kc">true</span><span class="o">)</span> <span class="o">{</span>
+      <span class="n">Thread</span><span class="o">.</span><span class="na">sleep</span><span class="o">(</span><span class="mi">1000</span><span class="o">);</span>
+    <span class="o">}</span>
+  <span class="o">}</span>
+<span class="o">}</span></code></pre></div>
+
+<p>You can start 3 servers to form a cluster (The second and third server will
+join the first one):</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">  java Main localhost:5000
+  java Main localhost:5001 localhost:5000
+  java Main localhost:5002 localhost:5000
+</code></pre></div>
+<p>You&#39;ll see the output from all three processes like :</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">Received HelloWorld from localhost:5000
+Received HelloWorld from localhost:5001
+Received HelloWorld from localhost:5002
+</code></pre></div>
+</div>
+
+    </div>
+
+  </body>
+</html>
