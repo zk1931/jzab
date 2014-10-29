@@ -448,6 +448,9 @@ public class Follower extends Participant {
             sendMessage(source, reply);
           } else if (msg.getType() == MessageType.ELECTION_INFO) {
             this.election.reply(tuple);
+          } else if (msg.getType() == MessageType.DELIVERED) {
+            // DELIVERED message should come from itself.
+            onDelivered(msg, snapProcessor);
           } else {
             LOG.debug("Got unexpected message from {}, ignores.", source);
           }
@@ -476,8 +479,6 @@ public class Follower extends Participant {
           // Replies HEARTBEAT message to leader.
           Message heartbeatReply = MessageBuilder.buildHeartbeat();
           sendMessage(source, heartbeatReply);
-        } else if (msg.getType() == MessageType.DELIVERED) {
-          onDelivered(msg, snapProcessor);
         } else if (msg.getType() == MessageType.FLUSH) {
           onFlush(tuple, commitProcessor);
         } else {
