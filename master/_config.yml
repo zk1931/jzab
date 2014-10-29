@@ -7,7 +7,7 @@ permalink:        pretty
 relative_permalinks: true
 
 # Setup
-title:            jzab
+title:            Jzab
 tagline:          'An implementation of ZooKeeper Atomic Broadcast in Java'
 description:      'An implementation of ZooKeeper Atomic Broadcast in Java'
 url:              https://github.com/zk1931/jzab
