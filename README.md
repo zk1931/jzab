@@ -5,7 +5,7 @@ An implementation of ZooKeeper Atomic Broadcast in Java
 
 [![Build Status](https://travis-ci.org/zk1931/jzab.svg?branch=master)](https://travis-ci.org/zk1931/jzab)
 
-Javadoc from the latest master branch build: http://zk1931.github.io/jzab/master/javadoc/
+The latest documentation from the master branch: http://zk1931.github.io/jzab/master/
 
 Requirements
 ------------
