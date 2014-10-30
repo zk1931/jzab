@@ -35,6 +35,6 @@ lines to your pom.xml.
 <dependency>
     <groupId>com.github.zk1931</groupId>
     <artifactId>jzab</artifactId>
-    <version>0.2.0</version>
+    <version>{{ site.version }}</version>
 </dependency>
 {% endhighlight %}
