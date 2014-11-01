@@ -18,8 +18,7 @@
 
 package com.github.zk1931.jzab.transport;
 
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
+import com.google.protobuf.TextFormat;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -126,6 +125,8 @@ public class NettyTransportTest extends TestBase {
                                                    getDirectory());
     transportA.send(peerB, createAck(new Zxid(0, 0)));
     disconnected.await();
+    Assert.assertTrue(transportA.senders.containsKey(peerB));
+    Assert.assertFalse(transportA.receivers.containsKey(peerB));
   }
 
   @Test(timeout=10000)
@@ -226,8 +227,8 @@ public class NettyTransportTest extends TestBase {
     latchReceiveB.await();
     // Clear B.
     transportA.clear(peerB);
-    // B should receive DISCONNECT message.
-    latchB.await();
+    // B shouldn't receive DISCONNECT message.
+    Assert.assertFalse(latchB.await(500, TimeUnit.MILLISECONDS));
     // A shouldn't receive DISCONNECT message.
     Assert.assertFalse(latchA.await(500, TimeUnit.MILLISECONDS));
     transportA.shutdown();
@@ -240,7 +241,6 @@ public class NettyTransportTest extends TestBase {
     final String peerB = getUniqueHostPort();
     final CountDownLatch latchA = new CountDownLatch(1);
     final CountDownLatch latchB = new CountDownLatch(1);
-    final CountDownLatch disconnectedB = new CountDownLatch(1);
 
     // receiver simply decrement the latch.
     Transport.Receiver receiverA = new Transport.Receiver() {
@@ -257,7 +257,6 @@ public class NettyTransportTest extends TestBase {
         latchB.countDown();
       }
       public void onDisconnected(String source) {
-        disconnectedB.countDown();
       }
     };
     NettyTransport transportA =
@@ -268,16 +267,17 @@ public class NettyTransportTest extends TestBase {
     // A initiates a handshake.
     transportA.send(peerB, createAck(new Zxid(0, 0)));
     latchB.await();
+    Assert.assertTrue(transportB.receivers.containsKey(peerA));
 
     // shutdown A and make sure B removes the channel to A.
     transportA.shutdown();
     Assert.assertTrue(transportA.senders.isEmpty());
-    disconnectedB.await();
-    Assert.assertTrue(transportB.senders.containsKey(peerA));
+    Assert.assertFalse(transportB.senders.containsKey(peerA));
+    Assert.assertFalse(transportB.receivers.containsKey(peerA));
     transportB.shutdown();
   }
 
-  @Test(timeout=10000)
+  @Test(timeout=5000)
   public void testDisconnectServer() throws Exception {
     final String peerA = getUniqueHostPort();
     final String peerB = getUniqueHostPort();
@@ -319,55 +319,6 @@ public class NettyTransportTest extends TestBase {
     transportA.shutdown();
   }
 
-  @Test(timeout=10000)
-  public void testTieBreaker() throws Exception {
-    final String peerA = getUniqueHostPort();
-    final String peerB = getUniqueHostPort();
-    final CountDownLatch disconnectedA = new CountDownLatch(1);
-    final CountDownLatch disconnectedB = new CountDownLatch(1);
-
-    Transport.Receiver receiverA = new Transport.Receiver() {
-      public void onReceived(String source, Message message) {
-        Assert.fail("Handshake should have failed");
-      }
-      public void onDisconnected(String source) {
-        LOG.debug("Got disconnected from {}", source);
-        disconnectedA.countDown();
-      }
-    };
-    Transport.Receiver receiverB = new Transport.Receiver() {
-      public void onReceived(String source, Message message) {
-        Assert.fail("Handshake should have failed");
-      }
-      public void onDisconnected(String source) {
-        LOG.debug("Got disconnected from {}", source);
-        disconnectedB.countDown();
-      }
-    };
-
-    final NettyTransport transportA =
-      new NettyTransport(peerA, receiverA, getDirectory());
-    final NettyTransport transportB =
-      new NettyTransport(peerB, receiverB, getDirectory());
-    transportB.channel.pipeline().addFirst(
-      new ChannelInboundHandlerAdapter() {
-        @Override
-        public void channelRead(ChannelHandlerContext ctx, Object msg) {
-          // B initiates another handshake before responding to A's handshake.
-          transportB.send(peerA, createAck(new Zxid(0, 0)));
-          ctx.pipeline().remove(this);
-          ctx.fireChannelRead(msg);
-        }
-      });
-
-    // A initiates a handshake.
-    transportA.send(peerB, createAck(new Zxid(0, 0)));
-    disconnectedA.await();
-    disconnectedB.await();
-    transportA.shutdown();
-    transportB.shutdown();
-  }
-
   @Test(timeout=5000)
   public void testCloseClient() throws Exception {
     final String peerA = getUniqueHostPort();
@@ -380,14 +331,15 @@ public class NettyTransportTest extends TestBase {
       public void onReceived(String source, Message message) {
       }
       public void onDisconnected(String source) {
+        LOG.debug("Got disconnected from {}", source);
       }
     };
     Transport.Receiver receiverB = new Transport.Receiver() {
       public void onReceived(String source, Message message) {
         Assert.assertEquals(peerA, source);
         latchB.countDown();
-        LOG.debug("Received a message from {}: {}: {}", source, message,
-                  latchB.getCount());
+        LOG.debug("Received a message from {}: {}: {}", source,
+                  TextFormat.shortDebugString(message), latchB.getCount());
       }
       public void onDisconnected(String source) {
         LOG.debug("Got disconnected from {}", source);
@@ -404,19 +356,21 @@ public class NettyTransportTest extends TestBase {
       transportA.send(peerB, createAck(new Zxid(0, i)));
     }
     latchB.await();
+    Assert.assertTrue(transportB.receivers.containsKey(peerA));
 
     // A should remove B from the map after clear() is called.
     transportA.clear(peerB);
     Assert.assertFalse(transportA.senders.containsKey(peerB));
 
-    // B should get onDisconnected event, but A should be in the map.
-    disconnectedB.await();
-    Assert.assertTrue(transportB.senders.containsKey(peerA));
+    // B should not get onDisconnected event.
+    Assert.assertFalse(disconnectedB.await(500, TimeUnit.MILLISECONDS));
+    Assert.assertFalse(transportB.senders.containsKey(peerA));
+    Assert.assertFalse(transportB.receivers.containsKey(peerA));
     transportA.shutdown();
     transportB.shutdown();
   }
 
-  @Test(timeout=10000)
+  @Test(timeout=5000)
   public void testCloseServer() throws Exception {
     final String peerA = getUniqueHostPort();
     final String peerB = getUniqueHostPort();
@@ -437,10 +391,12 @@ public class NettyTransportTest extends TestBase {
       public void onReceived(String source, Message message) {
         Assert.assertEquals(peerA, source);
         latchB.countDown();
-        LOG.debug("Received a message from {}: {}: {}", source, message,
-                  latchB.getCount());
+        LOG.debug("Received a message from {}: {}: {}", source,
+                  TextFormat.shortDebugString(message), latchB.getCount());
       }
       public void onDisconnected(String source) {
+        LOG.debug("Got disconnected from {}", source);
+        disconnectedA.countDown();
       }
     };
 
@@ -454,55 +410,16 @@ public class NettyTransportTest extends TestBase {
     }
     latchB.await();
 
-    // B should remove A from the map after clear() is called.
+    // B should remove A from the map after clear() is called, but it shouldn't
+    // call onDisconnected.
     transportB.clear(peerA);
     Assert.assertFalse(transportB.senders.containsKey(peerA));
+    Assert.assertFalse(disconnectedB.await(500, TimeUnit.MILLISECONDS));
 
-    // A should get onDisconnected event, but B should be in the map.
-    disconnectedA.await();
+    // A shouldn't get onDisconnected event.
     Assert.assertTrue(transportA.senders.containsKey(peerB));
+    Assert.assertFalse(disconnectedA.await(500, TimeUnit.MILLISECONDS));
 
-    transportA.shutdown();
-    transportB.shutdown();
-  }
-
-  @Test(timeout=10000)
-  public void testHandshakeTimeout() throws Exception {
-    final String peerA = getUniqueHostPort();
-    final String peerB = getUniqueHostPort();
-    final CountDownLatch disconnectedA = new CountDownLatch(1);
-
-    Transport.Receiver receiverA = new Transport.Receiver() {
-      public void onReceived(String source, Message message) {
-      }
-      public void onDisconnected(String source) {
-        LOG.debug("Got disconnected from {}", source);
-        disconnectedA.countDown();
-      }
-    };
-    Transport.Receiver receiverB = new Transport.Receiver() {
-      public void onReceived(String source, Message message) {
-      }
-      public void onDisconnected(String source) {
-      }
-    };
-
-    final NettyTransport transportA =
-      new NettyTransport(peerA, receiverA, getDirectory());
-    final NettyTransport transportB =
-      new NettyTransport(peerB, receiverB, getDirectory());
-
-    // Discard the handshake message.
-    transportB.channel.pipeline().addFirst(
-      new ChannelInboundHandlerAdapter() {
-        @Override
-        public void channelRead(ChannelHandlerContext ctx, Object msg) {
-          // discard the message.
-        }
-      });
-
-    transportA.send(peerB, createAck(new Zxid(0, 0)));
-    disconnectedA.await();
     transportA.shutdown();
     transportB.shutdown();
   }
@@ -652,7 +569,8 @@ public class NettyTransportTest extends TestBase {
         if (message.getType() == MessageType.FILE_RECEIVED) {
           receivedFiles.add(new File(message.getFileReceived().getFullPath()));
         }
-        LOG.debug("onReceived {}", message);
+        LOG.debug("Received a message from {}: {}: {}", source,
+                  TextFormat.shortDebugString(message), latchB.getCount());
         latchB.countDown();
       }
       public void onDisconnected(String source) {
@@ -703,7 +621,8 @@ public class NettyTransportTest extends TestBase {
         if (message.getType() == MessageType.FILE_RECEIVED) {
           receivedFiles.add(new File(message.getFileReceived().getFullPath()));
         }
-        LOG.debug("onReceived {}", message);
+        LOG.debug("Received a message from {}: {}: {}", source,
+                  TextFormat.shortDebugString(message), latchB.getCount());
         latchB.countDown();
       }
       public void onDisconnected(String source) {

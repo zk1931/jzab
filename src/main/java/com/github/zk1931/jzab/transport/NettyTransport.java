@@ -19,7 +19,6 @@
 package com.github.zk1931.jzab.transport;
 
 import com.google.protobuf.InvalidProtocolBufferException;
-import com.google.protobuf.TextFormat;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBuf;
@@ -35,6 +34,7 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.DefaultFileRegion;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.FileRegion;
+import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
@@ -44,9 +44,7 @@ import io.netty.handler.codec.LengthFieldPrepender;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.stream.ChunkedFile;
 import io.netty.handler.stream.ChunkedWriteHandler;
-import io.netty.handler.timeout.ReadTimeoutHandler;
 import io.netty.util.AttributeKey;
-import io.netty.util.ReferenceCountUtil;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -57,7 +55,7 @@ import java.security.GeneralSecurityException;
 import java.security.KeyStore;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
+import java.util.NoSuchElementException;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -86,7 +84,7 @@ import static com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
 public class NettyTransport extends Transport {
   private static final Logger LOG = LoggerFactory
                                     .getLogger(NettyTransport.class);
-  static final AttributeKey<Sender> SENDER = AttributeKey.valueOf("remote");
+  static final AttributeKey<String> SENDER = AttributeKey.valueOf("remote");
 
   private final String hostPort;
   private final EventLoopGroup bossGroup = new NioEventLoopGroup();
@@ -101,8 +99,11 @@ public class NettyTransport extends Transport {
   private final File dir;
 
   // remote id => sender map.
-  ConcurrentMap<String, Sender> senders =
-    new ConcurrentHashMap<String, Sender>();
+  ConcurrentMap<String, Sender> senders = new ConcurrentHashMap<>();
+
+  // remote id => incoming channel context
+  ConcurrentMap<String, ChannelHandlerContext> receivers =
+    new ConcurrentHashMap<>();
 
   public NettyTransport(String hostPort, final Receiver receiver,
                         final File dir)
@@ -159,9 +160,7 @@ public class NettyTransport extends Transport {
           ch.pipeline().addLast(new MainHandler());
           ch.pipeline().addLast(new ServerHandshakeHandler());
           ch.pipeline().addLast(new NotifyHandler());
-          ch.pipeline().addLast(new ErrorHandler());
-          // Outgoing handlers.
-          ch.pipeline().addLast("frameEncoder", new LengthFieldPrepender(4));
+          ch.pipeline().addLast(new ServerErrorHandler());
         }
       });
 
@@ -218,11 +217,16 @@ public class NettyTransport extends Transport {
     try {
       channel.close();
       for(Map.Entry<String, Sender> entry: senders.entrySet()) {
-        LOG.debug("Shutting down the sender({})", entry.getKey());
         entry.getValue().shutdown();
       }
       senders.clear();
-      LOG.debug("Shutdown complete");
+
+      for(Map.Entry<String, ChannelHandlerContext> entry:
+          receivers.entrySet()) {
+        entry.getValue().close();
+      }
+      receivers.clear();
+
     } finally {
       try {
         long quietPeriodSec = 0;
@@ -235,7 +239,7 @@ public class NettyTransport extends Transport {
                                        TimeUnit.SECONDS);
         wf.await();
         bf.await();
-        LOG.debug("Shutdown complete");
+        LOG.debug("Shutdown complete: {}", hostPort);
       } catch (InterruptedException ex) {
         LOG.debug("Interrupted while shutting down NioEventLoopGroup", ex);
       }
@@ -245,47 +249,32 @@ public class NettyTransport extends Transport {
   /**
    * Handles server-side handshake.
    */
-  private class ServerHandshakeHandler extends ChannelInboundHandlerAdapter {
+  private class ServerHandshakeHandler
+      extends SimpleChannelInboundHandler<Message> {
     @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg)
+    public void channelRead0(ChannelHandlerContext ctx, Message msg)
         throws Exception {
-      try {
-        Message message = (Message)msg;
-        // Make sure it's a handshake message.
-        if (message .getType() != MessageType.HANDSHAKE) {
-          LOG.debug("The first message from {} was not a handshake",
-                    ctx.channel().remoteAddress());
-          ctx.close();
-          return;
-        }
-        String remoteId = message.getHandshake().getNodeId();
-        LOG.debug("{} received handshake from {}", hostPort, remoteId);
-        Sender sender = new Sender(remoteId, ctx.channel());
-        Sender currentSender = senders.putIfAbsent(remoteId, sender);
-
-        if (currentSender != null) {
-          LOG.debug("Rejecting a handshake from {}", remoteId);
-          ctx.close();
-          return;
-        }
-
-        // Send a response and remove the handler from the pipeline.
-        LOG.debug("Server-side handshake completed from {} to {}", hostPort,
-                  remoteId);
-        // Attach the Sender to this channel. Subsequent handlers use
-        // this information to determine origins of messages.
-        ctx.channel().attr(SENDER).set(sender);
-        // Send a response and remove the handler from the pipeline.
-        LOG.debug("Server-side handshake completed from {} to {}", hostPort,
-                  remoteId);
-        Message response = MessageBuilder.buildHandshake(hostPort);
-        ByteBuffer buf = ByteBuffer.wrap(response.toByteArray());
-        ctx.channel().writeAndFlush(Unpooled.wrappedBuffer(buf));
-        sender.start();
-        ctx.pipeline().remove(this);
-      } finally {
-        ReferenceCountUtil.release(msg);
+      // Make sure it's a handshake message.
+      if (msg.getType() != MessageType.HANDSHAKE) {
+        LOG.debug("The first message from {} was not a handshake",
+                  ctx.channel().remoteAddress());
+        ctx.close();
+        return;
       }
+      String remoteId = msg.getHandshake().getNodeId();
+
+      ChannelHandlerContext current = receivers.putIfAbsent(remoteId, ctx);
+      if (current != null) {
+        LOG.warn("Rejecting a duplicate connection from {}", remoteId);
+        ctx.close();
+        return;
+      }
+      LOG.debug("{} accepted a connection from {}", hostPort, remoteId);
+
+      // Attach the Sender to this channel. Subsequent handlers use this
+      // information to determine origins of messages.
+      ctx.channel().attr(SENDER).set(remoteId);
+      ctx.pipeline().remove(this);
     }
   }
 
@@ -372,42 +361,49 @@ public class NettyTransport extends Transport {
     }
   }
 
-  private class NotifyHandler extends ChannelInboundHandlerAdapter {
+  private class NotifyHandler extends SimpleChannelInboundHandler<Message> {
     @Override
-    public void channelRead(ChannelHandlerContext ctx, Object obj) {
-      String remoteId =
-        ctx.channel().attr(NettyTransport.SENDER).get().destination;
-      Message msg = (Message)obj;
+    public void channelRead0(ChannelHandlerContext ctx, Message msg) {
+      String remoteId = ctx.channel().attr(NettyTransport.SENDER).get();
       receiver.onReceived(remoteId, msg);
     }
   }
 
   /**
-   * Handles errors.
+   * Handles server-side errors.
    */
-  private class ErrorHandler extends ChannelInboundHandlerAdapter {
+  private class ServerErrorHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-      Sender sender = ctx.channel().attr(NettyTransport.SENDER).get();
-      ctx.close();
-      if (sender != null) {
-        LOG.debug("Channel from {} is inactive.", sender.destination);
-        Sender senderInMap = senders.get(sender.destination);
-        // We call onDisconnected callback if and only if the Sender of the
-        // channel is still in map.
-        if (senderInMap != null && senderInMap == sender) {
-          // It's possible that the user calls transport.clear(serverId) first
-          // and the clear call triggers the channelInactive callback, and in
-          // this case either the Map doesn't contain Sender for the given
-          // serverId or the user established a new Sender after calling clear(
-          // so the Sender in the map doesn't match the Sender of the channel).
-          // In either case we shouldn't call onDisconnected callback since the
-          // disconnection is triggered by calling transport.clear.
-          LOG.debug("The inactive channel is in current map, calling "
-              + "onDisconnected.");
-          receiver.onDisconnected(sender.destination);
-        }
+      String remote = ctx.channel().attr(NettyTransport.SENDER).get();
+      if (remote != null) {
+        // remote might be null, for example if client connection got closed
+        // because SSL handshake failed.
+        LOG.debug("Disconnected from client {}", remote);
+        receivers.remove(remote);
       }
+      ctx.close();
+    }
+
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+      // Don't handle errors here. Call ctx.close() and let channelInactive()
+      // handle all the errrors.
+      LOG.debug("Caught an exception", cause);
+      ctx.close();
+    }
+  }
+
+  /**
+   * Handles client-side errors.
+   */
+  private class ClientErrorHandler extends ChannelInboundHandlerAdapter {
+    @Override
+    public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+      String remote = ctx.channel().attr(NettyTransport.SENDER).get();
+      LOG.debug("Disconnected from server {}", remote);
+      receiver.onDisconnected(remote);
+      ctx.close();
     }
 
     @Override
@@ -474,17 +470,14 @@ public class NettyTransport extends Transport {
   public void clear(String destination) {
     LOG.debug("Closing the connection to {}", destination);
     Sender sender = senders.remove(destination);
-    if (sender != null) {
-      sender.shutdown();
-      if (sender.handshakeFail) {
-        // The disconnection happens in handshake phase. Does the random
-        // backoff.
-        try {
-          Thread.sleep((int)(new Random().nextFloat() * 200));
-        } catch (InterruptedException ex) {
-          Thread.currentThread().interrupt();
-        }
+
+    if (sender != null && sender.channel != null) {
+      try {
+        sender.channel.pipeline().remove("clientError");
+      } catch (NoSuchElementException ex) {
+        LOG.debug("Channel pipeline has already been cleared");
       }
+      sender.shutdown();
     }
   }
 
@@ -497,12 +490,6 @@ public class NettyTransport extends Transport {
     private Channel channel;
     Future<Void> future;
     BlockingDeque<Object> requests = new LinkedBlockingDeque<>();
-    boolean handshakeFail = false;
-
-    public Sender(String destination, Channel channel) {
-      this.destination = destination;
-      this.channel = channel;
-    }
 
     public Sender(final String source, final String destination) {
       this.destination = destination;
@@ -521,9 +508,7 @@ public class NettyTransport extends Transport {
             ch.pipeline().addLast(new SslHandler(engine));
           }
           // Inbound handlers.
-          ch.pipeline().addLast(new ReadTimeoutHandler(2));
-          ch.pipeline().addLast(new MainHandler());
-          ch.pipeline().addLast(new ClientHandshakeHandler());
+          ch.pipeline().addLast("clientError", new ClientErrorHandler());
           // Outbound handlers.
           ch.pipeline().addLast("frameEncoder", new LengthFieldPrepender(4));
         }
@@ -539,42 +524,24 @@ public class NettyTransport extends Transport {
         @Override
         public void operationComplete(ChannelFuture cfuture) {
           if (cfuture.isSuccess()) {
-            LOG.debug("{} connected to {}. Sending a handshake",
+            LOG.debug("{} connected to {}. Sending a connection header",
                       hostPort, destination);
             channel = cfuture.channel();
             // Associates the Sender with channel once the connection
             // has been established.
-            channel.attr(SENDER).set(Sender.this);
+            channel.attr(SENDER).set(destination);
             Message msg = MessageBuilder.buildHandshake(hostPort);
             ByteBuffer bb = ByteBuffer.wrap(msg.toByteArray());
             channel.writeAndFlush(Unpooled.wrappedBuffer(bb));
+            start();
           } else {
             LOG.debug("Failed to connect to {}: {}", destination,
                       cfuture.cause().getMessage());
-            handshakeFailed();
+            shutdown();
+            receiver.onDisconnected(destination);
           }
         }
       });
-    }
-
-    public void handshakeCompleted() {
-      LOG.debug("Client handshake completed: {} => {}", hostPort, destination);
-      Sender sender = senders.get(destination);
-      assert sender == this;
-      sender.channel.pipeline().remove(ReadTimeoutHandler.class);
-      sender.channel.pipeline().addLast(new NotifyHandler());
-      sender.channel.pipeline().addLast(new ErrorHandler());
-      sender.start();
-    }
-
-    public void handshakeFailed() {
-      LOG.debug("Client handshake failed: {} => {}", hostPort, destination);
-      Sender sender = senders.get(destination);
-      this.handshakeFail = true;
-      if (sender != null) {
-        sender.shutdown();
-      }
-      receiver.onDisconnected(destination);
     }
 
     void sendFile(File file) throws Exception {
@@ -665,62 +632,6 @@ public class NettyTransport extends Transport {
 
     class Shutdown {
       // We use it to shutdown the sender thread.
-    }
-
-    /**
-     * Handles client-side handshake.
-     */
-    public class ClientHandshakeHandler extends ChannelInboundHandlerAdapter {
-      @Override
-      public void channelRead(ChannelHandlerContext ctx, Object msg)
-          throws Exception {
-        try {
-          Message message = (Message)msg;
-          if (message.getType() != MessageType.HANDSHAKE) {
-            // Server responded with an invalid message.
-            LOG.error("The first message from %s was not a handshake: %s",
-                      ctx.channel().remoteAddress(),
-                      TextFormat.shortDebugString(message));
-            ctx.close();
-            return;
-          }
-
-          String response = message.getHandshake().getNodeId();
-          if (!response.equals(destination)) {
-            // Handshake response doesn't match server's node ID.
-            LOG.error("Invalid handshake response from %s: %s", destination,
-                      response);
-            ctx.close();
-            return;
-          }
-
-          // Handshake is finished. Remove the handler from the pipeline.
-          ctx.pipeline().remove(this);
-          handshakeCompleted();
-        } finally {
-          ReferenceCountUtil.release(msg);
-        }
-      }
-
-      @Override
-      public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        // Don't call the handshake callback here. Simply close the context and
-        // let channelInactive() call the handshake callback.
-        LOG.debug("Caught an exception", cause);
-        ctx.close();
-      }
-
-      @Override
-      public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-        LOG.debug("Channel from {} is closed.", destination);
-        ctx.close();
-        Sender sender = ctx.channel().attr(SENDER).get();
-        if (sender != null && sender == senders.get(sender.destination)) {
-          handshakeFailed();
-        } else {
-          LOG.debug("The channel is closed due to losing the tie breaking.");
-        }
-      }
     }
   }
 }
