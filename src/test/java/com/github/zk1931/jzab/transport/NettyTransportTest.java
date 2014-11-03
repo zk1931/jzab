@@ -272,8 +272,9 @@ public class NettyTransportTest extends TestBase {
     // shutdown A and make sure B removes the channel to A.
     transportA.shutdown();
     Assert.assertTrue(transportA.senders.isEmpty());
+    Assert.assertTrue(transportA.receivers.isEmpty());
     Assert.assertFalse(transportB.senders.containsKey(peerA));
-    Assert.assertFalse(transportB.receivers.containsKey(peerA));
+    Assert.assertTrue(transportB.receivers.containsKey(peerA));
     transportB.shutdown();
   }
 
@@ -361,11 +362,12 @@ public class NettyTransportTest extends TestBase {
     // A should remove B from the map after clear() is called.
     transportA.clear(peerB);
     Assert.assertFalse(transportA.senders.containsKey(peerB));
+    Assert.assertFalse(transportA.receivers.containsKey(peerB));
 
-    // B should not get onDisconnected event.
-    Assert.assertFalse(disconnectedB.await(500, TimeUnit.MILLISECONDS));
+    // B should get onDisconnected event.
+    latchB.await();
     Assert.assertFalse(transportB.senders.containsKey(peerA));
-    Assert.assertFalse(transportB.receivers.containsKey(peerA));
+    Assert.assertTrue(transportB.receivers.containsKey(peerA));
     transportA.shutdown();
     transportB.shutdown();
   }
@@ -414,11 +416,13 @@ public class NettyTransportTest extends TestBase {
     // call onDisconnected.
     transportB.clear(peerA);
     Assert.assertFalse(transportB.senders.containsKey(peerA));
+    Assert.assertFalse(transportB.receivers.containsKey(peerA));
     Assert.assertFalse(disconnectedB.await(500, TimeUnit.MILLISECONDS));
 
-    // A shouldn't get onDisconnected event.
+    // A should get onDisconnected event.
+    disconnectedA.await();
     Assert.assertTrue(transportA.senders.containsKey(peerB));
-    Assert.assertFalse(disconnectedA.await(500, TimeUnit.MILLISECONDS));
+    Assert.assertFalse(transportA.receivers.containsKey(peerB));
 
     transportA.shutdown();
     transportB.shutdown();
