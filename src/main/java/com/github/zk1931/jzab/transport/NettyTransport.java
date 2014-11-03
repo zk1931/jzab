@@ -380,9 +380,7 @@ public class NettyTransport extends Transport {
         // remote might be null, for example if client connection got closed
         // because SSL handshake failed.
         LOG.debug("Disconnected from client {}", remote);
-        receivers.remove(remote);
       }
-      ctx.close();
     }
 
     @Override
@@ -402,8 +400,15 @@ public class NettyTransport extends Transport {
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
       String remote = ctx.channel().attr(NettyTransport.SENDER).get();
       LOG.debug("Disconnected from server {}", remote);
+
+      // close incoming connection synchronously to make sure we don't receive
+      // any more messages from this channel.
+      ChannelHandlerContext remoteChannel = receivers.get(remote);
+      if (remoteChannel != null) {
+        remoteChannel.close().awaitUninterruptibly();
+      }
+
       receiver.onDisconnected(remote);
-      ctx.close();
     }
 
     @Override
@@ -478,6 +483,13 @@ public class NettyTransport extends Transport {
         LOG.debug("Channel pipeline has already been cleared");
       }
       sender.shutdown();
+    }
+
+    // close incoming connection synchronously to make sure we don't receive
+    // any more messages from this channel.
+    ChannelHandlerContext receiver = receivers.remove(destination);
+    if (receiver != null) {
+      receiver.close().awaitUninterruptibly();
     }
   }
 
