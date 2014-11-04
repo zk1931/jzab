@@ -19,8 +19,10 @@
 package com.github.zk1931.jzab;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.Rule;
 import org.junit.rules.TestName;
@@ -105,5 +107,18 @@ public class TestBase {
    */
   protected String getUniqueHostPort() {
     return getHostPort(getUniquePort());
+  }
+
+  PersistentState makeInitialState(String serverId, int numTxnsInLog)
+      throws IOException {
+    PersistentState state =
+      new PersistentState(new File(getDirectory(), serverId));
+    Log log = state.getLog();
+    for (int i = 0; i < numTxnsInLog; ++i) {
+      String body = "Txn " + i;
+      log.append(new Transaction(new Zxid(0, i),
+                                 ByteBuffer.wrap(body.getBytes())));
+    }
+    return state;
   }
 }

@@ -43,21 +43,23 @@ public class FastLeaderElectionTest extends TestBase {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
-    String servers = server1 + ";" + server2 + ";" + server3;
 
-    Zab.TestState state1 = new Zab.TestState(server1,
-                                             servers,
-                                             getDirectory())
-                                  .setLog(new DummyLog(1))
-                                  .setAckEpoch(0);
-    Zab zab1 = new Zab(st, cb1, null, state1);
+    PersistentState state1 = makeInitialState(server1, 1);
+    state1.setAckEpoch(0);
 
-    Zab.TestState state2 = new Zab.TestState(server2,
-                                             servers,
-                                             getDirectory())
-                                  .setLog(new DummyLog(1))
-                                  .setAckEpoch(0);
-    Zab zab2 = new Zab(st, cb2, null, state2);
+    PersistentState state2 = makeInitialState(server2, 1);
+    state2.setAckEpoch(0);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2, server3);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setServers(server1, server2, server3);
+
+    Zab zab1 = new Zab(st, config1, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, state2, cb2, null);
 
     cb1.waitDiscovering();
     cb2.waitDiscovering();
@@ -80,21 +82,24 @@ public class FastLeaderElectionTest extends TestBase {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
-    String servers = server1 + ";" + server2 + ";" + server3;
 
-    Zab.TestState state1 = new Zab.TestState(server1,
-                                             servers,
-                                             getDirectory())
-                                  .setLog(new DummyLog(1))
-                                  .setAckEpoch(1);
-    Zab zab1 = new Zab(st, cb1, null, state1);
+    PersistentState state1 = makeInitialState(server1, 1);
+    state1.setProposedEpoch(1);
+    state1.setAckEpoch(1);
 
-    Zab.TestState state2 = new Zab.TestState(server2,
-                                             servers,
-                                             getDirectory())
-                                  .setLog(new DummyLog(1))
-                                  .setAckEpoch(0);
-    Zab zab2 = new Zab(st, cb2, null, state2);
+    PersistentState state2 = makeInitialState(server2, 1);
+    state2.setAckEpoch(0);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2, server3);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setServers(server1, server2, server3);
+
+    Zab zab1 = new Zab(st, config1, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, state2, cb2, null);
 
     cb1.waitDiscovering();
     cb2.waitDiscovering();
@@ -117,21 +122,20 @@ public class FastLeaderElectionTest extends TestBase {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
-    String servers = server1 + ";" + server2 + ";" + server3;
 
-    Zab.TestState state1 = new Zab.TestState(server1,
-                                             servers,
-                                             getDirectory())
-                                  .setLog(new DummyLog(2))
-                                  .setAckEpoch(0);
-    Zab zab1 = new Zab(st, cb1, null, state1);
+    PersistentState state1 = makeInitialState(server1, 1);
+    PersistentState state2 = makeInitialState(server2, 0);
 
-    Zab.TestState state2 = new Zab.TestState(server2,
-                                             servers,
-                                             getDirectory())
-                                  .setLog(new DummyLog(1))
-                                  .setAckEpoch(0);
-    Zab zab2 = new Zab(st, cb2, null, state2);
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2, server3);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setServers(server1, server2, server3);
+
+    Zab zab1 = new Zab(st, config1, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, state2, cb2, null);
 
     cb1.waitDiscovering();
     cb2.waitDiscovering();
@@ -159,28 +163,34 @@ public class FastLeaderElectionTest extends TestBase {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
-    String servers = server1 + ";" + server2 + ";" + server3;
 
-    Zab.TestState state1 = new Zab.TestState(server1,
-                                             servers,
-                                             getDirectory())
-                                  .setLog(new DummyLog(2))
-                                  .setAckEpoch(0);
-    Zab zab1 = new Zab(st, cb1, null, state1);
+    PersistentState state1 = makeInitialState(server1, 0);
+    state1.setAckEpoch(2);
+    state1.setProposedEpoch(2);
 
-    Zab.TestState state2 = new Zab.TestState(server2,
-                                             servers,
-                                             getDirectory())
-                                  .setLog(new DummyLog(1))
-                                  .setAckEpoch(0);
-    Zab zab2 = new Zab(st, cb2, null, state2);
+    PersistentState state2 = makeInitialState(server2, 0);
+    state2.setAckEpoch(1);
+    state2.setProposedEpoch(1);
 
-    Zab.TestState state3 = new Zab.TestState(server3,
-                                             servers,
-                                             getDirectory())
-                                  .setLog(new DummyLog(1))
-                                  .setAckEpoch(0);
-    Zab zab3 = new Zab(st, cb3, null, state3);
+    PersistentState state3 = makeInitialState(server3, 0);
+    state2.setAckEpoch(0);
+    state2.setProposedEpoch(0);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2, server3);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setServers(server1, server2, server3);
+
+    ZabConfig config3 = new ZabConfig();
+    config3.setServerId(server3);
+    config3.setServers(server1, server2, server3);
+
+    Zab zab1 = new Zab(st, config1, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, state2, cb2, null);
+    Zab zab3 = new Zab(st, config3, state3, cb3, null);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();

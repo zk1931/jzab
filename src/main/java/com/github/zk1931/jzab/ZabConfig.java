@@ -18,43 +18,27 @@
 
 package com.github.zk1931.jzab;
 
-import java.util.Arrays;
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Properties;
 
 /**
- * Simple wrapper on Properties, provides a way to query configuration.
+ * Configuration for Jzab.
  */
 public class ZabConfig {
-
   /**
    * Maximum number of pending requests allowed for each server.
    */
   static final int MAX_PENDING_REQS = 5000;
-
-  protected Properties prop;
-
-  protected List<String> peers = null;
-
-  /**
-   * Constructs the config object.
-   *
-   * @param prop the Properties object stores the configuration.
-   */
-  public ZabConfig(Properties prop) {
-    this.prop = prop;
-
-    String servers = this.prop.getProperty("servers");
-
-    if (servers == null) {
-      peers = Arrays.asList(new String[0]);
-    } else {
-      peers = Arrays.asList(servers.split(";"));
-    }
-    // Sorts servers alphabetically.
-    Collections.sort(peers);
-  }
+  private List<String> peers = new ArrayList<String>();
+  private String serverId = null;
+  private String joinPeer = null;
+  private int timeoutMs = 1000;
+  private int minSyncTimeoutMs = 3000;
+  private long snapshotThresholdBytes = -1;
+  // The default logDir is current working directory.
+  private String logDir = System.getProperty("user.dir");
+  private int maxBatchSize = 1000;
+  private SslParameters sslParam = new SslParameters();
 
   /**
    * Gets the address of peers.
@@ -71,7 +55,27 @@ public class ZabConfig {
    * @return a string represents the id of itself
    */
   public String getServerId() {
-    return this.prop.getProperty("serverId");
+    return this.serverId;
+  }
+
+  /**
+   * Sets the id of itself.
+   *
+   * @param id the server id, the id a host:port string of the peer.
+   */
+  public void setServerId(String id) {
+    this.serverId = id;
+  }
+
+  /**
+   * Sets the servers in the cluster.
+   *
+   * @param servers the a list of servers.
+   */
+  public void setServers(String... servers) {
+    for (String peerId : servers) {
+      peers.add(peerId);
+    }
   }
 
   /**
@@ -90,7 +94,16 @@ public class ZabConfig {
    * return the current user's working directory.
    */
   public String getLogDir() {
-    return this.prop.getProperty("logdir", System.getProperty("user.dir"));
+    return this.logDir;
+  }
+
+  /**
+   * Sets the directory for the persistent states.
+   *
+   * @param dir the log directory path.
+   */
+  public void setLogDir(String dir) {
+    this.logDir = dir;
   }
 
   /**
@@ -99,7 +112,16 @@ public class ZabConfig {
    * @return the timeout in milliseconds
    */
   public int getTimeoutMs() {
-    return Integer.parseInt(this.prop.getProperty("timeout_ms", "1000"));
+    return this.timeoutMs;
+  }
+
+  /**
+   * Sets the timeout of heartbeat message.
+   *
+   * @param timeout the timeout is milliseconds.
+   */
+  public void setTimeoutMs(int timeout) {
+    this.timeoutMs = timeout;
   }
 
   /**
@@ -108,7 +130,16 @@ public class ZabConfig {
    * @return the timeout in milliseconds.
    */
   public int getMinSyncTimeoutMs() {
-    return Integer.parseInt(prop.getProperty("min_sync_timeout_ms", "3000"));
+    return this.minSyncTimeoutMs;
+  }
+
+  /**
+   * Sets the minimum timeout.
+   *
+   * @param timeout the timeout in milliseconds.
+   */
+  public void setMinSyncTimeoutMs(int timeout) {
+    this.minSyncTimeoutMs = timeout;
   }
 
   /**
@@ -117,7 +148,7 @@ public class ZabConfig {
    * @return the address of the peer.
    */
   public String getJoinPeer() {
-    return this.prop.getProperty("joinPeer");
+    return this.joinPeer;
   }
 
   /**
@@ -128,18 +159,56 @@ public class ZabConfig {
    * it's set to -1, then we won't take snapshot.
    */
   public long getSnapshotThreshold() {
-    return Long.parseLong(this.prop.getProperty("snapshot_threshold_bytes",
-                                                "-1"));
+    return this.snapshotThresholdBytes;
+  }
+
+  /**
+   * Sets the threshold for taking snapshot. -1 means the snapshot is disabled.
+   * It's disabled by default. However, if you don't take the snapshot the log
+   * might grow to be very large thus take long time for recovery and
+   * synchronization.
+   *
+   * @param bytes the number of bytes.
+   */
+  public void setSnapshotThreshold(long bytes) {
+    this.snapshotThresholdBytes = bytes;
   }
 
   /**
    * Gets the maximum batch size of SyncProposalProcessor. SyncProposalProcessor
    * will try to batch serveral transactions with one fsync and acknowledgement
-   * to improve throughput. Its default value is 1000.
+   * to improve throughput. Its default value is 1000 transactions.
    *
    * @return the maximum batch size for SycnProposalProcessor.
    */
   public int getMaxBatchSize() {
-    return Integer.parseInt(prop.getProperty("max_batch_size", "1000"));
+    return this.maxBatchSize;
+  }
+
+  /**
+   * Sets the maximum batching size for SyncProposalProcessor.
+   *
+   * @param batchSize the maximum batching size.
+   */
+  public void setMaxBatchSize(int batchSize) {
+    this.maxBatchSize = batchSize;
+  }
+
+  /**
+   * Sets the SSL parameters for Jzab.
+   *
+   * @param param the SSL parameters, see {@link SslParameters}.
+   */
+  public void setSslParameters(SslParameters param) {
+    this.sslParam = param;
+  }
+
+  /**
+   * Gets the SSL parameters for Jzab.
+   *
+   * @return the SSL parameters.
+   */
+  public SslParameters getSslParameters() {
+    return this.sslParam;
   }
 }

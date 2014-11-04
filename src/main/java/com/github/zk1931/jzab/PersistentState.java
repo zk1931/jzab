@@ -56,18 +56,14 @@ public class PersistentState {
     = LoggerFactory.getLogger(PersistentState.class);
 
   public PersistentState(String dir) throws IOException {
-    this(dir, null);
+    this(new File(dir), null);
   }
 
   public PersistentState(File dir) throws IOException {
     this(dir, null);
   }
 
-  public PersistentState(String dir, Log log) throws IOException {
-    this(new File(dir), log);
-  }
-
-  public PersistentState(File dir, Log log) throws IOException {
+  PersistentState(File dir, Log log) throws IOException {
     this.logDir = dir;
     LOG.debug("Trying to create log directory {}", logDir.getAbsolutePath());
     if (!logDir.mkdir()) {
@@ -77,10 +73,10 @@ public class PersistentState {
     this.fAckEpoch = new File(logDir, "ack_epoch");
     this.fProposedEpoch = new File(logDir, "proposed_epoch");
     File logFile = new File(logDir, "transaction.log");
-    if (log != null) {
-      this.log = log;
-    } else {
+    if (log == null) {
       this.log = new SimpleLog(logFile);
+    } else {
+      this.log = log;
     }
   }
 

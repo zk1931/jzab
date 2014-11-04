@@ -18,6 +18,8 @@
 
 package com.github.zk1931.jzab;
 
+import com.github.zk1931.jzab.Zab.FailureCaseCallback;
+import com.github.zk1931.jzab.Zab.SimulatedException;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -25,8 +27,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import com.github.zk1931.jzab.Zab.FailureCaseCallback;
-import com.github.zk1931.jzab.Zab.SimulatedException;
 import org.junit.Assert;
 import org.junit.Test;
 import org.slf4j.Logger;
@@ -171,23 +171,18 @@ public class ZabTest extends TestBase  {
     TestStateMachine st = new TestStateMachine();
 
     String server1 = getUniqueHostPort();
+    ZabConfig config = new ZabConfig();
+    config.setServerId(server1);
+    config.setServers(server1);
+    PersistentState state = makeInitialState(server1, 10);
 
-    Zab.TestState state = new Zab
-                                    .TestState(server1,
-                                               server1,
-                                               getDirectory())
-                                    .setLog(new DummyLog(0));
-
-    Zab zab1 = new Zab(st, cb, null, state);
+    Zab zab1 = new Zab(st, config, state, cb, null);
 
     cb.waitBroadcasting();
     Assert.assertEquals(0, cb.acknowledgedEpoch);
     Assert.assertEquals(0, cb.establishedEpoch);
     Assert.assertEquals(server1, cb.electedLeader);
     Assert.assertEquals(server1, cb.syncFollower);
-    Assert.assertTrue(cb.initialHistory.isEmpty());
-    Assert.assertEquals(0, cb.syncZxid.compareTo(Zxid.ZXID_NOT_EXIST));
-
     zab1.shutdown();
   }
 
@@ -206,7 +201,6 @@ public class ZabTest extends TestBase  {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
-    String servers = server1 + ";" + server2 + ";" + server3;
 
     /*
      * Case 1
@@ -221,23 +215,22 @@ public class ZabTest extends TestBase  {
      * <0, 0>
      */
 
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                servers,
-                                                getDirectory())
-                                     .setLog(new DummyLog(1))
-                                     .setAckEpoch(0);
+    PersistentState state1 = makeInitialState(server1, 1);
+    state1.setAckEpoch(0);
 
-    Zab zab1 = new Zab(st, cb1, null, state1);
+    PersistentState state2 = makeInitialState(server2, 1);
+    state2.setAckEpoch(0);
 
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                servers,
-                                                getDirectory())
-                                     .setLog(new DummyLog(1))
-                                     .setAckEpoch(0);
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2, server3);
 
-    Zab zab2 = new Zab(st, cb2, null, state2);
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setServers(server1, server2, server3);
+
+    Zab zab1 = new Zab(st, config1, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, state2, cb2, null);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -267,7 +260,6 @@ public class ZabTest extends TestBase  {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
-    String servers = server1 + ";" + server2 + ";" + server3;
 
     /*
      * Case 2
@@ -282,23 +274,22 @@ public class ZabTest extends TestBase  {
      * <0, 0>, <0, 1>
      */
 
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                servers,
-                                                getDirectory())
-                                     .setLog(new DummyLog(2))
-                                     .setAckEpoch(0);
+    PersistentState state1 = makeInitialState(server1, 2);
+    state1.setAckEpoch(0);
 
-    Zab zab1 = new Zab(st, cb1, null, state1);
+    PersistentState state2 = makeInitialState(server2, 0);
+    state2.setAckEpoch(0);
 
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                servers,
-                                                getDirectory())
-                                     .setLog(new DummyLog(0))
-                                     .setAckEpoch(0);
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2, server3);
 
-    Zab zab2 = new Zab(st, cb2, null, state2);
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setServers(server1, server2, server3);
+
+    Zab zab1 = new Zab(st, config1, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, state2, cb2, null);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -330,7 +321,6 @@ public class ZabTest extends TestBase  {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
-    String servers = server1 + ";" + server2 + ";" + server3;
 
     /*
      * Case 3
@@ -345,24 +335,22 @@ public class ZabTest extends TestBase  {
      * <0, 0>, <0, 1>
      */
 
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                servers,
-                                                getDirectory())
-                                     .setLog(new DummyLog(0))
-                                     .setAckEpoch(0);
+    PersistentState state1 = makeInitialState(server1, 0);
+    state1.setAckEpoch(0);
 
-    Zab zab1 = new Zab(st, cb1, null, state1);
+    PersistentState state2 = makeInitialState(server2, 2);
+    state2.setAckEpoch(0);
 
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2, server3);
 
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                servers,
-                                                getDirectory())
-                                     .setLog(new DummyLog(2))
-                                     .setAckEpoch(0);
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setServers(server1, server2, server3);
 
-    Zab zab2 = new Zab(st, cb2, null, state2);
+    Zab zab1 = new Zab(st, config1, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, state2, cb2, null);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -394,7 +382,6 @@ public class ZabTest extends TestBase  {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
-    String servers = server1 + ";" + server2 + ";" + server3;
 
     /*
      * Case 4
@@ -409,28 +396,24 @@ public class ZabTest extends TestBase  {
      * <0, 0>, <0, 1>
      */
 
-    DummyLog log = new DummyLog(1);
+    PersistentState state1 = makeInitialState(server1, 1);
+    state1.log.append(new Transaction(new Zxid(1, 0),
+                                      ByteBuffer.wrap("1,0".getBytes())));
+    state1.setAckEpoch(1);
 
-    log.append(new Transaction(new Zxid(1, 0),
-                               ByteBuffer.wrap("1,0".getBytes())));
+    PersistentState state2 = makeInitialState(server2, 2);
+    state2.setAckEpoch(2);
 
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                servers,
-                                                getDirectory())
-                                     .setLog(log)
-                                     .setAckEpoch(1);
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2, server3);
 
-    Zab zab1 = new Zab(st, cb1, null, state1);
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setServers(server1, server2, server3);
 
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                servers,
-                                                getDirectory())
-                                     .setLog(new DummyLog(2))
-                                     .setAckEpoch(2);
-
-    Zab zab2 = new Zab(st, cb2, null, state2);
+    Zab zab1 = new Zab(st, config1, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, state2, cb2, null);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -462,7 +445,6 @@ public class ZabTest extends TestBase  {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
-    String servers = server1 + ";" + server2 + ";" + server3;
 
     /*
      * Case 5
@@ -477,32 +459,29 @@ public class ZabTest extends TestBase  {
      * <0, 0>, <1, 0>
      */
 
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                servers,
-                                                getDirectory())
-                                     .setLog(new DummyLog(2))
-                                     .setAckEpoch(0);
+    PersistentState state1 = makeInitialState(server1, 2);
+    state1.setAckEpoch(0);
 
-    Zab zab1 = new Zab(st, cb1, null, state1);
+    PersistentState state2 = makeInitialState(server2, 1);
+    state2.log.append(new Transaction(new Zxid(1, 0),
+                                      ByteBuffer.wrap("1,0".getBytes())));
+    state2.setAckEpoch(1);
 
-    DummyLog log = new DummyLog(1);
-    log.append(new Transaction(new Zxid(1, 0),
-                               ByteBuffer.wrap("1,0".getBytes())));
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2, server3);
 
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                servers,
-                                                getDirectory())
-                                     .setLog(log)
-                                     .setAckEpoch(1);
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setServers(server1, server2, server3);
 
-    Zab zab2 = new Zab(st, cb2, null, state2);
+    Zab zab1 = new Zab(st, config1, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, state2, cb2, null);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
 
-    Assert.assertEquals(cb1.initialHistory.size(), 2);
+    Assert.assertEquals(2, cb1.initialHistory.size());
     Assert.assertEquals(cb1.initialHistory.get(0).getZxid(), new Zxid(0, 0));
     Assert.assertEquals(cb1.initialHistory.get(1).getZxid(), new Zxid(1, 0));
 
@@ -529,7 +508,6 @@ public class ZabTest extends TestBase  {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
-    String servers = server1 + ";" + server2 + ";" + server3;
 
     /*
      * Case 6
@@ -544,23 +522,22 @@ public class ZabTest extends TestBase  {
      *  <empty>
      */
 
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                servers,
-                                                getDirectory())
-                                     .setLog(new DummyLog(0))
-                                     .setAckEpoch(1);
+    PersistentState state1 = makeInitialState(server1, 0);
+    state1.setAckEpoch(1);
 
-    Zab zab1 = new Zab(st, cb1, null, state1);
+    PersistentState state2 = makeInitialState(server2, 2);
+    state2.setAckEpoch(0);
 
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                servers,
-                                                getDirectory())
-                                     .setLog(new DummyLog(2))
-                                     .setAckEpoch(0);
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2, server3);
 
-    Zab zab2 = new Zab(st, cb2, null, state2);
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setServers(server1, server2, server3);
+
+    Zab zab1 = new Zab(st, config1, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, state2, cb2, null);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -596,22 +573,24 @@ public class ZabTest extends TestBase  {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
-    String servers = server1 + ";" + server2 + ";" + server3;
 
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                servers,
-                                                getDirectory())
-                                     .setLog(new DummyLog(3))
-                                     .setAckEpoch(0);
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                servers,
-                                                getDirectory())
-                                     .setLog(new DummyLog(2))
-                                     .setAckEpoch(0);
-    Zab zab1 = new Zab(st, cb1, null, state1);
-    Zab zab2 = new Zab(st, cb2, null, state2);
+    PersistentState state1 = makeInitialState(server1, 3);
+    state1.setAckEpoch(0);
+
+    PersistentState state2 = makeInitialState(server2, 2);
+    state2.setAckEpoch(0);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2, server3);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setServers(server1, server2, server3);
+
+    Zab zab1 = new Zab(st, config1, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, state2, cb2, null);
+
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
     Assert.assertEquals(3, cb1.initialHistory.size());
@@ -636,7 +615,6 @@ public class ZabTest extends TestBase  {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
-    String servers = server1 + ";" + server2 + ";" + server3;
 
     // Expecting 5 delivered transactions.
     TestStateMachine st1 = new TestStateMachine(5);
@@ -647,8 +625,8 @@ public class ZabTest extends TestBase  {
      *  Before broadcasting.
      *
      *  L : <0, 0>        (f.a = 0)
-     *  F : <0, 0> <0, 1> (f.a = 0)
-     *  F : <0, 0> <0, 1> (f.a = 0)
+     *  F : <0, 0> <0, 1> (f.a = 1)
+     *  F : <0, 0> <0, 1> (f.a = 1)
      *
      *  Will broadcast :
      *  <2, 0> <2, 1>, <2, 2>
@@ -657,35 +635,33 @@ public class ZabTest extends TestBase  {
      *  <0, 0> <0, 1> <2, 0> <2, 1> <2, 2>
      */
 
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                servers,
-                                                getDirectory())
-                                     .setProposedEpoch(0)
-                                     .setLog(new DummyLog(1))
-                                     .setAckEpoch(0);
+    PersistentState state1 = makeInitialState(server1, 1);
+    state1.setProposedEpoch(0);
+    state1.setAckEpoch(0);
 
-    Zab zab1 = new Zab(st1, cb1, null, state1);
+    PersistentState state2 = makeInitialState(server2, 2);
+    state2.setAckEpoch(1);
+    state2.setProposedEpoch(1);
 
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                servers,
-                                                getDirectory())
-                                     .setProposedEpoch(1)
-                                     .setLog(new DummyLog(2))
-                                     .setAckEpoch(1);
+    PersistentState state3 = makeInitialState(server3, 2);
+    state3.setAckEpoch(1);
+    state3.setProposedEpoch(1);
 
-    Zab zab2 = new Zab(st2, cb2, null, state2);
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2, server3);
 
-    Zab.TestState state3 = new Zab
-                                     .TestState(server3,
-                                                servers,
-                                                getDirectory())
-                                     .setProposedEpoch(1)
-                                     .setLog(new DummyLog(2))
-                                     .setAckEpoch(1);
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setServers(server1, server2, server3);
 
-    Zab zab3 = new Zab(st3, cb3, null, state3);
+    ZabConfig config3 = new ZabConfig();
+    config3.setServerId(server3);
+    config3.setServers(server1, server2, server3);
+
+    Zab zab1 = new Zab(st1, config1, state1, cb1, null);
+    Zab zab2 = new Zab(st2, config2, state2, cb2, null);
+    Zab zab3 = new Zab(st3, config3, state3, cb3, null);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -693,7 +669,6 @@ public class ZabTest extends TestBase  {
 
     zab1.send(ByteBuffer.wrap("HelloWorld1".getBytes()));
     zab1.send(ByteBuffer.wrap("HelloWorld2".getBytes()));
-    // This request should be forwarded to server1(leader).
     zab2.send(ByteBuffer.wrap("HelloWorld3".getBytes()));
 
     st1.txnsCount.await();
@@ -725,7 +700,6 @@ public class ZabTest extends TestBase  {
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
     final String server3 = getUniqueHostPort();
-    final String servers = server1 + ";" + server2 + ";" + server3;
 
     /*
      *  This test simulates that server1 will be crashed after first round
@@ -742,7 +716,31 @@ public class ZabTest extends TestBase  {
      *  server3 : <0, 0>
      */
 
-    FailureCaseCallback fb1 = new FailureCaseCallback() {
+    PersistentState state1 = makeInitialState(server1, 1);
+    state1.setProposedEpoch(1);
+    state1.setAckEpoch(1);
+
+    PersistentState state2 = makeInitialState(server2, 1);
+    state2.setAckEpoch(1);
+    state2.setProposedEpoch(1);
+
+    PersistentState state3 = makeInitialState(server3, 2);
+    state3.setAckEpoch(0);
+    state3.setProposedEpoch(0);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2, server3);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setServers(server1, server2, server3);
+
+    ZabConfig config3 = new ZabConfig();
+    config3.setServerId(server3);
+    config3.setServers(server1, server2, server3);
+
+    FailureCaseCallback fcb = new FailureCaseCallback() {
       boolean crashed = false;
       @Override
       public void leaderDiscovering() {
@@ -750,7 +748,7 @@ public class ZabTest extends TestBase  {
           crashed = true;
           try {
             // Block for 0 ~ 1 seconds
-            Thread.sleep((long)(Math.random() * 1000));
+            Thread.sleep((long)(Math.random() * 500));
           } catch (InterruptedException e) {
             LOG.error("Interrupted!");
           }
@@ -760,35 +758,9 @@ public class ZabTest extends TestBase  {
       }
     };
 
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                servers,
-                                                getDirectory())
-                                     .setProposedEpoch(1)
-                                     .setLog(new DummyLog(1))
-                                     .setAckEpoch(1);
-
-    Zab zab1 = new Zab(st, cb1, fb1, state1);
-
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                servers,
-                                                getDirectory())
-                                     .setProposedEpoch(1)
-                                     .setLog(new DummyLog(1))
-                                     .setAckEpoch(1);
-
-    Zab zab2 = new Zab(st, cb2, null, state2);
-
-    Zab.TestState state3 = new Zab
-                                     .TestState(server3,
-                                                servers,
-                                                getDirectory())
-                                     .setProposedEpoch(0)
-                                     .setLog(new DummyLog(2))
-                                     .setAckEpoch(0);
-
-    Zab zab3 = new Zab(st, cb3, null, state3);
+    Zab zab1 = new Zab(st, config1, state1, cb1, fcb);
+    Zab zab2 = new Zab(st, config2, state2, cb2, fcb);
+    Zab zab3 = new Zab(st, config3, state3, cb3, fcb);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -819,10 +791,9 @@ public class ZabTest extends TestBase  {
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
     final String server3 = getUniqueHostPort();
-    final String servers = server1 + ";" + server2 + ";" + server3;
 
     /*
-     *  This test simulates that server2 and server3 will be crashed after
+     *  This test simulates that 2 followers will crash after
      *  first round of leader election. Finally all servers should find a
      *  common leader and all of them will get synchronized.
      *
@@ -836,15 +807,39 @@ public class ZabTest extends TestBase  {
      *  server3 : <0, 0>
      */
 
-    FailureCaseCallback fb2 = new FailureCaseCallback() {
-      boolean crashed = false;
+    PersistentState state1 = makeInitialState(server1, 1);
+    state1.setProposedEpoch(1);
+    state1.setAckEpoch(1);
+
+    PersistentState state2 = makeInitialState(server2, 1);
+    state2.setAckEpoch(1);
+    state2.setProposedEpoch(1);
+
+    PersistentState state3 = makeInitialState(server3, 2);
+    state3.setAckEpoch(0);
+    state3.setProposedEpoch(0);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2, server3);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setServers(server1, server2, server3);
+
+    ZabConfig config3 = new ZabConfig();
+    config3.setServerId(server3);
+    config3.setServers(server1, server2, server3);
+
+    FailureCaseCallback fcb = new FailureCaseCallback() {
+      volatile int crashedCount = 0;
       @Override
       public void followerDiscovering() {
-        if (!crashed) {
-          crashed = true;
+        if (crashedCount < 2) {
+          ++crashedCount;
           try {
             // Block for 0 ~ 1 seconds
-            Thread.sleep((long)(Math.random() * 1000));
+            Thread.sleep((long)(Math.random() * 500));
           } catch (InterruptedException e) {
             LOG.error("Interrupted!");
           }
@@ -854,53 +849,9 @@ public class ZabTest extends TestBase  {
       }
     };
 
-    FailureCaseCallback fb3 = new FailureCaseCallback() {
-      boolean crashed = false;
-      @Override
-      public void followerDiscovering() {
-        if (!crashed) {
-          crashed = true;
-          try {
-            // Block for 0 ~ 1 seconds
-            Thread.sleep((long)(Math.random() * 1000));
-          } catch (InterruptedException e) {
-            LOG.error("Interrupted!");
-          }
-          throw new SimulatedException(String.format("%s crashed "
-              + "in broadcasting phase", server3));
-        }
-      }
-    };
-
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                servers,
-                                                getDirectory())
-                                     .setProposedEpoch(1)
-                                     .setLog(new DummyLog(1))
-                                     .setAckEpoch(1);
-
-    Zab zab1 = new Zab(st, cb1, null, state1);
-
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                servers,
-                                                getDirectory())
-                                     .setProposedEpoch(1)
-                                     .setLog(new DummyLog(1))
-                                     .setAckEpoch(1);
-
-    Zab zab2 = new Zab(st, cb2, fb2, state2);
-
-    Zab.TestState state3 = new Zab
-                                     .TestState(server3,
-                                                servers,
-                                                getDirectory())
-                                     .setProposedEpoch(0)
-                                     .setLog(new DummyLog(2))
-                                     .setAckEpoch(0);
-
-    Zab zab3 = new Zab(st, cb3, fb3, state3);
+    Zab zab1 = new Zab(st, config1, state1, cb1, fcb);
+    Zab zab2 = new Zab(st, config2, state2, cb2, fcb);
+    Zab zab3 = new Zab(st, config3, state3, cb3, fcb);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -931,7 +882,6 @@ public class ZabTest extends TestBase  {
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
     final String server3 = getUniqueHostPort();
-    final String servers = server1 + ";" + server2 + ";" + server3;
 
     /*
      *  This test simulates that the first leader will be crashed after the
@@ -947,7 +897,31 @@ public class ZabTest extends TestBase  {
      *  server3 : <0, 0>
      */
 
-    FailureCaseCallback fb1 = new FailureCaseCallback() {
+    PersistentState state1 = makeInitialState(server1, 1);
+    state1.setProposedEpoch(1);
+    state1.setAckEpoch(1);
+
+    PersistentState state2 = makeInitialState(server2, 1);
+    state2.setAckEpoch(1);
+    state2.setProposedEpoch(1);
+
+    PersistentState state3 = makeInitialState(server3, 2);
+    state3.setAckEpoch(0);
+    state3.setProposedEpoch(0);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2, server3);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setServers(server1, server2, server3);
+
+    ZabConfig config3 = new ZabConfig();
+    config3.setServerId(server3);
+    config3.setServers(server1, server2, server3);
+
+    FailureCaseCallback fcb = new FailureCaseCallback() {
       boolean crashed = false;
       @Override
       public void leaderSynchronizing() {
@@ -955,7 +929,7 @@ public class ZabTest extends TestBase  {
           crashed = true;
           try {
             // Block for 0 ~ 1 seconds
-            Thread.sleep((long)(Math.random() * 1000));
+            Thread.sleep((long)(Math.random() * 500));
           } catch (InterruptedException e) {
             LOG.error("Interrupted!");
           }
@@ -965,35 +939,9 @@ public class ZabTest extends TestBase  {
       }
     };
 
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                servers,
-                                                getDirectory())
-                                     .setProposedEpoch(1)
-                                     .setLog(new DummyLog(1))
-                                     .setAckEpoch(1);
-
-    Zab zab1 = new Zab(st, cb1, fb1, state1);
-
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                servers,
-                                                getDirectory())
-                                     .setProposedEpoch(1)
-                                     .setLog(new DummyLog(1))
-                                     .setAckEpoch(1);
-
-    Zab zab2 = new Zab(st, cb2, null, state2);
-
-    Zab.TestState state3 = new Zab
-                                     .TestState(server3,
-                                                servers,
-                                                getDirectory())
-                                     .setProposedEpoch(0)
-                                     .setLog(new DummyLog(2))
-                                     .setAckEpoch(0);
-
-    Zab zab3 = new Zab(st, cb3, null, state3);
+    Zab zab1 = new Zab(st, config1, state1, cb1, fcb);
+    Zab zab2 = new Zab(st, config2, state2, cb2, fcb);
+    Zab zab3 = new Zab(st, config3, state3, cb3, fcb);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -1024,10 +972,9 @@ public class ZabTest extends TestBase  {
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
     final String server3 = getUniqueHostPort();
-    final String servers = server1 + ";" + server2 + ";" + server3;
 
     /*
-     *  This test simulates that server2 and server3 will be crashed once they
+     *  This test simulates that two followers will be crash once they
      *  first time receive NEW_EPOCH. Finally all servers should find a common
      *  leader and all of them will get synchronized.
      *
@@ -1041,15 +988,39 @@ public class ZabTest extends TestBase  {
      *  server3 : <0, 0>
      */
 
-    FailureCaseCallback fb2 = new FailureCaseCallback() {
-      boolean crashed = false;
+    PersistentState state1 = makeInitialState(server1, 1);
+    state1.setProposedEpoch(1);
+    state1.setAckEpoch(1);
+
+    PersistentState state2 = makeInitialState(server2, 1);
+    state2.setAckEpoch(1);
+    state2.setProposedEpoch(1);
+
+    PersistentState state3 = makeInitialState(server3, 2);
+    state3.setAckEpoch(0);
+    state3.setProposedEpoch(0);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2, server3);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setServers(server1, server2, server3);
+
+    ZabConfig config3 = new ZabConfig();
+    config3.setServerId(server3);
+    config3.setServers(server1, server2, server3);
+
+    FailureCaseCallback fcb = new FailureCaseCallback() {
+      volatile int crashCount = 0;
       @Override
       public void followerSynchronizing() {
-        if (!crashed) {
-          crashed = true;
+        if (crashCount < 2) {
+          ++crashCount;
           try {
             // Block for 0 ~ 1 seconds
-            Thread.sleep((long)(Math.random() * 1000));
+            Thread.sleep((long)(Math.random() * 500));
           } catch (InterruptedException e) {
             LOG.error("Interrupted!");
           }
@@ -1059,53 +1030,9 @@ public class ZabTest extends TestBase  {
       }
     };
 
-    FailureCaseCallback fb3 = new FailureCaseCallback() {
-      boolean crashed = false;
-      @Override
-      public void followerSynchronizing() {
-        if (!crashed) {
-          crashed = true;
-          try {
-            // Block for 0 ~ 1 seconds
-            Thread.sleep((long)(Math.random() * 1000));
-          } catch (InterruptedException e) {
-            LOG.error("Interrupted!");
-          }
-          throw new SimulatedException(String.format("%s crashed "
-              + "in broadcasting phase", server3));
-        }
-      }
-    };
-
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                servers,
-                                                getDirectory())
-                                     .setProposedEpoch(1)
-                                     .setLog(new DummyLog(1))
-                                     .setAckEpoch(1);
-
-    Zab zab1 = new Zab(st, cb1, null, state1);
-
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                servers,
-                                                getDirectory())
-                                     .setProposedEpoch(1)
-                                     .setLog(new DummyLog(1))
-                                     .setAckEpoch(1);
-
-    Zab zab2 = new Zab(st, cb2, fb2, state2);
-
-    Zab.TestState state3 = new Zab
-                                     .TestState(server3,
-                                                servers,
-                                                getDirectory())
-                                     .setProposedEpoch(0)
-                                     .setLog(new DummyLog(2))
-                                     .setAckEpoch(0);
-
-    Zab zab3 = new Zab(st, cb3, fb3, state3);
+    Zab zab1 = new Zab(st, config1, state1, cb1, fcb);
+    Zab zab2 = new Zab(st, config2, state2, cb2, fcb);
+    Zab zab3 = new Zab(st, config3, state3, cb3, fcb);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -1136,7 +1063,6 @@ public class ZabTest extends TestBase  {
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
     final String server3 = getUniqueHostPort();
-    final String servers = server1 + ";" + server2 + ";" + server3;
 
     /*
      *  This test simulates that the first leader will be crashed after the
@@ -1152,7 +1078,31 @@ public class ZabTest extends TestBase  {
      *  server3 : <0, 0>
      */
 
-    FailureCaseCallback fb1 = new FailureCaseCallback() {
+    PersistentState state1 = makeInitialState(server1, 1);
+    state1.setProposedEpoch(1);
+    state1.setAckEpoch(1);
+
+    PersistentState state2 = makeInitialState(server2, 1);
+    state2.setAckEpoch(1);
+    state2.setProposedEpoch(1);
+
+    PersistentState state3 = makeInitialState(server3, 2);
+    state3.setAckEpoch(0);
+    state3.setProposedEpoch(0);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2, server3);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setServers(server1, server2, server3);
+
+    ZabConfig config3 = new ZabConfig();
+    config3.setServerId(server3);
+    config3.setServers(server1, server2, server3);
+
+    FailureCaseCallback fcb = new FailureCaseCallback() {
       boolean crashed = false;
       @Override
       public void leaderBroadcasting() {
@@ -1160,7 +1110,7 @@ public class ZabTest extends TestBase  {
           crashed = true;
           try {
             // Block for 0 ~ 1 seconds
-            Thread.sleep((long)(Math.random() * 1000));
+            Thread.sleep((long)(Math.random() * 500));
           } catch (InterruptedException e) {
             LOG.error("Interrupted!");
           }
@@ -1170,35 +1120,9 @@ public class ZabTest extends TestBase  {
       }
     };
 
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                servers,
-                                                getDirectory())
-                                     .setProposedEpoch(1)
-                                     .setLog(new DummyLog(1))
-                                     .setAckEpoch(1);
-
-    Zab zab1 = new Zab(st, cb1, fb1, state1);
-
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                servers,
-                                                getDirectory())
-                                     .setProposedEpoch(1)
-                                     .setLog(new DummyLog(1))
-                                     .setAckEpoch(1);
-
-    Zab zab2 = new Zab(st, cb2, null, state2);
-
-    Zab.TestState state3 = new Zab
-                                     .TestState(server3,
-                                                servers,
-                                                getDirectory())
-                                     .setProposedEpoch(0)
-                                     .setLog(new DummyLog(2))
-                                     .setAckEpoch(0);
-
-    Zab zab3 = new Zab(st, cb3, null, state3);
+    Zab zab1 = new Zab(st, config1, state1, cb1, fcb);
+    Zab zab2 = new Zab(st, config2, state2, cb2, fcb);
+    Zab zab3 = new Zab(st, config3, state3, cb3, fcb);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -1215,7 +1139,7 @@ public class ZabTest extends TestBase  {
 
   @Test(timeout=20000)
   public void testReconfigRecoveryCase1() throws Exception {
-    /**
+    /*
      * Recovery case 1:
      *
      * server 1 : <0, 0>
@@ -1235,49 +1159,54 @@ public class ZabTest extends TestBase  {
     QuorumTestCallback cb2 = new QuorumTestCallback();
     QuorumTestCallback cb3 = new QuorumTestCallback();
     TestStateMachine st = new TestStateMachine();
+
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
     final String server3 = getUniqueHostPort();
+
     Zxid version = new Zxid(0, 0);
     ArrayList<String> peers = new ArrayList<String>();
     peers.add(server1);
     peers.add(server2);
     peers.add(server3);
+
     ClusterConfiguration cnf1 = new ClusterConfiguration(version, peers,
                                                          server1);
     ClusterConfiguration cnf2 = new ClusterConfiguration(version, peers,
                                                          server2);
     ClusterConfiguration cnf3 = new ClusterConfiguration(version, peers,
                                                          server3);
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                null,
-                                                getDirectory())
-                                      .setProposedEpoch(0)
-                                      .setLog(new DummyLog(1))
-                                      .setAckEpoch(0)
-                                      .setClusterConfiguration(cnf1);
-    Zab zab1 = new Zab(st, cb1, null, state1);
 
-    Zab.TestState state2 = new Zab
-        .TestState(server2,
-                   null,
-                   getDirectory())
-         .setProposedEpoch(0)
-         .setLog(new DummyLog(1))
-         .setAckEpoch(0)
-         .setClusterConfiguration(cnf2);
-    Zab zab2 = new Zab(st, cb2, null, state2);
+    PersistentState state1 = makeInitialState(server1, 1);
+    state1.setProposedEpoch(0);
+    state1.setAckEpoch(0);
+    state1.setLastSeenConfig(cnf1);
 
-    Zab.TestState state3 = new Zab
-        .TestState(server3,
-                   null,
-                   getDirectory())
-         .setProposedEpoch(0)
-         .setLog(new DummyLog(1))
-         .setAckEpoch(0)
-         .setClusterConfiguration(cnf3);
-    Zab zab3 = new Zab(st, cb3, null, state3);
+    PersistentState state2 = makeInitialState(server2, 1);
+    state2.setAckEpoch(0);
+    state2.setProposedEpoch(0);
+    state2.setLastSeenConfig(cnf2);
+
+    PersistentState state3 = makeInitialState(server3, 1);
+    state3.setAckEpoch(0);
+    state3.setProposedEpoch(0);
+    state3.setLastSeenConfig(cnf3);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2, server3);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setServers(server1, server2, server3);
+
+    ZabConfig config3 = new ZabConfig();
+    config3.setServerId(server3);
+    config3.setServers(server1, server2, server3);
+
+    Zab zab1 = new Zab(st, config1, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, state2, cb2, null);
+    Zab zab3 = new Zab(st, config3, state3, cb3, null);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -1294,7 +1223,7 @@ public class ZabTest extends TestBase  {
 
   @Test(timeout=20000)
   public void testReconfigRecoveryCase2() throws Exception {
-    /**
+    /*
      * Recovery case 2:
      *
      * server 1 : <0, 0>
@@ -1314,9 +1243,11 @@ public class ZabTest extends TestBase  {
     QuorumTestCallback cb2 = new QuorumTestCallback();
     QuorumTestCallback cb3 = new QuorumTestCallback();
     TestStateMachine st = new TestStateMachine();
+
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
     final String server3 = getUniqueHostPort();
+
     Zxid version1 = new Zxid(0, 0);
     Zxid version2 = new Zxid(0, 1);
     ArrayList<String> peers1 = new ArrayList<String>();
@@ -1326,41 +1257,44 @@ public class ZabTest extends TestBase  {
     peers2.add(server1);
     peers2.add(server2);
     peers2.add(server3);
+
     ClusterConfiguration cnf1 = new ClusterConfiguration(version1, peers1,
                                                          server1);
     ClusterConfiguration cnf2 = new ClusterConfiguration(version2, peers2,
                                                          server2);
     ClusterConfiguration cnf3 = new ClusterConfiguration(version2, peers2,
                                                          server3);
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                null,
-                                                getDirectory())
-                                      .setProposedEpoch(0)
-                                      .setLog(new DummyLog(1))
-                                      .setAckEpoch(0)
-                                      .setClusterConfiguration(cnf1);
-    Zab zab1 = new Zab(st, cb1, null, state1);
 
-    Zab.TestState state2 = new Zab
-        .TestState(server2,
-                   null,
-                   getDirectory())
-         .setProposedEpoch(0)
-         .setLog(new DummyLog(1))
-         .setAckEpoch(0)
-         .setClusterConfiguration(cnf2);
-    Zab zab2 = new Zab(st, cb2, null, state2);
+    PersistentState state1 = makeInitialState(server1, 1);
+    state1.setProposedEpoch(0);
+    state1.setAckEpoch(0);
+    state1.setLastSeenConfig(cnf1);
 
-    Zab.TestState state3 = new Zab
-        .TestState(server3,
-                   null,
-                   getDirectory())
-         .setProposedEpoch(0)
-         .setLog(new DummyLog(1))
-         .setAckEpoch(0)
-         .setClusterConfiguration(cnf3);
-    Zab zab3 = new Zab(st, cb3, null, state3);
+    PersistentState state2 = makeInitialState(server2, 1);
+    state2.setAckEpoch(0);
+    state2.setProposedEpoch(0);
+    state2.setLastSeenConfig(cnf2);
+
+    PersistentState state3 = makeInitialState(server3, 1);
+    state3.setAckEpoch(0);
+    state3.setProposedEpoch(0);
+    state3.setLastSeenConfig(cnf3);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2, server3);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setServers(server1, server2, server3);
+
+    ZabConfig config3 = new ZabConfig();
+    config3.setServerId(server3);
+    config3.setServers(server1, server2, server3);
+
+    Zab zab1 = new Zab(st, config1, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, state2, cb2, null);
+    Zab zab3 = new Zab(st, config3, state3, cb3, null);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -1378,18 +1312,18 @@ public class ZabTest extends TestBase  {
 
   @Test(timeout=20000)
   public void testReconfigRecoveryCase3() throws Exception {
-    /**
+    /*
      * Recovery case 3:
      *
      * server 1 : <0, 0>
      * last seen config : {peers : server1,server2, version : 0 1}
      * f.a = 0
      *
-     * server 2 : <0, 0> <1, 0>
+     * server 2 : <0, 0> <0, 1>
      * last seen config : {peers : server1,server2,server3, version : 0 0}
      * f.a = 1
      *
-     * server 3 : <0, 0> <1, 0>
+     * server 3 : <0, 0> <0, 1>
      * last seen config : {peers : server1,server2,server3, version : 0 0}
      * f.a = 1
      *
@@ -1401,9 +1335,11 @@ public class ZabTest extends TestBase  {
     QuorumTestCallback cb2 = new QuorumTestCallback();
     QuorumTestCallback cb3 = new QuorumTestCallback();
     TestStateMachine st = new TestStateMachine();
+
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
     final String server3 = getUniqueHostPort();
+
     Zxid version1 = new Zxid(0, 1);
     Zxid version2 = new Zxid(0, 0);
     ArrayList<String> peers1 = new ArrayList<String>();
@@ -1413,43 +1349,46 @@ public class ZabTest extends TestBase  {
     peers2.add(server1);
     peers2.add(server2);
     peers2.add(server3);
+
     ClusterConfiguration cnf1 = new ClusterConfiguration(version1, peers1,
                                                          server1);
     ClusterConfiguration cnf2 = new ClusterConfiguration(version2, peers2,
                                                          server2);
     ClusterConfiguration cnf3 = new ClusterConfiguration(version2, peers2,
                                                          server3);
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                null,
-                                                getDirectory())
-                                      .setProposedEpoch(0)
-                                      .setLog(new DummyLog(1))
-                                      .setAckEpoch(0)
-                                      .setClusterConfiguration(cnf1);
-    Zab zab1 = new Zab(st, cb1, null, state1);
 
-    Zab.TestState state2 = new Zab
-        .TestState(server2,
-                   null,
-                   getDirectory())
-         .setProposedEpoch(1)
-         .setLog(new DummyLog(2))
-         .setAckEpoch(1)
-         .setClusterConfiguration(cnf2);
-    Zab zab2 = new Zab(st, cb2, null, state2);
+    PersistentState state1 = makeInitialState(server1, 1);
+    state1.setProposedEpoch(0);
+    state1.setAckEpoch(0);
+    state1.setLastSeenConfig(cnf1);
 
-    Zab.TestState state3 = new Zab
-        .TestState(server3,
-                   null,
-                   getDirectory())
-         .setProposedEpoch(1)
-         .setLog(new DummyLog(2))
-         .setAckEpoch(1)
-         .setClusterConfiguration(cnf3);
-    Zab zab3 = new Zab(st, cb3, null, state3);
+    PersistentState state2 = makeInitialState(server2, 2);
+    state2.setAckEpoch(1);
+    state2.setProposedEpoch(1);
+    state2.setLastSeenConfig(cnf2);
 
-    //cb1.waitBroadcasting();
+    PersistentState state3 = makeInitialState(server3, 2);
+    state3.setAckEpoch(1);
+    state3.setProposedEpoch(1);
+    state3.setLastSeenConfig(cnf3);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2, server3);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setServers(server1, server2, server3);
+
+    ZabConfig config3 = new ZabConfig();
+    config3.setServerId(server3);
+    config3.setServers(server1, server2, server3);
+
+    Zab zab1 = new Zab(st, config1, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, state2, cb2, null);
+    Zab zab3 = new Zab(st, config3, state3, cb3, null);
+
+    cb1.waitBroadcasting();
     cb2.waitBroadcasting();
     cb3.waitBroadcasting();
 
@@ -1469,7 +1408,7 @@ public class ZabTest extends TestBase  {
 
   @Test(timeout=20000)
   public void testJoinCase1() throws Exception {
-    /**
+    /*
      * Case 1 :
      *
      * 1. starts server1
@@ -1485,29 +1424,31 @@ public class ZabTest extends TestBase  {
     TestStateMachine st1 = new TestStateMachine(1);
     TestStateMachine st2 = new TestStateMachine(1);
     TestStateMachine st3 = new TestStateMachine(1);
+
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
     final String server3 = getUniqueHostPort();
 
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                null,
-                                                getDirectory());
-    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
+    PersistentState state1 = makeInitialState(server1, 0);
+    PersistentState state2 = makeInitialState(server2, 0);
+    PersistentState state3 = makeInitialState(server3, 0);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+
+    ZabConfig config3 = new ZabConfig();
+    config3.setServerId(server3);
+
+    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
     cb1.waitBroadcasting();
 
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                null,
-                                                getDirectory());
-    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
+    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
     cb1.waitCopCommit();
 
-    Zab.TestState state3 = new Zab
-                                     .TestState(server3,
-                                                null,
-                                                getDirectory());
-    Zab zab3 = new Zab(st3, cb3, null, state3, server1);
+    Zab zab3 = new Zab(st3, config3, server1, state3, cb3, null);
     cb1.waitCopCommit();
 
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
@@ -1523,7 +1464,7 @@ public class ZabTest extends TestBase  {
 
   @Test(timeout=20000)
   public void testJoinCase2() throws Exception {
-    /**
+    /*
      * Case 2 :
      *
      * 1. starts server1
@@ -1541,35 +1482,38 @@ public class ZabTest extends TestBase  {
     TestStateMachine st1 = new TestStateMachine(3);
     TestStateMachine st2 = new TestStateMachine(3);
     TestStateMachine st3 = new TestStateMachine(3);
+
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
     final String server3 = getUniqueHostPort();
 
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                null,
-                                                getDirectory());
-    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
-    cb1.waitBroadcasting();
+    PersistentState state1 = makeInitialState(server1, 0);
+    PersistentState state2 = makeInitialState(server2, 0);
+    PersistentState state3 = makeInitialState(server3, 0);
 
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+
+    ZabConfig config3 = new ZabConfig();
+    config3.setServerId(server3);
+
+    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
+    cb1.waitBroadcasting();
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
     zab1.send(ByteBuffer.wrap("req2".getBytes()));
 
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                null,
-                                                getDirectory());
-    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
+    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
     cb1.waitCopCommit();
 
-    Zab.TestState state3 = new Zab
-                                     .TestState(server3,
-                                                null,
-                                                getDirectory());
-    Zab zab3 = new Zab(st3, cb3, null, state3, server1);
+    Zab zab3 = new Zab(st3, config3, server1, state3, cb3, null);
+    cb1.waitCopCommit();
     cb3.waitBroadcasting();
 
     zab1.send(ByteBuffer.wrap("req3".getBytes()));
+
     // Waits for all the transactions delivered.
     st1.txnsCount.await();
     st2.txnsCount.await();
@@ -1582,7 +1526,7 @@ public class ZabTest extends TestBase  {
 
   @Test(timeout=20000)
   public void testJoinCase3() throws Exception {
-    /**
+    /*
      * This test case shows that after reconfiguration is done, the quorum size
      * should be changed.
      *
@@ -1600,26 +1544,30 @@ public class ZabTest extends TestBase  {
     QuorumTestCallback cb2 = new QuorumTestCallback();
     TestStateMachine st1 = new TestStateMachine(2);
     TestStateMachine st2 = new TestStateMachine(1);
+
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
 
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                null,
-                                                getDirectory());
-    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
+    PersistentState state1 = makeInitialState(server1, 0);
+    PersistentState state2 = makeInitialState(server2, 0);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+
+    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
     cb1.waitBroadcasting();
-
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                null,
-                                                getDirectory());
-    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
 
+    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
     cb2.waitBroadcasting();
+    st2.txnsCount.await();
+
     // Simulate server2 dies.
     zab2.shutdown();
+
     try {
       zab1.send(ByteBuffer.wrap("req2".getBytes()));
     } catch (ZabException.NotBroadcastingPhaseException ex) {
@@ -1636,14 +1584,14 @@ public class ZabTest extends TestBase  {
 
   @Test(timeout=20000)
   public void testRemoveCase1() throws Exception {
-    /**
+    /*
      * Case 1 :
      * Follower is removed.
      *
      * 1. starts server1
      * 2. starts server2 join in server1
      * 3. send req1 to server1.
-     * 3. server2 removes itself.
+     * 3. server1 removes server2.
      * 4. send req2 to server1.
      *
      * server1 delivers both txn1 and txn2. server2 only delivers txn1.
@@ -1652,38 +1600,39 @@ public class ZabTest extends TestBase  {
     QuorumTestCallback cb2 = new QuorumTestCallback();
     TestStateMachine st1 = new TestStateMachine(2);
     TestStateMachine st2 = new TestStateMachine(1);
+
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
 
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                null,
-                                                getDirectory());
-    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
+    PersistentState state1 = makeInitialState(server1, 0);
+    PersistentState state2 = makeInitialState(server2, 0);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+
+    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
     cb1.waitBroadcasting();
 
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                null,
-                                                getDirectory());
-    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
-    cb1.waitCopCommit();
+    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
+    cb2.waitBroadcasting();
+
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
-    st2.txnsCount.await();
-    zab2.remove(server2);
-    // Waits server2's leaving commits.
-    cb1.waitCopCommit();
+    zab1.remove(server2);
+    // Waits server2 exits.
     cb2.waitExit();
     zab1.send(ByteBuffer.wrap("req2".getBytes()));
-    // Waits for the transaction delivered.
     st1.txnsCount.await();
+    st2.txnsCount.await();
     zab1.shutdown();
     zab2.shutdown();
   }
 
   @Test(timeout=20000)
   public void testRemoveCase2() throws Exception {
-    /**
+    /*
      * Case 2 :
      * Follower removes the leader from the cluster.
      *
@@ -1696,23 +1645,25 @@ public class ZabTest extends TestBase  {
     QuorumTestCallback cb2 = new QuorumTestCallback();
     TestStateMachine st1 = new TestStateMachine(2);
     TestStateMachine st2 = new TestStateMachine(1);
+
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
 
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                null,
-                                                getDirectory());
-    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
+    PersistentState state1 = makeInitialState(server1, 0);
+    PersistentState state2 = makeInitialState(server2, 0);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+
+    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
     cb1.waitBroadcasting();
 
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                null,
-                                                getDirectory());
-    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
-    cb1.waitCopCommit();
+    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
     cb2.waitBroadcasting();
+
     // serve2 removes server1.
     zab2.remove(server1);
     // Waits old leader exits.
@@ -1724,68 +1675,34 @@ public class ZabTest extends TestBase  {
   }
 
   @Test(timeout=20000)
-  public void testRemoveCase3() throws Exception {
-    /**
-     * Case 3 :
-     * Leader remove follower from the cluster.
-     *
-     * 1. starts server1
-     * 2. starts server2 join in server1
-     * 3. server1 removes server1 from the cluster.
-     */
-    QuorumTestCallback cb1 = new QuorumTestCallback();
-    QuorumTestCallback cb2 = new QuorumTestCallback();
-    TestStateMachine st1 = new TestStateMachine(2);
-    TestStateMachine st2 = new TestStateMachine(1);
-    final String server1 = getUniqueHostPort();
-    final String server2 = getUniqueHostPort();
-
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                null,
-                                                getDirectory());
-    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
-    cb1.waitBroadcasting();
-
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                null,
-                                                getDirectory());
-    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
-    cb1.waitCopCommit();
-    zab1.remove(server2);
-    // Waits server2 exits.
-    cb2.waitExit();
-    zab2.shutdown();
-    zab1.shutdown();
-  }
-
-  @Test(timeout=20000)
   public void testCallback() throws Exception {
     // Tests the clients' callback.
     QuorumTestCallback cb1 = new QuorumTestCallback();
     QuorumTestCallback cb2 = new QuorumTestCallback();
     TestStateMachine st1 = new TestStateMachine(2);
     TestStateMachine st2 = new TestStateMachine(2);
+
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
 
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                null,
-                                                getDirectory());
-    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
+    PersistentState state1 = makeInitialState(server1, 0);
+    PersistentState state2 = makeInitialState(server2, 0);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+
+    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
     // Waits for clusterChange and leading callback.
     st1.waitMembershipChanged();
     // Make sure first config contains itself.
     Assert.assertTrue(st1.clusters.contains(server1));
     // The cluster size should be 1.
     Assert.assertEquals(1, st1.clusters.size());
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                null,
-                                                getDirectory());
-    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
+
+    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
     st2.waitMembershipChanged();
     // Make sure first config contains itself.
     Assert.assertTrue(st2.clusters.contains(server1));
@@ -1809,23 +1726,26 @@ public class ZabTest extends TestBase  {
     QuorumTestCallback cb2 = new QuorumTestCallback();
     TestStateMachine st1 = new TestStateMachine(100);
     TestStateMachine st2 = new TestStateMachine(100);
+
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                null,
-                                                getDirectory());
-    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
-    cb1.waitBroadcasting();
 
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                null,
-                                                getDirectory());
-    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
+    PersistentState state1 = makeInitialState(server1, 0);
+    PersistentState state2 = makeInitialState(server2, 0);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+
+    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
+    cb1.waitBroadcasting();
+    // Server2 gona join in.
+    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
+
     // While server2 is joining, we start sending 100 requests.
     for (int i = 0; i < 100; ++i) {
-      Thread.sleep(5);
       zab1.send(ByteBuffer.wrap("txn".getBytes()));
     }
     st1.txnsCount.await();
@@ -1846,29 +1766,31 @@ public class ZabTest extends TestBase  {
     QuorumTestCallback cb2 = new QuorumTestCallback();
     TestStateMachine st1 = new TestStateMachine(101);
     TestStateMachine st2 = new TestStateMachine(1);
+
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                null,
-                                                getDirectory());
-    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
+
+    PersistentState state1 = makeInitialState(server1, 0);
+    PersistentState state2 = makeInitialState(server2, 0);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+
+    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
     cb1.waitBroadcasting();
+
     // Send first request.
     zab1.send(ByteBuffer.wrap("txn".getBytes()));
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                null,
-                                                getDirectory());
-    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
+
+    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
     cb2.waitBroadcasting();
-    // First transaction should be delivered on server2.
-    st2.txnsCount.await();
-    // Server 2 removes itself from current configuration.
+    // Server2 removes itself from cluster.
     zab2.remove(server2);
-    // While server2 is removing, we start sending 100 requests.
+
     for (int i = 0; i < 100; ++i) {
-      Thread.sleep(5);
       zab1.send(ByteBuffer.wrap("txn".getBytes()));
     }
     // Waits server 1 delivers all the 101 transactions.
@@ -1880,55 +1802,15 @@ public class ZabTest extends TestBase  {
   }
 
   @Test(timeout=20000)
-  public void testContinuousConfig() throws Exception {
-    // Tests continuous reconfiguration.
-    QuorumTestCallback cb1 = new QuorumTestCallback();
-    TestStateMachine st1 = new TestStateMachine();
-    final String server1 = getUniqueHostPort();
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                null,
-                                                getDirectory());
-    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
-    cb1.waitBroadcasting();
-    for (int i = 0; i < 10; ++i) {
-      // For each iteration, a new server joins in and then gets removed.
-      QuorumTestCallback cb = new QuorumTestCallback();
-      TestStateMachine st = new TestStateMachine();
-      String server = getUniqueHostPort();
-      Zab.TestState state = new Zab
-                                      .TestState(server,
-                                                 null,
-                                                 getDirectory());
-      Zab zab = new Zab(st, cb, null, state, server1);
-      // Waits for reconfig completes.
-      cb1.waitCopCommit();
-      st1.waitMembershipChanged();
-      st.waitMembershipChanged();
-      // Make sure first config contains itself.
-      Assert.assertTrue(st.clusters.contains(server));
-      // Remove new joined server.
-      zab1.remove(server);
-      // Waits for reconfig completes.
-      cb1.waitCopCommit();
-      st1.waitMembershipChanged();
-      cb.waitExit();
-    }
-    // Finally, the server1 has the configuration of single server.
-    Assert.assertEquals(1, st1.clusters.size());
-    Assert.assertTrue(st1.clusters.contains(server1));
-  }
-
-  @Test(timeout=20000)
   public void testLeaderExit() throws Exception {
-    /**
+    /*
      * Starts server1.
      * server2 joins server1.
      * server3 joins server1
      * server1 gets removed.
      *
      * Expecting server2 and server3 forms a new quorum and the configuration
-     * should be only server2 and server..
+     * should be only server2 and server3.
      */
     QuorumTestCallback cb1 = new QuorumTestCallback();
     QuorumTestCallback cb2 = new QuorumTestCallback();
@@ -1936,46 +1818,46 @@ public class ZabTest extends TestBase  {
     TestStateMachine st1 = new TestStateMachine();
     TestStateMachine st2 = new TestStateMachine();
     TestStateMachine st3 = new TestStateMachine();
+
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
     final String server3 = getUniqueHostPort();
 
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                null,
-                                                getDirectory());
-    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
-    // Waits for leader goes into broadcasting phase.
-    st1.waitMembershipChanged();
+    PersistentState state1 = makeInitialState(server1, 0);
+    PersistentState state2 = makeInitialState(server2, 0);
+    PersistentState state3 = makeInitialState(server3, 0);
 
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                null,
-                                                getDirectory());
-    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
-    st2.waitMembershipChanged();
-    st1.waitMembershipChanged();
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+
+    ZabConfig config3 = new ZabConfig();
+    config3.setServerId(server3);
+
+    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
+    cb1.waitBroadcasting();
+
+    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
     cb2.waitBroadcasting();
-
-    Zab.TestState state3 = new Zab
-                                     .TestState(server3,
-                                                null,
-                                                getDirectory());
-    Zab zab3 = new Zab(st3, cb3, null, state3, server1);
-    st1.waitMembershipChanged();
     st2.waitMembershipChanged();
-    st3.waitMembershipChanged();
+
+    Zab zab3 = new Zab(st3, config3, server1, state3, cb3, null);
     cb3.waitBroadcasting();
+    st3.waitMembershipChanged();
 
     // Server1 exits.
     zab1.remove(server1);
     // Waits server1 exit.
     cb1.waitExit();
+
     // server2 and server3 should go back recovery and form a new quorum.
     cb3.waitBroadcasting();
     cb2.waitBroadcasting();
     st2.waitMembershipChanged();
     st3.waitMembershipChanged();
+
     // The cluster size should be 2.
     Assert.assertEquals(2, st2.clusters.size());
     Assert.assertEquals(2, st3.clusters.size());
@@ -1990,16 +1872,16 @@ public class ZabTest extends TestBase  {
     TestStateMachine st1 = new TestStateMachine(2);
     final String server1 = getUniqueHostPort();
 
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                null,
-                                                getDirectory());
-    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
-    // Waits for leader goes into broadcasting phase.
-    st1.waitMembershipChanged();
+    PersistentState state1 = makeInitialState(server1, 0);
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+
+    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
+    cb1.waitBroadcasting();
 
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
     zab1.flush(ByteBuffer.wrap("flush".getBytes()));
+
     st1.txnsCount.await();
     // Make sure first delivered txn is req1.
     Assert.assertEquals(ByteBuffer.wrap("req1".getBytes()),
@@ -2016,24 +1898,24 @@ public class ZabTest extends TestBase  {
     QuorumTestCallback cb2 = new QuorumTestCallback();
     TestStateMachine st1 = new TestStateMachine(3);
     TestStateMachine st2 = new TestStateMachine(5);
+
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
 
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                null,
-                                                getDirectory());
-    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
-    // Waits for leader goes into broadcasting phase.
-    st1.waitMembershipChanged();
+    PersistentState state1 = makeInitialState(server1, 0);
+    PersistentState state2 = makeInitialState(server2, 0);
 
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                null,
-                                                getDirectory());
-    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
-    st2.waitMembershipChanged();
-    st1.waitMembershipChanged();
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+
+    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
+    cb1.waitBroadcasting();
+
+    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
+    cb2.waitBroadcasting();
 
     zab2.send(ByteBuffer.wrap("req1".getBytes()));
     zab2.flush(ByteBuffer.wrap("flush1".getBytes()));
@@ -2043,80 +1925,6 @@ public class ZabTest extends TestBase  {
 
     st1.txnsCount.await();
     st2.txnsCount.await();
-
-    // Leader should received 3 delivered txns.
-    Assert.assertEquals(st1.deliveredTxns.size(), 3);
-    // Follower should received 5 delivered txns(1 is FLUSH).
-    Assert.assertEquals(st2.deliveredTxns.size(), 5);
-    // Make sure the first delivered txn is req1.
-    Assert.assertEquals(ByteBuffer.wrap("req1".getBytes()),
-                        st2.deliveredTxns.get(0).getBody());
-    // Make sure the second delivered txn is flush1.
-    Assert.assertEquals(ByteBuffer.wrap("flush1".getBytes()),
-                        st2.deliveredTxns.get(1).getBody());
-    // Make sure the third delivered txn is req2.
-    Assert.assertEquals(ByteBuffer.wrap("req2".getBytes()),
-                        st2.deliveredTxns.get(2).getBody());
-    // Make sure the fourth delivered txn is flush2.
-    Assert.assertEquals(ByteBuffer.wrap("flush2".getBytes()),
-                        st2.deliveredTxns.get(3).getBody());
-    // Make sure the fifth delivered txn is req3.
-    Assert.assertEquals(ByteBuffer.wrap("req3".getBytes()),
-                        st2.deliveredTxns.get(4).getBody());
-    zab1.shutdown();
-    zab2.shutdown();
-  }
-
-  @Test(timeout=20000)
-  public void testFlushFromFollowerSsl() throws Exception {
-    QuorumTestCallback cb1 = new QuorumTestCallback();
-    QuorumTestCallback cb2 = new QuorumTestCallback();
-    TestStateMachine st1 = new TestStateMachine(3);
-    TestStateMachine st2 = new TestStateMachine(5);
-    final String server1 = getUniqueHostPort();
-    final String server2 = getUniqueHostPort();
-
-    String password = "pa55w0rd";
-    String sslDir = "target" + File.separator + "generated-resources" +
-                    File.separator + "ssl";
-
-    File trustStore = new File(sslDir, "truststore.jks");
-    File keyStoreA = new File(sslDir, "keystore_a.jks");
-    File keyStoreB = new File(sslDir, "keystore_b.jks");
-
-    SslParameters sslParam1 =
-      new SslParameters(keyStoreA, password, trustStore, password);
-
-    Zab.TestState state1 = new Zab
-                                     .TestState(server1,
-                                                null,
-                                                getDirectory());
-    Zab zab1 = new Zab(st1, cb1, null, state1, server1, sslParam1);
-
-    // Waits for leader goes into broadcasting phase.
-    st1.waitMembershipChanged();
-
-    SslParameters sslParam2 =
-      new SslParameters(keyStoreB, password, trustStore, password);
-
-    Zab.TestState state2 = new Zab
-                                     .TestState(server2,
-                                                null,
-                                                getDirectory());
-    Zab zab2 = new Zab(st2, cb2, null, state2, server1, sslParam2);
-
-    st2.waitMembershipChanged();
-    st1.waitMembershipChanged();
-
-    zab2.send(ByteBuffer.wrap("req1".getBytes()));
-    zab2.flush(ByteBuffer.wrap("flush1".getBytes()));
-    zab2.send(ByteBuffer.wrap("req2".getBytes()));
-    zab2.flush(ByteBuffer.wrap("flush2".getBytes()));
-    zab2.send(ByteBuffer.wrap("req3".getBytes()));
-
-    st1.txnsCount.await();
-    st2.txnsCount.await();
-
     // Leader should received 3 delivered txns.
     Assert.assertEquals(st1.deliveredTxns.size(), 3);
     // Follower should received 5 delivered txns(1 is FLUSH).
@@ -2147,20 +1955,25 @@ public class ZabTest extends TestBase  {
     QuorumTestCallback cb2 = new QuorumTestCallback();
     TestStateMachine st1 = new TestStateMachine(1);
     TestStateMachine st2 = new TestStateMachine(1);
+
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
-    // Starts the joiner first.
-    Zab.TestState state2 = new Zab.TestState(server2,
-                                             null,
-                                             getDirectory());
-    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
+
+    PersistentState state1 = makeInitialState(server1, 0);
+    PersistentState state2 = makeInitialState(server2, 0);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+
+    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
+
     // Waits for a while to make zab2 first joining fails.
-    Thread.sleep(1000);
-    // The starts the leader.
-    Zab.TestState state1 = new Zab.TestState(server1,
-                                             null,
-                                             getDirectory());
-    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
+    Thread.sleep(500);
+
+    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
     // Finally the joiner will join the cluster.
     cb2.waitBroadcasting();
     zab1.shutdown();
@@ -2170,7 +1983,7 @@ public class ZabTest extends TestBase  {
   @Test(timeout=20000)
   public void testRecoveryAfterJoin()
       throws IOException, InterruptedException {
-    /**
+    /*
      * Case 1 :
      *
      * 1. starts server1
@@ -2186,27 +1999,31 @@ public class ZabTest extends TestBase  {
     TestStateMachine st1 = new TestStateMachine();
     TestStateMachine st2 = new TestStateMachine();
     TestStateMachine st3 = new TestStateMachine();
+
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
     final String server3 = getUniqueHostPort();
 
-    Zab.TestState state1 = new Zab.TestState(server1,
-                                             null,
-                                             getDirectory());
-    Zab zab1 = new Zab(st1, cb1, null, state1, server1);
+    PersistentState state1 = makeInitialState(server1, 0);
+    PersistentState state2 = makeInitialState(server2, 0);
+    PersistentState state3 = makeInitialState(server3, 0);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+
+    ZabConfig config3 = new ZabConfig();
+    config3.setServerId(server3);
+
+    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
     cb1.waitBroadcasting();
 
-    Zab.TestState state2 = new Zab.TestState(server2,
-                                             null,
-                                             getDirectory());
-    Zab zab2 = new Zab(st2, cb2, null, state2, server1);
-    cb1.waitCopCommit();
+    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
+    cb2.waitBroadcasting();
 
-    Zab.TestState state3 = new Zab.TestState(server3,
-                                             null,
-                                             getDirectory());
-    Zab zab3 = new Zab(st3, cb3, null, state3, server1);
-    cb1.waitCopCommit();
+    Zab zab3 = new Zab(st3, config3, server1, state3, cb3, null);
     cb3.waitBroadcasting();
 
     // Simulates zab3 failures.
@@ -2214,7 +2031,7 @@ public class ZabTest extends TestBase  {
 
     // Recovers from the log directory.
     cb3 = new QuorumTestCallback();
-    zab3 = new Zab(st3, cb3, null, state3);
+    zab3 = new Zab(st3, config3, state3, cb3, null);
     cb3.waitBroadcasting();
 
     zab1.shutdown();
@@ -2229,12 +2046,14 @@ public class ZabTest extends TestBase  {
     TestStateMachine st = new TestStateMachine();
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
-    String servers = server1 + ";" + server2;
-    Zab.TestState state = new Zab.TestState(server1,
-                                            servers,
-                                            getDirectory())
-                                 .setLog(new DummyLog(0));
-    Zab zab1 = new Zab(st, cb, null, state);
+
+    ZabConfig config1 = new ZabConfig();
+    config1.setServerId(server1);
+    config1.setServers(server1, server2);
+    config1.setLogDir(new File(getDirectory(), server1).getPath());
+
+    Zab zab1 = new Zab(st, config1);
+
     zab1.send(ByteBuffer.wrap("HelloWorld".getBytes()));
     zab1.shutdown();
   }
