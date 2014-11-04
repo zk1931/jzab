@@ -133,21 +133,6 @@ public class ZabConfig {
   }
 
   /**
-   * Gets the method for leader election. (All the servers in the cluster MUST
-   * use the SAME election method.)
-   *
-   * For now, we have 2 election methods:
-   *
-   * 1)fast_leader_election (default)
-   * 2)round_robin_election
-   *
-   * @return the configured election method.
-   */
-  public String getElectionMethod() {
-    return this.prop.getProperty("election", "fast_leader_election");
-  }
-
-  /**
    * Gets the maximum batch size of SyncProposalProcessor. SyncProposalProcessor
    * will try to batch serveral transactions with one fsync and acknowledgement
    * to improve throughput. Its default value is 1000.
