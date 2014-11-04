@@ -594,7 +594,7 @@ public class Leader extends Participant {
     AckProcessor ackProcessor =
       new AckProcessor(quorumSet, clusterConfig.clone(), lastZxid);
     SyncProposalProcessor syncProcessor =
-        new SyncProposalProcessor(persistence, transport, SYNC_MAX_BATCH_SIZE);
+        new SyncProposalProcessor(persistence, transport, maxBatchSize);
     CommitProcessor commitProcessor =
         new CommitProcessor(stateMachine, lastDeliveredZxid, serverId,
                             transport, new HashSet<String>(quorumSet.keySet()),

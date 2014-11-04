@@ -410,7 +410,7 @@ public class Follower extends Participant {
       ExecutionException {
     ClusterConfiguration clusterConfig = persistence.getLastSeenConfig();
     SyncProposalProcessor syncProcessor =
-      new SyncProposalProcessor(persistence, transport, SYNC_MAX_BATCH_SIZE);
+      new SyncProposalProcessor(persistence, transport, maxBatchSize);
     CommitProcessor commitProcessor
       = new CommitProcessor(stateMachine, lastDeliveredZxid, serverId,
                             transport, null, clusterConfig, electedLeader,

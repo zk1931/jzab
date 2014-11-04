@@ -146,4 +146,15 @@ public class ZabConfig {
   public String getElectionMethod() {
     return this.prop.getProperty("election", "fast_leader_election");
   }
+
+  /**
+   * Gets the maximum batch size of SyncProposalProcessor. SyncProposalProcessor
+   * will try to batch serveral transactions with one fsync and acknowledgement
+   * to improve throughput. Its default value is 1000.
+   *
+   * @return the maximum batch size for SycnProposalProcessor.
+   */
+  public int getMaxBatchSize() {
+    return Integer.parseInt(prop.getProperty("max_batch_size", "1000"));
+  }
 }

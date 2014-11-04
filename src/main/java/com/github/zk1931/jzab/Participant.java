@@ -82,13 +82,6 @@ public abstract class Participant {
   protected String electedLeader;
 
   /**
-   * Maximum batch size for SyncRequestProcessor.
-   *
-   * TODO We might want to expose this setting to the user.
-   */
-  protected static final int SYNC_MAX_BATCH_SIZE = 1000;
-
-  /**
    * The configuration for Zab. It's passed from Zab.
    */
   protected final ZabConfig config;
@@ -126,6 +119,11 @@ public abstract class Participant {
    */
   protected final Semaphore semPendingReqs =
     new Semaphore(ZabConfig.MAX_PENDING_REQS);
+
+  /**
+   *  The maximum batch size for SyncProposalProcessor.
+   */
+  protected final int maxBatchSize;
 
   /**
    * The object used for election, the participant might receive election
@@ -185,6 +183,7 @@ public abstract class Participant {
     this.failCallback = participantState.getFailureCaseCallback();
     this.config = config;
     this.election = participantState.getElection();
+    this.maxBatchSize = config.getMaxBatchSize();
   }
 
   void send(ByteBuffer request) throws NotBroadcastingPhaseException {
