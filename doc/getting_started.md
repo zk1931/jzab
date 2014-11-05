@@ -27,20 +27,24 @@ Another thing you need to notice is that there are three states that Jzab might
 be in. They are `recovering`, `leading` and `following`. When Jzab is in
 `recovering` phase, any requests you passed to it will fail. Jzab will notify you
 the state change via callbacks (See interface [StateMachine]
-(http://zk1931.github.io/jzab/master/javadoc/com/github/zk1931/jzab/StateMachine.html)).
+(http://zk1931.github.io/jzab/{{ site.version }}//javadoc/com/github/zk1931/jzab/StateMachine.html)).
 
 <img align="middle" src="{{ site.baseurl }}/imgs/state_transition.png"/>
 
 This is the state transition diagram of Jzab. It begins with ```recovering```
-state, afte that it goes to either ```leading``` or ```following``` state depends
+state, after that it goes to either ```leading``` or ```following``` state depends
 on whether it's follower or leader. These two are the states Jzab will spend
 most of its time in. Once leader dies or there's no quorum of servers in
 cluster, Zab will go back to ```recovering``` state again.
 
+This diagram is the typical workfolow of using Jzab.
+<img align="middle" src="{{ site.baseurl }}/imgs/workflow.gif"/>
 ### Example
 
-This is the [Javadoc](http://zk1931.github.io/jzab/master/javadoc/) from latest
-master branch build.
+This is the [Javadoc](http://zk1931.github.io/jzab//{{ site.version }}/javadoc/) from latest
+version build.
+We also have a simple reference application ([Zabkv](https://github.com/zk1931/zabkv))
+that built on top of Jzab.
 
 In general, if you want to build application on top of Jzab, you only need to
 know one class `Zab` and implement one interface `StateMachine`.
