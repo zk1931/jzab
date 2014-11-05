@@ -81,20 +81,25 @@ to your application when it&#39;s safe to execute.</p>
 <p>Another thing you need to notice is that there are three states that Jzab might
 be in. They are <code>recovering</code>, <code>leading</code> and <code>following</code>. When Jzab is in
 <code>recovering</code> phase, any requests you passed to it will fail. Jzab will notify you
-the state change via callbacks (See interface <a href="http://zk1931.github.io/jzab/master/javadoc/com/github/zk1931/jzab/StateMachine.html">StateMachine</a>).</p>
+the state change via callbacks (See interface <a href="http://zk1931.github.io/jzab/0.3.0-SNAPSHOT//javadoc/com/github/zk1931/jzab/StateMachine.html">StateMachine</a>).</p>
 
 <p><img align="middle" src="/jzab/0.3.0-SNAPSHOT//imgs/state_transition.png"/></p>
 
 <p>This is the state transition diagram of Jzab. It begins with <code>recovering</code>
-state, afte that it goes to either <code>leading</code> or <code>following</code> state depends
+state, after that it goes to either <code>leading</code> or <code>following</code> state depends
 on whether it&#39;s follower or leader. These two are the states Jzab will spend
 most of its time in. Once leader dies or there&#39;s no quorum of servers in
 cluster, Zab will go back to <code>recovering</code> state again.</p>
 
+<p>This diagram is the typical workfolow of using Jzab.
+<img align="middle" src="/jzab/0.3.0-SNAPSHOT//imgs/workflow.gif"/></p>
+
 <h3>Example</h3>
 
-<p>This is the <a href="http://zk1931.github.io/jzab/master/javadoc/">Javadoc</a> from latest
-master branch build.</p>
+<p>This is the <a href="http://zk1931.github.io/jzab//0.3.0-SNAPSHOT/javadoc/">Javadoc</a> from latest
+version build.
+We also have a simple reference application (<a href="https://github.com/zk1931/zabkv">Zabkv</a>)
+that built on top of Jzab.</p>
 
 <p>In general, if you want to build application on top of Jzab, you only need to
 know one class <code>Zab</code> and implement one interface <code>StateMachine</code>.</p>
