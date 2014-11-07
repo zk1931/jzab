@@ -48,12 +48,12 @@ public class AckProcessor implements RequestProcessor,
   /**
    * The quorum set in main thread.
    */
-  private final Map<String, PeerHandler> quorumSetOriginal;
+  private final Map<String, PeerHandler> quorumMapOriginal;
 
   /**
    * The quorum set for AckProcessor.
    */
-  private final Map<String, PeerHandler> quorumSet;
+  private final Map<String, PeerHandler> quorumMap;
 
   /**
    * Current cluster configuration.
@@ -76,12 +76,12 @@ public class AckProcessor implements RequestProcessor,
    */
   private Zxid lastCommittedZxid;
 
-  public AckProcessor(Map<String, PeerHandler> quorumSet,
+  public AckProcessor(Map<String, PeerHandler> quorumMap,
                       ClusterConfiguration cnf,
                       Zxid lastCommittedZxid) {
-    this.quorumSetOriginal = quorumSet;
-    this.quorumSet = new HashMap<String, PeerHandler>(quorumSet);
-    this.clusterConfig = cnf;
+    this.quorumMapOriginal = quorumMap;
+    this.quorumMap = new HashMap<String, PeerHandler>(quorumMap);
+    this.clusterConfig = cnf.clone();
     this.lastCommittedZxid = lastCommittedZxid;
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
@@ -101,7 +101,7 @@ public class AckProcessor implements RequestProcessor,
     ArrayList<Zxid> zxids = new ArrayList<Zxid>();
     LOG.debug("Getting zxid can be committd for cluster configuration {}",
               cnf.getVersion());
-    for (PeerHandler ph : quorumSet.values()) {
+    for (PeerHandler ph : quorumMap.values()) {
       Zxid ackZxid = ph.getLastAckedZxid();
       if (cnf.contains(ph.getServerId())) {
         // Only consider the peer who is in the given configuration.
@@ -143,7 +143,7 @@ public class AckProcessor implements RequestProcessor,
           ZabMessage.Ack ack = request.getMessage().getAck();
           Zxid zxid = MessageBuilder.fromProtoZxid(ack.getZxid());
           LOG.debug("Got ACK {} from {}", zxid, source);
-          this.quorumSet.get(source).setLastAckedZxid(zxid);
+          this.quorumMap.get(source).setLastAckedZxid(zxid);
           // The zxid of last transaction which could be committed.
           Zxid zxidCanCommit = null;
           // Check if there's a pending reconfiguration.
@@ -191,18 +191,18 @@ public class AckProcessor implements RequestProcessor,
           LOG.debug("Can COMMIT : {}", zxidCanCommit);
           if (zxidCanCommit.compareTo(this.lastCommittedZxid) > 0) {
             // Avoid sending duplicated COMMIT message.
-            LOG.debug("Will send commit {} to quorumSet.", zxidCanCommit);
+            LOG.debug("Will send commit {} to quorumMap.", zxidCanCommit);
             Message commit = MessageBuilder.buildCommit(zxidCanCommit);
-            for (PeerHandler ph : quorumSet.values()) {
+            for (PeerHandler ph : quorumMap.values()) {
               ph.queueMessage(commit);
             }
             this.lastCommittedZxid = zxidCanCommit;
           }
         } else if (msg.getType() == MessageType.JOIN ||
                    msg.getType() == MessageType.ACK_EPOCH) {
-          PeerHandler ph = quorumSetOriginal.get(source);
+          PeerHandler ph = quorumMapOriginal.get(source);
           if (ph != null) {
-            this.quorumSet.put(source, ph);
+            this.quorumMap.put(source, ph);
           }
           if (msg.getType() == MessageType.JOIN) {
             LOG.debug("Got JOIN({}) from {}", request.getZxid(), source);
@@ -218,7 +218,7 @@ public class AckProcessor implements RequestProcessor,
         } else if (msg.getType() == MessageType.DISCONNECTED) {
           String peerId = msg.getDisconnected().getServerId();
           LOG.debug("Got DISCONNECTED from {}.", peerId);
-          this.quorumSet.remove(peerId);
+          this.quorumMap.remove(peerId);
         } else if (msg.getType() == MessageType.REMOVE) {
           String serverId = msg.getRemove().getServerId();
           LOG.debug("Got REMOVE({})for {}", request.getZxid(), serverId);

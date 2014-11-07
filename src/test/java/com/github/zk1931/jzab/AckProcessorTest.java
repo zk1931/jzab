@@ -104,13 +104,13 @@ public class AckProcessorTest extends TestBase {
     List<String> peers = new ArrayList<String>();
     peers.add(server1);
     peers.add(server2);
-    HashMap<String, PeerHandler> quorumSet = new HashMap<String, PeerHandler>();
-    quorumSet.put(server1, ph1);
-    quorumSet.put(server2, ph2);
+    HashMap<String, PeerHandler> quorumMap = new HashMap<String, PeerHandler>();
+    quorumMap.put(server1, ph1);
+    quorumMap.put(server2, ph2);
     ClusterConfiguration cnf =
       new ClusterConfiguration(Zxid.ZXID_NOT_EXIST, peers, server1);
     AckProcessor ackProcessor =
-      new AckProcessor(quorumSet, cnf, Zxid.ZXID_NOT_EXIST);
+      new AckProcessor(quorumMap, cnf, Zxid.ZXID_NOT_EXIST);
     Zxid z1 = new Zxid(0, 0);
     ackProcessor.processRequest(createAck(server1, z1));
     ackProcessor.processRequest(createAck(server2, z1));
@@ -146,14 +146,14 @@ public class AckProcessorTest extends TestBase {
     peers.add(server1);
     peers.add(server2);
     peers.add(server3);
-    HashMap<String, PeerHandler> quorumSet = new HashMap<String, PeerHandler>();
-    quorumSet.put(server1, ph1);
-    quorumSet.put(server2, ph2);
-    quorumSet.put(server3, ph3);
+    HashMap<String, PeerHandler> quorumMap = new HashMap<String, PeerHandler>();
+    quorumMap.put(server1, ph1);
+    quorumMap.put(server2, ph2);
+    quorumMap.put(server3, ph3);
     ClusterConfiguration cnf =
       new ClusterConfiguration(Zxid.ZXID_NOT_EXIST, peers, server1);
     AckProcessor ackProcessor =
-      new AckProcessor(quorumSet, cnf, Zxid.ZXID_NOT_EXIST);
+      new AckProcessor(quorumMap, cnf, Zxid.ZXID_NOT_EXIST);
     Zxid z1 = new Zxid(0, 0);
     ackProcessor.processRequest(createAck(server1, z1));
     ackProcessor.processRequest(createAck(server2, z1));
@@ -190,14 +190,14 @@ public class AckProcessorTest extends TestBase {
     peers.add(server1);
     peers.add(server2);
     peers.add(server3);
-    HashMap<String, PeerHandler> quorumSet = new HashMap<String, PeerHandler>();
-    quorumSet.put(server1, ph1);
-    quorumSet.put(server2, ph2);
-    quorumSet.put(server3, ph3);
+    HashMap<String, PeerHandler> quorumMap = new HashMap<String, PeerHandler>();
+    quorumMap.put(server1, ph1);
+    quorumMap.put(server2, ph2);
+    quorumMap.put(server3, ph3);
     ClusterConfiguration cnf =
       new ClusterConfiguration(Zxid.ZXID_NOT_EXIST, peers, server1);
     AckProcessor ackProcessor =
-      new AckProcessor(quorumSet, cnf, Zxid.ZXID_NOT_EXIST);
+      new AckProcessor(quorumMap, cnf, Zxid.ZXID_NOT_EXIST);
     Zxid z1 = new Zxid(0, 0);
     ackProcessor.processRequest(createAck(server1, z1));
     // The transaction shouldn't been committed.
@@ -233,14 +233,14 @@ public class AckProcessorTest extends TestBase {
     peers.add(server1);
     peers.add(server2);
     peers.add(server3);
-    HashMap<String, PeerHandler> quorumSet = new HashMap<String, PeerHandler>();
-    quorumSet.put(server1, ph1);
-    quorumSet.put(server2, ph2);
-    quorumSet.put(server3, ph3);
+    HashMap<String, PeerHandler> quorumMap = new HashMap<String, PeerHandler>();
+    quorumMap.put(server1, ph1);
+    quorumMap.put(server2, ph2);
+    quorumMap.put(server3, ph3);
     ClusterConfiguration cnf =
       new ClusterConfiguration(Zxid.ZXID_NOT_EXIST, peers, server1);
     AckProcessor ackProcessor =
-      new AckProcessor(quorumSet, cnf, Zxid.ZXID_NOT_EXIST);
+      new AckProcessor(quorumMap, cnf, Zxid.ZXID_NOT_EXIST);
     Zxid z1 = new Zxid(0, 0);
     ackProcessor.processRequest(createAck(server1, new Zxid(0, 2)));
     ackProcessor.processRequest(createAck(server2, new Zxid(0, 1)));
@@ -276,16 +276,16 @@ public class AckProcessorTest extends TestBase {
     List<String> peers = new ArrayList<String>();
     peers.add(server1);
     //peers.add(server2);
-    HashMap<String, PeerHandler> quorumSet = new HashMap<String, PeerHandler>();
-    quorumSet.put(server1, ph1);
-    //quorumSet.put(server2, ph2);
+    HashMap<String, PeerHandler> quorumMap = new HashMap<String, PeerHandler>();
+    quorumMap.put(server1, ph1);
+    //quorumMap.put(server2, ph2);
     ClusterConfiguration cnf =
       new ClusterConfiguration(Zxid.ZXID_NOT_EXIST, peers, server1);
     AckProcessor ackProcessor =
-      new AckProcessor(quorumSet, cnf, Zxid.ZXID_NOT_EXIST);
-    // Update "original" quorumset so the cloned quorumSet in AckProcessor can
+      new AckProcessor(quorumMap, cnf, Zxid.ZXID_NOT_EXIST);
+    // Update "original" quorumset so the cloned quorumMap in AckProcessor can
     // access this one.
-    quorumSet.put(server2, ph2);
+    quorumMap.put(server2, ph2);
     ackProcessor.processRequest(createJoin(server2, new Zxid(0, 2)));
     ackProcessor.processRequest(createAck(server1, new Zxid(0, 10)));
     // Waits COMMIT is sent to both servers.
@@ -321,13 +321,13 @@ public class AckProcessorTest extends TestBase {
     List<String> peers = new ArrayList<String>();
     peers.add(server1);
     peers.add(server2);
-    HashMap<String, PeerHandler> quorumSet = new HashMap<String, PeerHandler>();
-    quorumSet.put(server1, ph1);
-    quorumSet.put(server2, ph2);
+    HashMap<String, PeerHandler> quorumMap = new HashMap<String, PeerHandler>();
+    quorumMap.put(server1, ph1);
+    quorumMap.put(server2, ph2);
     ClusterConfiguration cnf =
       new ClusterConfiguration(Zxid.ZXID_NOT_EXIST, peers, server1);
     AckProcessor ackProcessor =
-      new AckProcessor(quorumSet, cnf, Zxid.ZXID_NOT_EXIST);
+      new AckProcessor(quorumMap, cnf, Zxid.ZXID_NOT_EXIST);
     ackProcessor.processRequest(createRemove(server2, new Zxid(0, 2)));
     ackProcessor.processRequest(createAck(server1, new Zxid(0, 3)));
     // Waits COMMIT is sent to both servers.
@@ -354,12 +354,12 @@ public class AckProcessorTest extends TestBase {
     ph1.startBroadcastingTask();
     List<String> peers = new ArrayList<String>();
     peers.add(server1);
-    HashMap<String, PeerHandler> quorumSet = new HashMap<String, PeerHandler>();
-    quorumSet.put(server1, ph1);
+    HashMap<String, PeerHandler> quorumMap = new HashMap<String, PeerHandler>();
+    quorumMap.put(server1, ph1);
     ClusterConfiguration cnf =
       new ClusterConfiguration(Zxid.ZXID_NOT_EXIST, peers, server1);
     AckProcessor ackProcessor =
-      new AckProcessor(quorumSet, cnf, Zxid.ZXID_NOT_EXIST);
+      new AckProcessor(quorumMap, cnf, Zxid.ZXID_NOT_EXIST);
     Zxid z1 = new Zxid(0, 0);
     ackProcessor.processRequest(createRemove(server1, z1));
     ackProcessor.processRequest(createAck(server1, z1));
@@ -385,16 +385,16 @@ public class AckProcessorTest extends TestBase {
     ph2.startBroadcastingTask();
     List<String> peers = new ArrayList<String>();
     peers.add(server1);
-    HashMap<String, PeerHandler> quorumSet = new HashMap<String, PeerHandler>();
-    quorumSet.put(server1, ph1);
+    HashMap<String, PeerHandler> quorumMap = new HashMap<String, PeerHandler>();
+    quorumMap.put(server1, ph1);
     ClusterConfiguration cnf =
       new ClusterConfiguration(Zxid.ZXID_NOT_EXIST, peers, server1);
     AckProcessor ackProcessor =
-      new AckProcessor(quorumSet, cnf, Zxid.ZXID_NOT_EXIST);
+      new AckProcessor(quorumMap, cnf, Zxid.ZXID_NOT_EXIST);
     ackProcessor.processRequest(createAck(server1, new Zxid(0, 0)));
     ackProcessor.processRequest(createAck(server1, new Zxid(0, 1)));
     // Server2 joins in.
-    quorumSet.put(server2, ph2);
+    quorumMap.put(server2, ph2);
     ackProcessor.processRequest(createJoin(server2, new Zxid(1, 0)));
     ackProcessor.processRequest(createAck(server1, new Zxid(1, 0)));
     receiver1.latch.await();

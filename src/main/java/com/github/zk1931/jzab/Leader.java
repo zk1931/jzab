@@ -44,7 +44,7 @@ import org.slf4j.MDC;
  */
 public class Leader extends Participant {
 
-  private final Map<String, PeerHandler> quorumSet =
+  private final Map<String, PeerHandler> quorumMap =
     new ConcurrentHashMap<String, PeerHandler>();
 
   // Stores all the new joined/recovered servers who are waiting for
@@ -116,27 +116,27 @@ public class Leader extends Participant {
           LOG.debug("Got message {}.",
                     TextFormat.shortDebugString(msg));
         }
-        if (this.quorumSet.containsKey(peerId)) {
+        if (this.quorumMap.containsKey(peerId)) {
           if (this.currentPhase != Phase.BROADCASTING) {
-            // If you lost someone in your quorumSet before broadcasting
+            // If you lost someone in your quorumMap before broadcasting
             // phase, you are for sure not have a quorum of followers, just go
             // back to leader election. The clearance of the transport happens
             // in the exception handlers of lead/join function.
-            LOG.debug("Lost follower {} in the quorumSet in recovering.",
+            LOG.debug("Lost follower {} in the quorumMap in recovering.",
                       peerId);
             throw new BackToElectionException();
           } else {
-            // Lost someone who is in the quorumSet in broadcasting phase,
+            // Lost someone who is in the quorumMap in broadcasting phase,
             // return this message to caller and let it handles the
             // disconnection.
-            LOG.debug("Lost follower {} in the quorumSet in broadcasting.",
+            LOG.debug("Lost follower {} in the quorumMap in broadcasting.",
                       peerId);
             return tuple;
           }
         } else {
           // Just lost someone you don't care, clear the transport so it can
           // join in in later time.
-          LOG.debug("Lost follower {} outside quorumSet.", peerId);
+          LOG.debug("Lost follower {} outside quorumMap.", peerId);
           this.transport.clear(peerId);
         }
       } else if (tuple.getMessage().getType() == MessageType.ELECTION_INFO) {
@@ -189,9 +189,9 @@ public class Leader extends Participant {
       MDC.put("phase", "finalizing");
       this.stateMachine.recovering();
       // Shuts down all the handler of followers.
-      for (PeerHandler ph : this.quorumSet.values()) {
+      for (PeerHandler ph : this.quorumMap.values()) {
         ph.shutdown();
-        this.quorumSet.remove(ph.getServerId());
+        this.quorumMap.remove(ph.getServerId());
       }
       // Releases all the pending transactions while going to next epoch,
       // probably someone is blocking on acquiring the sempahore.
@@ -280,7 +280,7 @@ public class Leader extends Participant {
       // Broadcasts commit message.
       Message commit = MessageBuilder
                        .buildCommit(persistence.getLog().getLatestZxid());
-      broadcast(this.quorumSet.keySet().iterator(), commit);
+      broadcast(this.quorumMap.keySet().iterator(), commit);
       // See if it can be restored from the snapshot file.
       restoreFromSnapshot();
       // Delivers all the txns in log before entering broadcasting phase.
@@ -288,7 +288,7 @@ public class Leader extends Participant {
 
       /* -- Broadcasting phase -- */
       changePhase(Phase.BROADCASTING);
-      for (PeerHandler ph : this.quorumSet.values()) {
+      for (PeerHandler ph : this.quorumMap.values()) {
         ph.startBroadcastingTask();
         ph.updateHeartbeatTime();
       }
@@ -341,7 +341,7 @@ public class Leader extends Participant {
     ClusterConfiguration currentConfig = persistence.getLastSeenConfig();
     long acknowledgedEpoch = persistence.getAckEpoch();
     // Waits PROPOED_EPOCH from a quorum of peers in current configuraion.
-    while (this.quorumSet.size() < getQuorumSize() - 1) {
+    while (this.quorumMap.size() < getQuorumSize() - 1) {
       MessageTuple tuple = getExpectedMessage(MessageType.PROPOSED_EPOCH, null);
       Message msg = tuple.getMessage();
       String source = tuple.getServerId();
@@ -375,7 +375,7 @@ public class Leader extends Participant {
                   source);
         continue;
       }
-      if (this.quorumSet.containsKey(source)) {
+      if (this.quorumMap.containsKey(source)) {
         throw new RuntimeException("Quorum set has already contained "
             + source + ", probably a bug?");
       }
@@ -384,7 +384,7 @@ public class Leader extends Participant {
                                        config.getTimeoutMs()/3);
       ph.setLastProposedEpoch(peerProposedEpoch);
       ph.setSyncTimeoutMs(syncTimeoutMs);
-      this.quorumSet.put(source, ph);
+      this.quorumMap.put(source, ph);
     }
     LOG.debug("Got proposed epoch from a quorum.");
   }
@@ -399,7 +399,7 @@ public class Leader extends Participant {
       throws IOException {
     long maxEpoch = persistence.getProposedEpoch();
     int maxSyncTimeoutMs = getSyncTimeoutMs();
-    for (PeerHandler ph : this.quorumSet.values()) {
+    for (PeerHandler ph : this.quorumMap.values()) {
       if (ph.getLastProposedEpoch() > maxEpoch) {
         maxEpoch = ph.getLastProposedEpoch();
       }
@@ -416,7 +416,7 @@ public class Leader extends Participant {
     LOG.debug("Begins proposing new epoch {} with sync timeout {} ms",
               newEpoch, getSyncTimeoutMs());
     // Sends new epoch message to quorum.
-    broadcast(this.quorumSet.keySet().iterator(),
+    broadcast(this.quorumMap.keySet().iterator(),
               MessageBuilder.buildNewEpochMessage(newEpoch,
                                                   getSyncTimeoutMs()));
   }
@@ -441,11 +441,11 @@ public class Leader extends Participant {
       throws InterruptedException, TimeoutException {
     int ackCount = 0;
     // Waits the Ack from all other peers in the quorum set.
-    while (ackCount < this.quorumSet.size()) {
+    while (ackCount < this.quorumMap.size()) {
       MessageTuple tuple = getExpectedMessage(MessageType.ACK_EPOCH, null);
       Message msg = tuple.getMessage();
       String source = tuple.getServerId();
-      if (!this.quorumSet.containsKey(source)) {
+      if (!this.quorumMap.containsKey(source)) {
         LOG.warn("The Epoch ACK comes from {} who is not in quorum set, "
                  + "possibly from previous epoch?",
                  source);
@@ -455,12 +455,12 @@ public class Leader extends Participant {
       ZabMessage.AckEpoch ackEpoch = msg.getAckEpoch();
       ZabMessage.Zxid zxid = ackEpoch.getLastZxid();
       // Updates follower's f.a and lastZxid.
-      PeerHandler ph = this.quorumSet.get(source);
+      PeerHandler ph = this.quorumMap.get(source);
       ph.setLastAckedEpoch(ackEpoch.getAcknowledgedEpoch());
       ph.setLastZxid(MessageBuilder.fromProtoZxid(zxid));
     }
     LOG.debug("Received ACKs from the quorum set of size {}.",
-              this.quorumSet.size() + 1);
+              this.quorumMap.size() + 1);
   }
 
   /**
@@ -479,7 +479,7 @@ public class Leader extends Participant {
     Zxid zxid = persistence.getLog().getLatestZxid();
     String peerId = this.serverId;
     Iterator<Map.Entry<String, PeerHandler>> iter;
-    iter = this.quorumSet.entrySet().iterator();
+    iter = this.quorumMap.entrySet().iterator();
     while (iter.hasNext()) {
       Map.Entry<String, PeerHandler> entry = iter.next();
       long fEpoch = entry.getValue().getLastAckedEpoch();
@@ -526,14 +526,14 @@ public class Leader extends Participant {
     LOG.debug("Waiting for synchronization to followers complete.");
     int completeCount = 0;
     Zxid lastZxid = persistence.getLog().getLatestZxid();
-    while (completeCount < this.quorumSet.size()) {
+    while (completeCount < this.quorumMap.size()) {
       // Here we should use sync_timeout.
       MessageTuple tuple =
         getExpectedMessage(MessageType.ACK, null, getSyncTimeoutMs());
       ZabMessage.Ack ack = tuple.getMessage().getAck();
       String source =tuple.getServerId();
       Zxid zxid = MessageBuilder.fromProtoZxid(ack.getZxid());
-      if (!this.quorumSet.containsKey(source)) {
+      if (!this.quorumMap.containsKey(source)) {
         LOG.warn("Quorum set doesn't contain {}, a bug?", source);
         continue;
       }
@@ -542,7 +542,7 @@ public class Leader extends Participant {
         throw new RuntimeException("The synchronized follower's last zxid"
             + "doesn't match last zxid of current leader.");
       }
-      PeerHandler ph = this.quorumSet.get(source);
+      PeerHandler ph = this.quorumMap.get(source);
       ph.setLastAckedZxid(zxid);
       completeCount++;
     }
@@ -559,7 +559,7 @@ public class Leader extends Participant {
     Zxid lastZxid = persistence.getLog().getLatestZxid();
     ClusterConfiguration clusterConfig = persistence.getLastSeenConfig();
     long proposedEpoch = persistence.getProposedEpoch();
-    for (PeerHandler ph : this.quorumSet.values()) {
+    for (PeerHandler ph : this.quorumMap.values()) {
       ph.setSyncTask(new SyncPeerTask(ph.getServerId(), ph.getLastZxid(),
                                       lastZxid, clusterConfig),
                      proposedEpoch);
@@ -581,34 +581,34 @@ public class Leader extends Participant {
       ExecutionException {
     Zxid lastZxid = persistence.getLog().getLatestZxid();
     this.establishedEpoch = persistence.getAckEpoch();
-    // Add leader itself to quorumSet.
+    // Add leader itself to quorumMap.
     PeerHandler lh =
       new PeerHandler(serverId, transport, config.getTimeoutMs()/3);
     lh.setLastAckedZxid(lastZxid);
     lh.startBroadcastingTask();
-    quorumSet.put(this.serverId, lh);
+    quorumMap.put(this.serverId, lh);
     // Gets the initial configuration at the beginning of broadcasting.
     ClusterConfiguration clusterConfig = persistence.getLastSeenConfig();
     PreProcessor preProcessor =
-      new PreProcessor(stateMachine, quorumSet, clusterConfig.clone());
+      new PreProcessor(stateMachine, quorumMap, clusterConfig.clone());
     AckProcessor ackProcessor =
-      new AckProcessor(quorumSet, clusterConfig.clone(), lastZxid);
+      new AckProcessor(quorumMap, clusterConfig, lastZxid);
     SyncProposalProcessor syncProcessor =
         new SyncProposalProcessor(persistence, transport, maxBatchSize);
     CommitProcessor commitProcessor =
         new CommitProcessor(stateMachine, lastDeliveredZxid, serverId,
-                            transport, new HashSet<String>(quorumSet.keySet()),
+                            transport, quorumMap.keySet(),
                             clusterConfig, electedLeader, semPendingReqs);
     SnapshotProcessor snapProcessor =
       new SnapshotProcessor(stateMachine, persistence);
     // First time notifies the client active members and cluster configuration.
-    stateMachine.leading(new HashSet<String>(quorumSet.keySet()),
+    stateMachine.leading(new HashSet<String>(quorumMap.keySet()),
                          new HashSet<String>(clusterConfig.getPeers()));
     this.lastCommittedZxid = lastZxid;
     this.lastProposedZxid = lastZxid;
     this.lastAckedZxid = lastZxid;
     try {
-      while (this.quorumSet.size() >= clusterConfig.getQuorumSize()) {
+      while (this.quorumMap.size() >= clusterConfig.getQuorumSize()) {
         MessageTuple tuple = getMessage();
         Message msg = tuple.getMessage();
         String source = tuple.getServerId();
@@ -649,7 +649,7 @@ public class Leader extends Participant {
           // In broadcasting phase, the only expected messages come outside
           // the quorum set is PROPOSED_EPOCH, ACK_EPOCH, QUERY_LEADER and
           // SYNC_HISTORY.
-          if (!this.quorumSet.containsKey(source)) {
+          if (!this.quorumMap.containsKey(source)) {
             if (LOG.isDebugEnabled()) {
               LOG.debug("Got message {} from {} outside quorum.",
                         TextFormat.shortDebugString(msg),
@@ -668,7 +668,7 @@ public class Leader extends Participant {
             // Updates last proposed zxid for this peer. The FLUSH
             // message needs this zxid to determine when it's safe
             // to deliver the FLUSH request back to user.
-            quorumSet.get(source).setLastProposedZxid(proposedZxid);
+            quorumMap.get(source).setLastProposedZxid(proposedZxid);
             tuple.setZxid(proposedZxid);
             preProcessor.processRequest(tuple);
           } else if (msg.getType() == MessageType.FLUSH_REQ) {
@@ -711,7 +711,7 @@ public class Leader extends Participant {
                        source);
             }
           }
-          PeerHandler ph = quorumSet.get(source);
+          PeerHandler ph = quorumMap.get(source);
           if (ph != null) {
             ph.updateHeartbeatTime();
           }
@@ -750,7 +750,7 @@ public class Leader extends Participant {
     // We'll synchronize the joiner up to last proposed zxid of leader.
     ph.setLastSyncedZxid(tuple.getZxid());
     clusterConfig.addPeer(source);
-    quorumSet.put(source, ph);
+    quorumMap.put(source, ph);
     pendingPeers.put(source, ph);
     preProcessor.processRequest(tuple);
     ackProcessor.processRequest(tuple);
@@ -807,7 +807,7 @@ public class Leader extends Participant {
     String peerId = msg.getDisconnected().getServerId();
     // Remove if it's in pendingPeers.
     pendingPeers.remove(peerId);
-    PeerHandler ph = this.quorumSet.get(peerId);
+    PeerHandler ph = this.quorumMap.get(peerId);
     // Before calling shutdown, we need to disable PeerHandler first to prevent
     // sending obsolete messages in AckProcessor and preProcessor. Because once
     // we call shutdown(), the new connection from the peer is allowed, and
@@ -816,7 +816,7 @@ public class Leader extends Participant {
     ph.disableSending();
     // Stop PeerHandler thread and clear tranport.
     ph.shutdown();
-    quorumSet.remove(peerId);
+    quorumMap.remove(peerId);
     preProcessor.processRequest(tuple);
     ackProcessor.processRequest(tuple);
     commitProcessor.processRequest(tuple);
@@ -890,7 +890,7 @@ public class Leader extends Participant {
     ph.setLastZxid(lastPeerZxid);
     ph.setLastSyncedZxid(zxid);
     // Add to the quorum set of main thread.
-    quorumSet.put(source, ph);
+    quorumMap.put(source, ph);
     // Add to the pending set also.
     this.pendingPeers.put(source, ph);
     // Add new recovered follower to PreProcessor.
@@ -914,10 +914,10 @@ public class Leader extends Participant {
   void onRemove(MessageTuple tuple, PreProcessor preProcessor,
                 AckProcessor ackProcessor,
                 ClusterConfiguration clusterConfig) throws IOException {
-    // NOTE : For REMOVE message, we shouldn't remove server from quorumSet
+    // NOTE : For REMOVE message, we shouldn't remove server from quorumMap
     // here, the leaving server will close the transport once the COP gets
     // committed and then we'll remove it like normal DISCONNECTED server.
-    // this.quorumSet.remove(server);
+    // this.quorumMap.remove(server);
     // But we still need to remove the server from PreProcessor since logically
     // all the proposals after COP will not be the responsibilities of removed
     // server.
@@ -930,7 +930,7 @@ public class Leader extends Participant {
   void onFlushReq(MessageTuple tuple) {
     Message msg = tuple.getMessage();
     String source = tuple.getServerId();
-    PeerHandler ph = quorumSet.get(source);
+    PeerHandler ph = quorumMap.get(source);
     Zxid zxid = ph.getLastProposedZxid();
     ZabMessage.FlushRequest req = msg.getFlushRequest();
     msg = MessageBuilder.buildFlush(zxid,
@@ -960,14 +960,14 @@ public class Leader extends Participant {
     // Sends the reply to tell new joiner the sync timeout.
     sendMessage(source, reply);
     ph.startSynchronizingTask();
-    // Adds it to quorumSet.
-    this.quorumSet.put(source, ph);
+    // Adds it to quorumMap.
+    this.quorumMap.put(source, ph);
   }
 
   void checkFollowerLiveness() {
     long currentTime = System.nanoTime();
     long timeoutNs;
-    for (PeerHandler ph : this.quorumSet.values()) {
+    for (PeerHandler ph : this.quorumMap.values()) {
       if (ph.getServerId().equals(this.serverId)) {
         continue;
       }
