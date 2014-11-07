@@ -49,20 +49,20 @@ public class PreProcessor implements RequestProcessor,
 
   private final StateMachine stateMachine;
 
-  private final Map<String, PeerHandler> quorumSetOriginal;
+  private final Map<String, PeerHandler> quorumMapOriginal;
 
-  private final Map<String, PeerHandler> quorumSet;
+  private final Map<String, PeerHandler> quorumMap;
 
   private final Future<Void> ft;
 
   private ClusterConfiguration clusterConfig;
 
   public PreProcessor(StateMachine stateMachine,
-                      Map<String, PeerHandler> quorumSet,
+                      Map<String, PeerHandler> quorumMap,
                       ClusterConfiguration config) {
     this.stateMachine = stateMachine;
-    this.quorumSetOriginal = quorumSet;
-    this.quorumSet = new HashMap<String, PeerHandler>(quorumSet);
+    this.quorumMapOriginal = quorumMap;
+    this.quorumMap = new HashMap<String, PeerHandler>(quorumMap);
     this.clusterConfig = config;
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
@@ -76,14 +76,14 @@ public class PreProcessor implements RequestProcessor,
   }
 
   private void addToQuorumSet(String serverId) {
-    PeerHandler ph = this.quorumSetOriginal.get(serverId);
+    PeerHandler ph = this.quorumMapOriginal.get(serverId);
     if (ph != null) {
-      this.quorumSet.put(serverId, ph);
+      this.quorumMap.put(serverId, ph);
     }
   }
 
   private void removeFromQuorumSet(String serverId) {
-    this.quorumSet.remove(serverId);
+    this.quorumMap.remove(serverId);
   }
 
   @Override
@@ -107,7 +107,7 @@ public class PreProcessor implements RequestProcessor,
                                                            bufReq);
           Transaction txn = new Transaction(zxid, update);
           Message prop = MessageBuilder.buildProposal(txn, clientId);
-          for (PeerHandler ph : quorumSet.values()) {
+          for (PeerHandler ph : quorumMap.values()) {
             ph.queueMessage(prop);
           }
         } else if (msg.getType() == MessageType.JOIN) {
@@ -120,7 +120,7 @@ public class PreProcessor implements RequestProcessor,
           Transaction txn = new Transaction(zxid, ProposalType.COP_VALUE, cop);
           Message prop = MessageBuilder.buildProposal(txn);
           // Broadcasts COP.
-          for (PeerHandler ph : quorumSet.values()) {
+          for (PeerHandler ph : quorumMap.values()) {
             ph.queueMessage(prop);
           }
           // Adds it to quorum set.
@@ -137,7 +137,7 @@ public class PreProcessor implements RequestProcessor,
           Transaction txn = new Transaction(zxid, ProposalType.COP_VALUE, cop);
           Message prop = MessageBuilder.buildProposal(txn);
           // Broadcasts COP.
-          for (PeerHandler ph : quorumSet.values()) {
+          for (PeerHandler ph : quorumMap.values()) {
             ph.queueMessage(prop);
           }
           // Removes it from quorum set.

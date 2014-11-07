@@ -103,10 +103,14 @@ public class CommitProcessor implements RequestProcessor,
     this.lastDeliveredZxid = lastDeliveredZxid;
     this.serverId = serverId;
     this.transport = transport;
-    this.quorumSet = quorumSet;
     this.clusterConfig = clusterConfig;
     this.leader = leader;
     this.semPendingReqs = semPendingReqs;
+    if (quorumSet != null) {
+      this.quorumSet = new HashSet<String>(quorumSet);
+    } else {
+      this.quorumSet = null;
+    }
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
     ft = es.submit(this);
