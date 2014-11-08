@@ -24,7 +24,6 @@ import com.github.zk1931.jzab.transport.NettyTransport;
 import com.github.zk1931.jzab.transport.Transport;
 import com.github.zk1931.jzab.ZabException.NotBroadcastingPhaseException;
 import java.io.IOException;
-import java.io.File;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.util.concurrent.BlockingQueue;
@@ -35,16 +34,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.List;
-import java.util.Properties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
 /**
- * Quorum zab implementation. This class manages the quorum zab servers.
- * For each server, it can be in one of three states :
- *   ELECTING, FOLLOWING, LEADING.
- * Among all the nodes, there's only one server can be established leader.
+ * Zab is a fault-tolerant, replicated protocl that guarantees all requests
+ * submitted to it will be delivered in same order to all servers in the
+ * cluster. The Zab class exposes all the operation of Jzab library.
  */
 public class Zab {
   private static final Logger LOG = LoggerFactory.getLogger(Zab.class);
@@ -55,7 +52,7 @@ public class Zab {
   private final Future<Void> ft;
 
   /**
-   * Server id for Zab.
+   * Server Id for Zab.
    */
   private String serverId;
 
@@ -75,114 +72,78 @@ public class Zab {
   private final MainThread mainThread;
 
   /**
-   * Constructs a Zab instance by recovering from log directory.
+   * Constructs a Zab instance.
    *
    * @param stateMachine the state machine implementation of clients.
-   * @param prop the Properties object stores the configuration of Zab.
+   * @param config the configuration for Jzab, see {@link ZabConfig}.
    */
-  public Zab(StateMachine stateMachine, Properties prop) {
-    this(stateMachine, prop, new SslParameters());
+  public Zab(StateMachine stateMachine, ZabConfig config) {
+    this(stateMachine, config, null);
   }
 
   /**
    * Constructs a Zab instance by joining an existing cluster.
    *
    * @param stateMachine the state machine implementation of clients.
-   * @param prop the Properties object stores the configuration of Zab.
-   * @param joinPeer the id of peer you want to join in.
+   * @param config the configuration for Jzab, see {@link ZabConfig}.
+   * @param joinPeer the id of peer you want to join in, the id is a host:port
+   * string of the peer.
    */
-  public Zab(StateMachine stateMachine, Properties prop,
-                   String joinPeer) {
-    this(stateMachine, prop, joinPeer, new SslParameters());
-  }
-
-  /**
-   * Constructs a Zab instance with Ssl support by recovering from log
-   * directory.
-   *
-   * @param stateMachine the state machine implementation of clients.
-   * @param prop the Properties object stores the configuration of Zab.
-   * @param sslParam parameters for Ssl.
-   */
-  public Zab(StateMachine stateMachine,
-                   Properties prop,
-                   SslParameters sslParam) {
-    this(stateMachine, prop, null, sslParam);
-  }
-
-  /**
-   * Constructs a Zab instance with Ssl support by joining an exisintg
-   * cluster.
-   *
-   * @param stateMachine the state machine implementation of clients.
-   * @param prop the Properties object stores the configuration of Zab.
-   * @param joinPeer the id of peer you want to join in.
-   *                           password is not set.
-   * @param sslParam parameters for Ssl.
-   */
-  public Zab(StateMachine stateMachine,
-                   Properties prop,
-                   String joinPeer,
-                   SslParameters sslParam) {
-    this(stateMachine, null, null, new TestState(prop), joinPeer, sslParam);
+  public Zab(StateMachine stateMachine, ZabConfig config, String joinPeer) {
+    this(stateMachine, config, joinPeer, null, null, null);
   }
 
   Zab(StateMachine stateMachine,
-            StateChangeCallback stateCallback,
-            FailureCaseCallback failureCallback,
-            TestState initialState) {
-    this(stateMachine, stateCallback, failureCallback, initialState,
-         null);
+      ZabConfig config,
+      PersistentState initState,
+      StateChangeCallback stateCallback,
+      FailureCaseCallback failureCallback) {
+    this(stateMachine, config, null, initState, stateCallback,
+        failureCallback);
   }
 
   Zab(StateMachine stateMachine,
-            StateChangeCallback stateCallback,
-            FailureCaseCallback failureCallback,
-            TestState initialState,
-            String joinPeer) {
-    this(stateMachine, stateCallback, failureCallback, initialState, joinPeer,
-         new SslParameters());
-  }
-
-  Zab(StateMachine stateMachine,
-            StateChangeCallback stateCallback,
-            FailureCaseCallback failureCallback,
-            TestState initialState,
-            String joinPeer,
-            SslParameters sslParam) {
-    this.config = new ZabConfig(initialState.prop);
+      ZabConfig config,
+      String joinPeer,
+      PersistentState initState,
+      StateChangeCallback stateCallback,
+      FailureCaseCallback failureCallback) {
+    this.config = config;
     this.stateMachine = stateMachine;
-    ExecutorService es =
-        Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
     try {
       // Initialize.
       this.mainThread = new MainThread(joinPeer,
                                        stateCallback,
                                        failureCallback,
-                                       initialState,
-                                       sslParam);
+                                       initState);
     } catch (Exception e) {
       LOG.warn("Caught an exception while initializing Zab.");
       throw new IllegalStateException("Failed to initialize Zab.", e);
     }
+    ExecutorService es =
+        Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
+    // Starts main thread.
     this.ft = es.submit(this.mainThread);
     es.shutdown();
   }
 
   /**
-   * Get the future of the background working thread of Zab.
+   * Get the future of the background working thread of Zab. Users can check
+   * the status of the thread via the future.
+   *
+   * @return the future object of MainThread.
    */
   public Future<Void> getFuture() {
     return this.ft;
   }
 
   /**
-   * Submits a request to Zab. Any one can call call this send. Under the hood,
-   * followers forward requests to the leader and the leader will be responsible
-   * for converting this request to idempotent transaction and broadcasting. If
-   * you send request in non-broadcasting phase, the operation will fail.
+   * Submits a request to Zab. Under the hood, followers forward requests to the
+   * leader and the leader will be responsible for converting this request to
+   * idempotent transaction and broadcasting. If you send request in
+   * non-broadcasting phase, the operation will fail.
    *
-   * @param request request to send through Zab
+   * @param request the request to send through Zab
    * @throws NotBroadcastingPhaseException if Zab is not in broadcasting phase.
    */
   public void send(ByteBuffer request) throws NotBroadcastingPhaseException {
@@ -226,10 +187,10 @@ public class Zab {
   }
 
   /**
-   * Returns the server id for this Zab instance. The application which
-   * recovers from log directory probably needs to know the server id of Zab.
+   * Returns the server Id for this Zab instance. The application which
+   * recovers from log directory probably needs to know the server Id of Zab.
    *
-   * @return the server id of this Zab instance.
+   * @return the server Id of this Zab instance.
    */
   public String getServerId() {
     return this.serverId;
@@ -389,83 +350,6 @@ public class Zab {
   }
 
   /**
-   * Used for initializing the state of Zab for testing purpose.
-   */
-  static class TestState {
-    Properties prop;
-    File logDir = null;
-    private File fAckEpoch;
-    private File fProposedEpoch;
-    private PersistentState persistence;
-    Log log = null;
-
-    /**
-     * Creates the TestState object. It should be passed to Zab to
-     * initialize its state.
-     *
-     * @param serverId the server id of the Zab.
-     * @param servers the server list of the ensemble.
-     * @param baseLogDir the base log directory of all the peers in ensemble.
-     * The specific log directory of each peer is baseLogDir/serverId.
-     * For example, if the baseLogDir is /tmp/log and the serverId is server1,
-     * then the log directory for this server is /tmp/log/server1.
-     */
-    public TestState(String serverId, String servers, File baseLogDir)
-        throws IOException {
-      prop = new Properties();
-      if (serverId != null) {
-        this.prop.setProperty("serverId", serverId);
-      }
-      if (servers != null) {
-        this.prop.setProperty("servers", servers);
-      }
-      if (serverId != null) {
-        this.logDir = new File(baseLogDir, serverId);
-      } else {
-        this.logDir = baseLogDir;
-      }
-      this.persistence = new PersistentState(this.logDir);
-      this.prop.setProperty("logdir", logDir.getAbsolutePath());
-      this.fAckEpoch = new File(this.logDir, "ack_epoch");
-      this.fProposedEpoch = new File(this.logDir, "proposed_epoch");
-    }
-
-    public TestState(Properties prop) {
-      this.prop = prop;
-    }
-
-    TestState setProposedEpoch(long epoch) throws IOException {
-      FileUtils.writeLongToFile(epoch, this.fProposedEpoch);
-      return this;
-    }
-
-    TestState setAckEpoch(long epoch) throws IOException {
-      FileUtils.writeLongToFile(epoch, this.fAckEpoch);
-      return this;
-    }
-
-    TestState setLog(Log tlog) {
-      this.log = tlog;
-      return this;
-    }
-
-    Log getLog() {
-      return this.log;
-    }
-
-    TestState setClusterConfiguration(ClusterConfiguration conf)
-        throws IOException {
-      this.persistence.setLastSeenConfig(conf);
-      return this;
-    }
-
-    TestState setJoinPeer(String peer) {
-      this.prop.setProperty("joinPeer", peer);
-      return this;
-    }
-  }
-
-  /**
    * Main working thread for Zab.
    */
   class MainThread implements Callable<Void>,
@@ -484,7 +368,6 @@ public class Zab {
       new LinkedBlockingQueue<>();
     private final String joinPeer;
     private final StateChangeCallback stateChangeCallback;
-    private final FailureCaseCallback failureCallback;
     private final Transport transport;
     private final Election election;
     private final PersistentState persistence;
@@ -493,16 +376,17 @@ public class Zab {
     MainThread(String joinPeer,
                StateChangeCallback stateChangeCallback,
                FailureCaseCallback failureCallback,
-               TestState testState,
-               SslParameters sslParam)
+               PersistentState initState)
         throws IOException, InterruptedException, GeneralSecurityException {
       this.joinPeer = joinPeer;
       this.stateChangeCallback = stateChangeCallback;
-      this.failureCallback = failureCallback;
-      this.persistence =
-        new PersistentState(config.getLogDir(), testState.getLog());
+      if (initState == null) {
+        persistence = new PersistentState(config.getLogDir());
+      } else {
+        persistence = initState;
+      }
       if (joinPeer != null) {
-        // First time start up. Joining some one.
+        // First time start up. Joining someone.
         if (!persistence.isEmpty()) {
           LOG.error("The log directory is not empty while joining.");
           throw new RuntimeException("Log directory must be empty.");
@@ -532,8 +416,10 @@ public class Zab {
       }
       MDC.put("serverId", serverId);
       // Creates transport.
-      this.transport =
-        new NettyTransport(serverId, this, sslParam, persistence.getLogDir());
+      this.transport = new NettyTransport(serverId,
+                                        this,
+                                        config.getSslParameters(),
+                                        persistence.getLogDir());
       this.election =
           new FastLeaderElection(persistence, transport, messageQueue);
       participantState = new ParticipantState(persistence,
@@ -570,13 +456,14 @@ public class Zab {
         }
       } catch (InterruptedException e) {
         LOG.debug("Caught Interrupted exception, it has been shut down?");
-        participantState.getTransport().shutdown();
         Thread.currentThread().interrupt();
       } catch (Participant.LeftCluster e) {
         LOG.debug("Zab has been shutdown.");
       } catch (Exception e) {
         LOG.error("Caught exception :", e);
         throw e;
+      } finally {
+        participantState.getTransport().shutdown();
       }
       if (stateChangeCallback != null) {
         stateChangeCallback.leftCluster();

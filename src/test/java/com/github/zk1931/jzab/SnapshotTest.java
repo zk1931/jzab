@@ -30,7 +30,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import org.junit.Assert;
 import org.junit.Test;
@@ -118,7 +117,6 @@ class SnapshotStateMachine implements StateMachine {
   }
 }
 
-
 /**
  * Tests for Snapshot.
  */
@@ -126,19 +124,22 @@ public class SnapshotTest extends TestBase {
   private static final Logger LOG =
     LoggerFactory.getLogger(SnapshotTest.class);
 
-  @Test(timeout=30000)
+  @Test(timeout=10000)
   public void testSnapshotSingleServer() throws Exception {
     final int nTxns = 20;
     QuorumTestCallback cb1 = new QuorumTestCallback();
     SnapshotStateMachine st1 = new SnapshotStateMachine(nTxns);
     String server = getUniqueHostPort();
-    Properties prop = new Properties();
+
+    ZabConfig config = new ZabConfig();
     // For testing purpose, set the threshold to 32 bytes..
-    prop.setProperty("snapshot_threshold", "32");
-    prop.setProperty("serverId", server);
-    prop.setProperty("logdir", getDirectory().getPath());
-    Zab zab = new Zab(st1, prop, server);
+    config.setSnapshotThreshold(32);
+    config.setServerId(server);
+    config.setLogDir(getDirectory().getPath());
+
+    Zab zab = new Zab(st1, config, server);
     st1.waitMemberChanged();
+
     for (int i = 0; i < nTxns; ++i) {
       zab.send(ByteBuffer.wrap(("txns" + i).getBytes()));
       // Sleep a while to avoid all the transactions batch together.
@@ -146,10 +147,9 @@ public class SnapshotTest extends TestBase {
     }
     st1.txnsCount.await();
     zab.shutdown();
+
     SnapshotStateMachine stNew = new SnapshotStateMachine(nTxns);
-    prop = new Properties();
-    prop.setProperty("logdir", getDirectory().getPath());
-    zab = new Zab(stNew, prop);
+    zab = new Zab(stNew, config);
     stNew.waitMemberChanged();
     Assert.assertEquals(st1.state, stNew.state);
     zab.shutdown();
@@ -164,24 +164,25 @@ public class SnapshotTest extends TestBase {
     SnapshotStateMachine st2 = new SnapshotStateMachine(nTxns);
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
-    Properties prop1 = new Properties();
+
+    ZabConfig config1 = new ZabConfig();
     // For testing purpose, set the threshold to 32 bytes..
-    prop1.setProperty("snapshot_threshold_bytes", "32");
-    prop1.setProperty("serverId", server1);
-    prop1.setProperty("logdir",
-                      getDirectory().getPath() + File.separator + server1);
-    Properties prop2 = new Properties();
+    config1.setSnapshotThreshold(32);
+    config1.setServerId(server1);
+    config1.setLogDir(getDirectory().getPath() + File.separator + server1);
+
+    ZabConfig config2 = new ZabConfig();
     // For testing purpose, set the threshold to 32 bytes..
-    prop2.setProperty("snapshot_threshold_bytes", "32");
-    prop2.setProperty("serverId", server2);
-    prop2.setProperty("logdir",
-                      getDirectory().getPath() + File.separator + server2);
-    Zab zab1 = new Zab(st1, prop1, server1);
+    config2.setSnapshotThreshold(32);
+    config2.setServerId(server2);
+    config2.setLogDir(getDirectory().getPath() + File.separator + server2);
+
+    Zab zab1 = new Zab(st1, config1, server1);
     st1.waitMemberChanged();
-    // Server2 joins in.
-    Zab zab2 = new Zab(st2, prop2, server1);
+
+    Zab zab2 = new Zab(st2, config2, server1);
     st2.waitMemberChanged();
-    st1.waitMemberChanged();
+
     for (int i = 0; i < nTxns; ++i) {
       zab1.send(ByteBuffer.wrap(("txns" + i).getBytes()));
       // Sleep a while to avoid all the transactions batch together.
@@ -196,14 +197,8 @@ public class SnapshotTest extends TestBase {
     // Restarts them.
     SnapshotStateMachine stNew1 = new SnapshotStateMachine(nTxns);
     SnapshotStateMachine stNew2 = new SnapshotStateMachine(nTxns);
-    prop1 = new Properties();
-    prop1.setProperty("logdir",
-                      getDirectory().getPath() + File.separator + server1);
-    prop2 = new Properties();
-    prop2.setProperty("logdir",
-                      getDirectory().getPath() + File.separator + server2);
-    zab1 = new Zab(stNew1, prop1);
-    zab2 = new Zab(stNew2, prop2);
+    zab1 = new Zab(stNew1, config1);
+    zab2 = new Zab(stNew2, config2);
     stNew1.waitMemberChanged();
     stNew2.waitMemberChanged();
     // Make sure the states are consistent.
@@ -224,23 +219,25 @@ public class SnapshotTest extends TestBase {
     SnapshotStateMachine st1 = new SnapshotStateMachine(nTxns);
     QuorumTestCallback cb2 = new QuorumTestCallback();
     SnapshotStateMachine st2 = new SnapshotStateMachine(nTxns);
+
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
-    Properties prop1 = new Properties();
+
+    ZabConfig config1 = new ZabConfig();
     // In order to reproduce the bug we found in snapshot transferring, we set
     // the threshold to 290 bytes. In this case, both the last zxid and snap
     // zxid will be (0, 50), which triggered the bug in old code.
-    prop1.setProperty("snapshot_threshold_bytes", "290");
-    prop1.setProperty("serverId", server1);
-    prop1.setProperty("logdir",
-                      getDirectory().getPath() + File.separator + server1);
-    Properties prop2 = new Properties();
-    // For testing purpose, set the threshold to 32 bytes..
-    prop2.setProperty("serverId", server2);
-    prop2.setProperty("logdir",
-                      getDirectory().getPath() + File.separator + server2);
-    Zab zab1 = new Zab(st1, prop1, server1);
+    config1.setSnapshotThreshold(290);
+    config1.setServerId(server1);
+    config1.setLogDir(getDirectory().getPath() + File.separator + server1);
+
+    ZabConfig config2 = new ZabConfig();
+    config2.setServerId(server2);
+    config2.setLogDir(getDirectory().getPath() + File.separator + server2);
+
+    Zab zab1 = new Zab(st1, config1, server1);
     st1.waitMemberChanged();
+
     for (int i = 0; i < nTxns; ++i) {
       zab1.send(ByteBuffer.wrap(("txns" + i).getBytes()));
       // Sleep a while to avoid all the transactions batch together.
@@ -248,7 +245,7 @@ public class SnapshotTest extends TestBase {
     }
     st1.txnsCount.await();
     // Server2 joins in.
-    Zab zab2 = new Zab(st2, prop2, server1);
+    Zab zab2 = new Zab(st2, config2, server1);
     st2.waitMemberChanged();
     Assert.assertEquals(st1.state, st2.state);
     zab1.shutdown();

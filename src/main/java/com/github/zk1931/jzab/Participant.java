@@ -41,26 +41,26 @@ import org.slf4j.LoggerFactory;
 import static com.github.zk1931.jzab.proto.ZabMessage.Proposal.ProposalType;
 
 /**
- * Participant.
+ * Participant is the base class for different roles of Jzab(Leader/Follower).
  */
 public abstract class Participant {
   /**
-   * Transport. Passed from Zab.
+   * Transport is used for communication between different Zab instances.
    */
   protected final Transport transport;
 
   /**
-   * Persistent state of Zab. Passed from Zab.
+   * Persistent state of Zab.
    */
   protected final PersistentState persistence;
 
   /**
-   * State machine. Passed from Zab.
+   * State machine callback.
    */
   protected final StateMachine stateMachine;
 
   /**
-   * ID of the participant. Passed from Zab.
+   * Server Id of the participant.
    */
   protected final String serverId;
 
@@ -132,6 +132,9 @@ public abstract class Participant {
    */
   protected final Election election;
 
+  /**
+   * Current phase of Participant.
+   */
   protected Phase currentPhase = Phase.DISCOVERING;
 
   private static final Logger LOG = LoggerFactory.getLogger(Participant.class);
@@ -196,7 +199,7 @@ public abstract class Participant {
       LOG.error("interupted");
     }
     Message msg = MessageBuilder.buildRequest(request);
-    this.transport.send(this.electedLeader, msg);
+    sendMessage(this.electedLeader, msg);
   }
 
   void remove(String peerId) throws NotBroadcastingPhaseException {
@@ -204,7 +207,7 @@ public abstract class Participant {
       throw new NotBroadcastingPhaseException("Not in Broadcasting phase!");
     }
     Message msg = MessageBuilder.buildRemove(peerId);
-    this.transport.send(this.electedLeader, msg);
+    sendMessage(this.electedLeader, msg);
   }
 
   void flush(ByteBuffer request) throws NotBroadcastingPhaseException {
@@ -212,7 +215,7 @@ public abstract class Participant {
       throw new NotBroadcastingPhaseException("Not in Broadcasting phase!");
     }
     Message msg = MessageBuilder.buildFlushRequest(request);
-    this.transport.send(this.electedLeader, msg);
+    sendMessage(this.electedLeader, msg);
   }
 
   protected abstract void join(String peer) throws Exception;
@@ -261,8 +264,8 @@ public abstract class Participant {
    *
    * @param type the expected message type.
    * @param source the expected source, null if it can from anyone.
-   * @return the message tuple contains the message and its source.
    * @param timeoutMs how long to wait before raising a TimeoutException.
+   * @return the message tuple contains the message and its source.
    * @throws TimeoutException in case of timeout.
    * @throws InterruptedException it's interrupted.
    */
@@ -299,7 +302,7 @@ public abstract class Participant {
   }
 
   /**
-   * Waits for a synchronization message from peer.
+   * Waits getting synchronizated from peer.
    *
    * @param peer the id of the expected peer that synchronization message will
    * come from.
@@ -316,8 +319,8 @@ public abstract class Participant {
     Zxid lastZxidPeer = null;
     Message msg = null;
     String source = null;
-    // Expects getting message of DIFF or TRUNCATE or SNAPSHOT or PULL_TXN_REQ
-    // from elected leader.
+    // Expects getting message of DIFF or TRUNCATE or SNAPSHOT from peer or
+    // PULL_TXN_REQ from leader.
     while (true) {
       MessageTuple tuple = getMessage(getSyncTimeoutMs());
       source = tuple.getServerId();
