@@ -36,6 +36,7 @@ import com.github.zk1931.jzab.transport.Transport;
 import com.github.zk1931.jzab.Zab.FailureCaseCallback;
 import com.github.zk1931.jzab.Zab.StateChangeCallback;
 import com.github.zk1931.jzab.ZabException.NotBroadcastingPhaseException;
+import com.github.zk1931.jzab.ZabException.ToManyPendingRequests;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import static com.github.zk1931.jzab.proto.ZabMessage.Proposal.ProposalType;
@@ -104,17 +105,6 @@ public abstract class Participant {
   protected final ParticipantState participantState;
 
   /**
-   * The maximum number of transactions can be appended to log before taking
-   * snapshot.
-   */
-  protected final long snapshotThreshold;
-
-  /**
-   * Total number of bytes of delivered transactions since last snapshot.
-   */
-  protected long numDeliveredBytes = 0;
-
-  /**
    * The semaphore is used to prevent the internal queues grow infinitely.
    */
   protected final Semaphore semPendingReqs =
@@ -136,6 +126,11 @@ public abstract class Participant {
    * Current phase of Participant.
    */
   protected Phase currentPhase = Phase.DISCOVERING;
+
+  /**
+   * Whether there's is a snapshot request in progress.
+   */
+  protected boolean isSnapshotInProgress = false;
 
   private static final Logger LOG = LoggerFactory.getLogger(Participant.class);
 
@@ -181,7 +176,6 @@ public abstract class Participant {
     this.serverId = participantState.getServerId();
     this.messageQueue = participantState.getMessageQueue();
     this.stateMachine = stateMachine;
-    this.snapshotThreshold = config.getSnapshotThreshold();
     this.stateChangeCallback = participantState.getStateChangeCallback();
     this.failCallback = participantState.getFailureCaseCallback();
     this.config = config;
@@ -216,6 +210,18 @@ public abstract class Participant {
     }
     Message msg = MessageBuilder.buildFlushRequest(request);
     sendMessage(this.electedLeader, msg);
+  }
+
+  void takeSnapshot() throws ZabException {
+    if (this.currentPhase != Phase.BROADCASTING) {
+      throw new NotBroadcastingPhaseException("Not in Broadcasting phase!");
+    }
+    if (this.isSnapshotInProgress) {
+      throw new ToManyPendingRequests("A pending snapshot is in progress");
+    }
+    this.isSnapshotInProgress = true;
+    Message msg = MessageBuilder.buildSnapshot(this.lastDeliveredZxid);
+    sendMessage(this.serverId, msg);
   }
 
   protected abstract void join(String peer) throws Exception;
@@ -535,19 +541,6 @@ public abstract class Participant {
     // Updates last delivered zxid.
     this.lastDeliveredZxid =
       MessageBuilder.fromProtoZxid(msg.getDelivered().getZxid());
-    // Gets number of bytes delivered for last commit message.
-    long nBytes = msg.getDelivered().getNumBytes();
-    this.numDeliveredBytes += nBytes;
-    if (snapshotThreshold > 0 &&
-      numDeliveredBytes  >= snapshotThreshold) {
-      // Reaches the threshold, going to take snashot.
-      LOG.debug("Delivered {} bytes to application since last " +
-          "snapshot, going to take snapshot.", numDeliveredBytes);
-      Message snap = MessageBuilder.buildSnapshot(lastDeliveredZxid);
-      snapProcessor.processRequest(new MessageTuple(null, snap));
-      // Resets it to zero.
-      numDeliveredBytes = 0;
-    }
   }
 
   protected void onFlush(MessageTuple tuple, CommitProcessor commitProcessor) {

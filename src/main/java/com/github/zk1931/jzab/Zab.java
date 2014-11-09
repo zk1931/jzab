@@ -228,6 +228,16 @@ public class Zab {
   }
 
   /**
+   * Issues the request to take a snapshot. The {@link StateMachine#save}
+   * callback will be called for serializing the application's state to disk.
+   *
+   * @throws ZabException if Zab is not in broadcasting phase.
+   */
+  public void takeSnapshot() throws ZabException {
+    this.mainThread.takeSnapshot();
+  }
+
+  /**
    * Shut down the Zab.
    *
    * @throws InterruptedException in case of it's interrupted.
@@ -563,6 +573,14 @@ public class Zab {
         throw new NotBroadcastingPhaseException("Not in Broadcasting phase!");
       }
       this.participant.flush(buffer);
+    }
+
+    void takeSnapshot() throws ZabException {
+      if (this.participant == null) {
+        throw new NotBroadcastingPhaseException("Can't take snapshot in " +
+            "recovering phase");
+      }
+      this.participant.takeSnapshot();
     }
 
     // Waits until MainThread thread has been shutdown. This function should be

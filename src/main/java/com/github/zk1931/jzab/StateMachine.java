@@ -70,6 +70,13 @@ public interface StateMachine {
   void save(OutputStream os);
 
   /**
+   * Upcall to notify that the snapshot is successfully stored on disk.
+   *
+   * @param filePath the path for the snapshot file.
+   */
+  void snapshotDone(String filePath);
+
+  /**
    * Deserializes the state of the application from the InputStream. Once this
    * callback is called. The app restores the state using the input stream.
    *

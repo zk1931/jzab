@@ -416,7 +416,7 @@ public class Follower extends Participant {
                             transport, null, clusterConfig, electedLeader,
                             semPendingReqs);
     SnapshotProcessor snapProcessor =
-      new SnapshotProcessor(stateMachine, persistence);
+      new SnapshotProcessor(stateMachine, persistence, serverId, transport);
     // The last time of HEARTBEAT message comes from leader.
     long lastHeartbeatTime = System.nanoTime();
     long ackEpoch = persistence.getAckEpoch();
@@ -451,6 +451,11 @@ public class Follower extends Participant {
           } else if (msg.getType() == MessageType.DELIVERED) {
             // DELIVERED message should come from itself.
             onDelivered(msg, snapProcessor);
+          } else if (msg.getType() == MessageType.SNAPSHOT) {
+            snapProcessor.processRequest(tuple);
+          } else if (msg.getType() == MessageType.SNAPSHOT_DONE) {
+            this.isSnapshotInProgress = false;
+            commitProcessor.processRequest(tuple);
           } else {
             LOG.debug("Got unexpected message from {}, ignores.", source);
           }

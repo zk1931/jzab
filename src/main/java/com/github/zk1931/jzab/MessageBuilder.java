@@ -498,13 +498,13 @@ public final class MessageBuilder {
   /**
    * Creates a DELIVERED message.
    *
+   * @param deliveredZxid the last zxid of delivered transaction.
    * @return a protobuf message.
    */
-  public static Message buildDelivered(Zxid deliveredZxid, long numBytes) {
+  public static Message buildDelivered(Zxid deliveredZxid) {
     ZabMessage.Zxid zxid = toProtoZxid(deliveredZxid);
-    ZabMessage.Delivered delivered = ZabMessage.Delivered.newBuilder()
-                                                         .setNumBytes(numBytes)
-                                                         .setZxid(zxid).build();
+    ZabMessage.Delivered delivered =
+      ZabMessage.Delivered.newBuilder().setZxid(zxid).build();
     return Message.newBuilder().setType(MessageType.DELIVERED)
                                .setDelivered(delivered).build();
   }
@@ -619,6 +619,19 @@ public final class MessageBuilder {
     return Message.newBuilder().setType(MessageType.ELECTION_INFO)
                                .setElectionInfo(ei)
                                .build();
+  }
+
+  /**
+   * Creates the SNAPSHOT_DONE message.
+   *
+   * @param filePath the file path for the snapshot.
+   * @return a protobuf message.
+   */
+  public static Message buildSnapshotDone(String filePath) {
+    ZabMessage.SnapshotDone done =
+      ZabMessage.SnapshotDone.newBuilder().setFilePath(filePath).build();
+    return Message.newBuilder().setType(MessageType.SNAPSHOT_DONE)
+                               .setSnapshotDone(done).build();
   }
 }
 

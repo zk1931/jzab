@@ -33,4 +33,12 @@ public abstract class ZabException extends Exception {
     public NotBroadcastingPhaseException() {}
     public NotBroadcastingPhaseException(String desc) { super(desc); }
   }
+
+  /**
+   * Exception of to many pending requests in Jzab.
+   */
+  public static class ToManyPendingRequests extends ZabException {
+    public ToManyPendingRequests() {}
+    public ToManyPendingRequests(String desc) { super(desc); }
+  }
 }

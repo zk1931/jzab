@@ -85,6 +85,10 @@ class TestStateMachine implements StateMachine {
   }
 
   @Override
+  public void snapshotDone(String filePath) {
+  }
+
+  @Override
   public void restore(InputStream is) {
     throw new UnsupportedOperationException("This implementation"
         + "doesn't support setState operation");

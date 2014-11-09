@@ -139,7 +139,6 @@ public class CommitProcessor implements RequestProcessor,
           this.pendingTxns.add(msg.getProposal());
         } else if (msg.getType() == MessageType.COMMIT) {
           // Number of bytes delivered to application for this COMMIT.
-          long numBytes = 0;
           ZabMessage.Commit commit = request.getMessage().getCommit();
           Zxid zxid = MessageBuilder.fromProtoZxid(commit.getZxid());
           LOG.debug("Received a commit request {}.", zxid);
@@ -167,7 +166,6 @@ public class CommitProcessor implements RequestProcessor,
                 // release pending requests semaphore.
                 semPendingReqs.release();
               }
-              numBytes += txn.getBody().capacity();
             } else if (txn.getType() == ProposalType.COP_VALUE) {
               LOG.debug("Delivering COP {}.", txn.getZxid());
               ClusterConfiguration cnf =
@@ -183,7 +181,6 @@ public class CommitProcessor implements RequestProcessor,
                 Message shutdown = MessageBuilder.buildShutDown();
                 transport.send(this.serverId, shutdown);
               }
-              numBytes += txn.getBody().capacity();
               // The COP might or might not be proposed by this server, but for
               // simplicity, we still release the sempahore here, it's OK since
               // COP should be very few, this will not affect the correctness.
@@ -216,7 +213,7 @@ public class CommitProcessor implements RequestProcessor,
           // Removes the delivered transactions.
           this.pendingTxns.subList(startIdx, endIdx).clear();
           Message delivered =
-            MessageBuilder.buildDelivered(lastDeliveredZxid, numBytes);
+            MessageBuilder.buildDelivered(lastDeliveredZxid);
           transport.send(this.serverId, delivered);
         } else if (msg.getType() == MessageType.ACK_EPOCH) {
           LOG.debug("Got ACK_EPOCH from {}", source);
@@ -245,6 +242,9 @@ public class CommitProcessor implements RequestProcessor,
           } else {
             flushQueue.add(new PendingFlush(zxid, body));
           }
+        } else if (msg.getType() == MessageType.SNAPSHOT_DONE) {
+          // Notify user the snapshot file is stored on disk.
+          this.stateMachine.snapshotDone(msg.getSnapshotDone().getFilePath());
         } else {
           if (LOG.isWarnEnabled()) {
             LOG.warn("Unexpected message {}", TextFormat.shortDebugString(msg));

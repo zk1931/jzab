@@ -600,7 +600,7 @@ public class Leader extends Participant {
                             transport, quorumMap.keySet(),
                             clusterConfig, electedLeader, semPendingReqs);
     SnapshotProcessor snapProcessor =
-      new SnapshotProcessor(stateMachine, persistence);
+      new SnapshotProcessor(stateMachine, persistence, serverId, transport);
     // First time notifies the client active members and cluster configuration.
     stateMachine.leading(new HashSet<String>(quorumMap.keySet()),
                          new HashSet<String>(clusterConfig.getPeers()));
@@ -704,6 +704,11 @@ public class Leader extends Participant {
             tuple.setZxid(pendingCopZxid);
             onJoin(tuple, preProcessor, ackProcessor, commitProcessor,
                    clusterConfig);
+          } else if (msg.getType() == MessageType.SNAPSHOT) {
+            snapProcessor.processRequest(tuple);
+          } else if (msg.getType() == MessageType.SNAPSHOT_DONE) {
+            this.isSnapshotInProgress = false;
+            commitProcessor.processRequest(tuple);
           } else {
             if (LOG.isWarnEnabled()) {
               LOG.warn("Unexpected messgae : {} from {}",
