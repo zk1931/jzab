@@ -34,6 +34,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.List;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -72,25 +73,49 @@ public class Zab {
   private final MainThread mainThread;
 
   /**
-   * Constructs a Zab instance.
+   * Constructs a Zab instance by recovering from the log directory.
    *
-   * @param stateMachine the state machine implementation of clients.
+   * @param stateMachine the state machine implementation of application.
    * @param config the configuration for Jzab, see {@link ZabConfig}.
    */
   public Zab(StateMachine stateMachine, ZabConfig config) {
-    this(stateMachine, config, null);
+    this(stateMachine, config, null, null, null);
   }
 
   /**
-   * Constructs a Zab instance by joining an existing cluster.
+   * Constructs a Zab instance by joining an existing cluster. This constructor
+   * is supposed to be called only for the very first time to initialize the
+   * log directory, once the log directory gets initialized you should call
+   * {@link #Zab(StateMachine, ZabConfig) Zab} which recovers the Zab instance
+   * from log directory.
    *
-   * @param stateMachine the state machine implementation of clients.
+   * @param stateMachine the state machine implementation of application.
    * @param config the configuration for Jzab, see {@link ZabConfig}.
-   * @param joinPeer the id of peer you want to join in, the id is a host:port
-   * string of the peer.
+   * @param serverId ID ("host:port") of this server.
+   * @param joinPeer the ID of peer you want to join in, the ID is a host:port
+   * string of the peer. The first server bootstraps the cluster by joining
+   * itself.
    */
-  public Zab(StateMachine stateMachine, ZabConfig config, String joinPeer) {
-    this(stateMachine, config, joinPeer, null, null, null);
+  public Zab(StateMachine stateMachine, ZabConfig config, String serverId,
+             String joinPeer) {
+    this(stateMachine, config, serverId, joinPeer, null, null, null);
+  }
+
+  /**
+   * Constructs a Zab instance by booting from static cluster configuration.
+   * This constructor is supposed to be called only for the very first time to
+   * initialize the log directory, once the log directory gets initialized you
+   * should call {@link #Zab(StateMachine, ZabConfig) Zab} which recovers the
+   * Zab instance from log directory.
+   *
+   * @param stateMachine the state machine implementation of application.
+   * @param config the configuration for Jzab, see {@link ZabConfig}.
+   * @param serverId ID ("host:port") of this server.
+   * @param peers the IDs of the servers in cluster, including itself.
+   */
+  public Zab(StateMachine stateMachine, ZabConfig config, String serverId,
+             Set<String> peers) {
+    this(stateMachine, config, serverId, peers, null, null, null);
   }
 
   Zab(StateMachine stateMachine,
@@ -98,21 +123,47 @@ public class Zab {
       PersistentState initState,
       StateChangeCallback stateCallback,
       FailureCaseCallback failureCallback) {
-    this(stateMachine, config, null, initState, stateCallback,
+    this(stateMachine, config, null, null, null, initState, stateCallback,
         failureCallback);
   }
 
   Zab(StateMachine stateMachine,
       ZabConfig config,
+      String serverId,
       String joinPeer,
+      PersistentState initState,
+      StateChangeCallback stateCallback,
+      FailureCaseCallback failureCallback) {
+    this(stateMachine, config, serverId, joinPeer, null, initState,
+        stateCallback, failureCallback);
+  }
+
+  Zab(StateMachine stateMachine,
+      ZabConfig config,
+      String serverId,
+      Set<String> peers,
+      PersistentState initState,
+      StateChangeCallback stateCallback,
+      FailureCaseCallback failureCallback) {
+    this(stateMachine, config, serverId, null, peers, initState,
+         stateCallback, failureCallback);
+  }
+
+  Zab(StateMachine stateMachine,
+      ZabConfig config,
+      String serverId,
+      String joinPeer,
+      Set<String> peers,
       PersistentState initState,
       StateChangeCallback stateCallback,
       FailureCaseCallback failureCallback) {
     this.config = config;
     this.stateMachine = stateMachine;
+    this.serverId = serverId;
     try {
       // Initialize.
       this.mainThread = new MainThread(joinPeer,
+                                       peers,
                                        stateCallback,
                                        failureCallback,
                                        initState);
@@ -374,6 +425,7 @@ public class Zab {
     private Participant participant = null;
 
     MainThread(String joinPeer,
+               Set<String> peers,
                StateChangeCallback stateChangeCallback,
                FailureCaseCallback failureCallback,
                PersistentState initState)
@@ -391,16 +443,12 @@ public class Zab {
           LOG.error("The log directory is not empty while joining.");
           throw new RuntimeException("Log directory must be empty.");
         }
-        serverId = config.getServerId();
       } else {
         // Means either it starts booting from static configuration or
         // recovering from a log directory.
-        if (config.getPeers().size() > 0) {
+        if (serverId != null) {
           // TODO : Static configuration should be removed eventually.
           LOG.debug("Boots from static configuration.");
-          // User has specified server list.
-          List<String> peers = config.getPeers();
-          serverId = config.getServerId();
           ClusterConfiguration cnf =
             new ClusterConfiguration(new Zxid(0, 0), peers, serverId);
           persistence.setLastSeenConfig(cnf);
@@ -417,9 +465,9 @@ public class Zab {
       MDC.put("serverId", serverId);
       // Creates transport.
       this.transport = new NettyTransport(serverId,
-                                        this,
-                                        config.getSslParameters(),
-                                        persistence.getLogDir());
+                                          this,
+                                          config.getSslParameters(),
+                                          persistence.getLogDir());
       this.election =
           new FastLeaderElection(persistence, transport, messageQueue);
       participantState = new ParticipantState(persistence,

@@ -22,6 +22,8 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * Tests for FastLeaderElection.
@@ -43,6 +45,10 @@ public class FastLeaderElectionTest extends TestBase {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
+    peers.add(server3);
 
     PersistentState state1 = makeInitialState(server1, 1);
     state1.setAckEpoch(0);
@@ -51,15 +57,10 @@ public class FastLeaderElectionTest extends TestBase {
     state2.setAckEpoch(0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2, server3);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-    config2.setServers(server1, server2, server3);
 
-    Zab zab1 = new Zab(st, config1, state1, cb1, null);
-    Zab zab2 = new Zab(st, config2, state2, cb2, null);
+    Zab zab1 = new Zab(st, config1, server1, peers, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, server2, peers, state2, cb2, null);
 
     cb1.waitDiscovering();
     cb2.waitDiscovering();
@@ -82,6 +83,10 @@ public class FastLeaderElectionTest extends TestBase {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
+    peers.add(server3);
 
     PersistentState state1 = makeInitialState(server1, 1);
     state1.setProposedEpoch(1);
@@ -91,15 +96,10 @@ public class FastLeaderElectionTest extends TestBase {
     state2.setAckEpoch(0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2, server3);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-    config2.setServers(server1, server2, server3);
 
-    Zab zab1 = new Zab(st, config1, state1, cb1, null);
-    Zab zab2 = new Zab(st, config2, state2, cb2, null);
+    Zab zab1 = new Zab(st, config1, server1, peers, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, server2, peers, state2, cb2, null);
 
     cb1.waitDiscovering();
     cb2.waitDiscovering();
@@ -122,20 +122,19 @@ public class FastLeaderElectionTest extends TestBase {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
+    peers.add(server3);
 
     PersistentState state1 = makeInitialState(server1, 1);
     PersistentState state2 = makeInitialState(server2, 0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2, server3);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-    config2.setServers(server1, server2, server3);
 
-    Zab zab1 = new Zab(st, config1, state1, cb1, null);
-    Zab zab2 = new Zab(st, config2, state2, cb2, null);
+    Zab zab1 = new Zab(st, config1, server1, peers, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, server2, peers, state2, cb2, null);
 
     cb1.waitDiscovering();
     cb2.waitDiscovering();
@@ -163,6 +162,10 @@ public class FastLeaderElectionTest extends TestBase {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
+    peers.add(server3);
 
     PersistentState state1 = makeInitialState(server1, 0);
     state1.setAckEpoch(2);
@@ -177,20 +180,12 @@ public class FastLeaderElectionTest extends TestBase {
     state2.setProposedEpoch(0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2, server3);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-    config2.setServers(server1, server2, server3);
-
     ZabConfig config3 = new ZabConfig();
-    config3.setServerId(server3);
-    config3.setServers(server1, server2, server3);
 
-    Zab zab1 = new Zab(st, config1, state1, cb1, null);
-    Zab zab2 = new Zab(st, config2, state2, cb2, null);
-    Zab zab3 = new Zab(st, config3, state3, cb3, null);
+    Zab zab1 = new Zab(st, config1, server1, peers, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, server2, peers, state2, cb2, null);
+    Zab zab3 = new Zab(st, config3, server3, peers, state3, cb3, null);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();

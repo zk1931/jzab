@@ -134,10 +134,9 @@ public class SnapshotTest extends TestBase {
     ZabConfig config = new ZabConfig();
     // For testing purpose, set the threshold to 32 bytes..
     config.setSnapshotThreshold(32);
-    config.setServerId(server);
     config.setLogDir(getDirectory().getPath());
 
-    Zab zab = new Zab(st1, config, server);
+    Zab zab = new Zab(st1, config, server, server);
     st1.waitMemberChanged();
 
     for (int i = 0; i < nTxns; ++i) {
@@ -168,19 +167,17 @@ public class SnapshotTest extends TestBase {
     ZabConfig config1 = new ZabConfig();
     // For testing purpose, set the threshold to 32 bytes..
     config1.setSnapshotThreshold(32);
-    config1.setServerId(server1);
     config1.setLogDir(getDirectory().getPath() + File.separator + server1);
 
     ZabConfig config2 = new ZabConfig();
     // For testing purpose, set the threshold to 32 bytes..
     config2.setSnapshotThreshold(32);
-    config2.setServerId(server2);
     config2.setLogDir(getDirectory().getPath() + File.separator + server2);
 
-    Zab zab1 = new Zab(st1, config1, server1);
+    Zab zab1 = new Zab(st1, config1, server1, server1);
     st1.waitMemberChanged();
 
-    Zab zab2 = new Zab(st2, config2, server1);
+    Zab zab2 = new Zab(st2, config2, server2, server1);
     st2.waitMemberChanged();
 
     for (int i = 0; i < nTxns; ++i) {
@@ -228,14 +225,12 @@ public class SnapshotTest extends TestBase {
     // the threshold to 290 bytes. In this case, both the last zxid and snap
     // zxid will be (0, 50), which triggered the bug in old code.
     config1.setSnapshotThreshold(290);
-    config1.setServerId(server1);
     config1.setLogDir(getDirectory().getPath() + File.separator + server1);
 
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
     config2.setLogDir(getDirectory().getPath() + File.separator + server2);
 
-    Zab zab1 = new Zab(st1, config1, server1);
+    Zab zab1 = new Zab(st1, config1, server1, server1);
     st1.waitMemberChanged();
 
     for (int i = 0; i < nTxns; ++i) {
@@ -245,7 +240,7 @@ public class SnapshotTest extends TestBase {
     }
     st1.txnsCount.await();
     // Server2 joins in.
-    Zab zab2 = new Zab(st2, config2, server1);
+    Zab zab2 = new Zab(st2, config2, server2, server1);
     st2.waitMemberChanged();
     Assert.assertEquals(st1.state, st2.state);
     zab1.shutdown();

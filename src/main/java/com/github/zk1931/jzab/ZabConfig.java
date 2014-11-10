@@ -18,9 +18,6 @@
 
 package com.github.zk1931.jzab;
 
-import java.util.ArrayList;
-import java.util.List;
-
 /**
  * Configuration for Jzab.
  */
@@ -29,9 +26,6 @@ public class ZabConfig {
    * Maximum number of pending requests allowed for each server.
    */
   static final int MAX_PENDING_REQS = 5000;
-  private List<String> peers = new ArrayList<String>();
-  private String serverId = null;
-  private String joinPeer = null;
   private int timeoutMs = 1000;
   private int minSyncTimeoutMs = 3000;
   private long snapshotThresholdBytes = -1;
@@ -39,53 +33,6 @@ public class ZabConfig {
   private String logDir = System.getProperty("user.dir");
   private int maxBatchSize = 1000;
   private SslParameters sslParam = new SslParameters();
-
-  /**
-   * Gets the address of peers.
-   *
-   * @return a list of address(id) of other servers.
-   */
-  public List<String> getPeers() {
-    return peers;
-  }
-
-  /**
-   * Gets the id of itself.
-   *
-   * @return a string represents the id of itself
-   */
-  public String getServerId() {
-    return this.serverId;
-  }
-
-  /**
-   * Sets the id of itself.
-   *
-   * @param id the server id, the id a host:port string of the peer.
-   */
-  public void setServerId(String id) {
-    this.serverId = id;
-  }
-
-  /**
-   * Sets the servers in the cluster.
-   *
-   * @param servers the a list of servers.
-   */
-  public void setServers(String... servers) {
-    for (String peerId : servers) {
-      peers.add(peerId);
-    }
-  }
-
-  /**
-   * Gets the size of the ensemble.
-   *
-   * @return the number of the nodes in the ensemble.
-   */
-  public int getEnsembleSize() {
-    return getPeers().size();
-  }
 
   /**
    * Gets the directory for storing transaction log.
@@ -140,15 +87,6 @@ public class ZabConfig {
    */
   public void setMinSyncTimeoutMs(int timeout) {
     this.minSyncTimeoutMs = timeout;
-  }
-
-  /**
-   * Gets the address of peer you want to join in.
-   *
-   * @return the address of the peer.
-   */
-  public String getJoinPeer() {
-    return this.joinPeer;
   }
 
   /**
