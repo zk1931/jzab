@@ -26,6 +26,11 @@ applications on top of it.
 * Dynamic reconfiguration (Add/Remove one server at a time)
 * Snapshot
 
+### Talk
+
+[Slides](http://www.slideshare.net/easonliao315/zk-meetup-talk-41241692)
+for ZooKeeper meetup.
+
 ### Install
 
 Jzab is available on Maven.If your project uses Maven, please add these
