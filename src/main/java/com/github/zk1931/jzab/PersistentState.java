@@ -21,6 +21,7 @@ package com.github.zk1931.jzab;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -106,6 +107,8 @@ public class PersistentState {
    * @throws IOException in case of IO failures.
    */
   void setAckEpoch(long ackEpoch) throws IOException {
+    // Since the new acknowledged epoch file gets created, we need to fsync
+    // the directory.
     FileUtils.writeLongToFile(ackEpoch, this.fAckEpoch);
   }
 
@@ -136,6 +139,9 @@ public class PersistentState {
    */
   void setProposedEpoch(long pEpoch) throws IOException {
     FileUtils.writeLongToFile(pEpoch, this.fProposedEpoch);
+    // Since the new proposed epoch file gets created, we need to fsync the
+    // directory.
+    fsyncDirectory();
   }
 
   /**
@@ -169,6 +175,8 @@ public class PersistentState {
     String version = conf.getVersion().toSimpleString();
     File file = new File(logDir, String.format("cluster_config.%s", version));
     FileUtils.writePropertiesToFile(conf.toProperties(), file);
+    // Since the new config file gets created, we need to fsync the directory.
+    fsyncDirectory();
   }
 
   /**
@@ -200,6 +208,8 @@ public class PersistentState {
       new File(logDir, String.format("snapshot.%s", zxid.toSimpleString()));
     LOG.debug("Atomically move snapshot file to {}", snapshot);
     FileUtils.atomicMove(tempFile, snapshot);
+    // Since the new snapshot file gets created, we need to fsync the directory.
+    fsyncDirectory();
   }
 
   /**
@@ -239,7 +249,6 @@ public class PersistentState {
     return this.logDir;
   }
 
-
   /**
    * Gets file with highest zxid for given prefix. The file name has format :
    * prefix.zxid.
@@ -263,6 +272,14 @@ public class PersistentState {
       return files.get(files.size() - 1);
     }
     return null;
+  }
+
+  // We need also fsync file directory when file gets created. This is related
+  // to ZOOKEEPER-2003 https://issues.apache.org/jira/browse/ZOOKEEPER-2003
+  void fsyncDirectory() throws IOException {
+    try (FileChannel channel = FileChannel.open(this.logDir.toPath())) {
+      channel.force(true);
+    }
   }
 }
 
