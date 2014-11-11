@@ -20,9 +20,10 @@ package com.github.zk1931.jzab;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Properties;
 import com.github.zk1931.jzab.proto.ZabMessage;
 import org.slf4j.Logger;
@@ -33,17 +34,17 @@ import org.slf4j.LoggerFactory;
  */
 class ClusterConfiguration implements Cloneable {
   private Zxid version;
-  private final List<String> peers;
+  private final Set<String> peers;
   private final String serverId;
 
   private static final Logger LOG =
       LoggerFactory.getLogger(ClusterConfiguration.class);
 
   public ClusterConfiguration(Zxid version,
-                              List<String> peers,
+                              Collection<String> peers,
                               String serverId) {
     this.version = version;
-    this.peers = new ArrayList<String>(peers);
+    this.peers = new HashSet<String>(peers);
     this.serverId = serverId;
   };
 
@@ -55,7 +56,7 @@ class ClusterConfiguration implements Cloneable {
     this.version = newVersion;
   }
 
-  public List<String> getPeers() {
+  public Set<String> getPeers() {
     return this.peers;
   }
 
@@ -76,9 +77,10 @@ class ClusterConfiguration implements Cloneable {
     StringBuilder strBuilder = new StringBuilder();
     String strVersion = this.version.toSimpleString();
     if (!this.peers.isEmpty()) {
-      strBuilder.append(this.peers.get(0));
-      for (int i = 1; i < this.peers.size(); ++i) {
-        strBuilder.append("," + this.peers.get(i));
+      String[] peersArray = this.peers.toArray(new String[this.peers.size()]);
+      strBuilder.append(peersArray[0]);
+      for (int i = 1; i < peersArray.length; ++i) {
+        strBuilder.append("," + peersArray[i]);
       }
     }
     prop.setProperty("peers", strBuilder.toString());
@@ -91,13 +93,13 @@ class ClusterConfiguration implements Cloneable {
     String strPeers = prop.getProperty("peers");
     Zxid version = Zxid.fromSimpleString(prop.getProperty("version"));
     String serverId = prop.getProperty("serverId");
-    List<String> peerList;
+    Set<String> peerSet;
     if (strPeers.equals("")) {
-      peerList = new ArrayList<String>();
+      peerSet = new HashSet<String>();
     } else {
-      peerList = new ArrayList<String>(Arrays.asList(strPeers.split(",")));
+      peerSet = new HashSet<String>(Arrays.asList(strPeers.split(",")));
     }
-    return new ClusterConfiguration(version, peerList, serverId);
+    return new ClusterConfiguration(version, peerSet, serverId);
   }
 
   public static
@@ -146,7 +148,6 @@ class ClusterConfiguration implements Cloneable {
   }
 
   public ClusterConfiguration clone() {
-    return new ClusterConfiguration(version, new ArrayList<String>(peers),
-                                    serverId);
+    return new ClusterConfiguration(version, peers, serverId);
   }
 }

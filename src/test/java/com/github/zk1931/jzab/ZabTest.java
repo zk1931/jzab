@@ -24,7 +24,9 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import org.junit.Assert;
@@ -171,12 +173,12 @@ public class ZabTest extends TestBase  {
     TestStateMachine st = new TestStateMachine();
 
     String server1 = getUniqueHostPort();
-    ZabConfig config = new ZabConfig();
-    config.setServerId(server1);
-    config.setServers(server1);
-    PersistentState state = makeInitialState(server1, 10);
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
 
-    Zab zab1 = new Zab(st, config, state, cb, null);
+    ZabConfig config = new ZabConfig();
+    PersistentState state = makeInitialState(server1, 10);
+    Zab zab1 = new Zab(st, config, server1, peers, state, cb, null);
 
     cb.waitBroadcasting();
     Assert.assertEquals(0, cb.acknowledgedEpoch);
@@ -201,6 +203,10 @@ public class ZabTest extends TestBase  {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
+    peers.add(server3);
 
     /*
      * Case 1
@@ -222,15 +228,10 @@ public class ZabTest extends TestBase  {
     state2.setAckEpoch(0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2, server3);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-    config2.setServers(server1, server2, server3);
 
-    Zab zab1 = new Zab(st, config1, state1, cb1, null);
-    Zab zab2 = new Zab(st, config2, state2, cb2, null);
+    Zab zab1 = new Zab(st, config1, server1, peers, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, server2, peers, state2, cb2, null);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -260,6 +261,10 @@ public class ZabTest extends TestBase  {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
+    peers.add(server3);
 
     /*
      * Case 2
@@ -281,15 +286,10 @@ public class ZabTest extends TestBase  {
     state2.setAckEpoch(0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2, server3);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-    config2.setServers(server1, server2, server3);
 
-    Zab zab1 = new Zab(st, config1, state1, cb1, null);
-    Zab zab2 = new Zab(st, config2, state2, cb2, null);
+    Zab zab1 = new Zab(st, config1, server1, peers, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, server2, peers, state2, cb2, null);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -321,6 +321,10 @@ public class ZabTest extends TestBase  {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
+    peers.add(server3);
 
     /*
      * Case 3
@@ -342,15 +346,10 @@ public class ZabTest extends TestBase  {
     state2.setAckEpoch(0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2, server3);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-    config2.setServers(server1, server2, server3);
 
-    Zab zab1 = new Zab(st, config1, state1, cb1, null);
-    Zab zab2 = new Zab(st, config2, state2, cb2, null);
+    Zab zab1 = new Zab(st, config1, server1, peers, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, server2, peers, state2, cb2, null);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -382,6 +381,10 @@ public class ZabTest extends TestBase  {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
+    peers.add(server3);
 
     /*
      * Case 4
@@ -405,15 +408,10 @@ public class ZabTest extends TestBase  {
     state2.setAckEpoch(2);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2, server3);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-    config2.setServers(server1, server2, server3);
 
-    Zab zab1 = new Zab(st, config1, state1, cb1, null);
-    Zab zab2 = new Zab(st, config2, state2, cb2, null);
+    Zab zab1 = new Zab(st, config1, server1, peers, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, server2, peers, state2, cb2, null);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -430,12 +428,12 @@ public class ZabTest extends TestBase  {
     zab2.shutdown();
   }
 
-  /**
-   * Test synchronization case 5.
-   *
-   * @throws InterruptedException
-   * @throws IOException in case of IO failure.
-   */
+ /**
+  * Test synchronization case 5.
+  *
+  * @throws InterruptedException
+  * @throws IOException in case of IO failure.
+  */
   @Test(timeout=20000)
   public void testSynchronizationCase5() throws Exception {
     QuorumTestCallback cb1 = new QuorumTestCallback();
@@ -445,38 +443,37 @@ public class ZabTest extends TestBase  {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
+    peers.add(server3);
 
     /*
-     * Case 5
-     *
-     * Before Synchronization.
-     *
-     *  L : <0, 0>  <0, 1>                (f.a = 0)
-     *  F : <0, 0>,         <1,0>         (f.a = 1)
-     *
-     * Expected history of Leader and Follower after synchronization:
-     *
-     * <0, 0>, <1, 0>
-     */
+    * Case 5
+    *
+    * Before Synchronization.
+    *
+    *  L : <0, 0>  <0, 1>                (f.a = 0)
+    *  F : <0, 0>,         <1,0>         (f.a = 1)
+    *
+    * Expected history of Leader and Follower after synchronization:
+    *
+    * <0, 0>, <1, 0>
+    */
 
     PersistentState state1 = makeInitialState(server1, 2);
     state1.setAckEpoch(0);
 
     PersistentState state2 = makeInitialState(server2, 1);
     state2.log.append(new Transaction(new Zxid(1, 0),
-                                      ByteBuffer.wrap("1,0".getBytes())));
+                                     ByteBuffer.wrap("1,0".getBytes())));
     state2.setAckEpoch(1);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2, server3);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-    config2.setServers(server1, server2, server3);
 
-    Zab zab1 = new Zab(st, config1, state1, cb1, null);
-    Zab zab2 = new Zab(st, config2, state2, cb2, null);
+    Zab zab1 = new Zab(st, config1, server1, peers, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, server2, peers, state2, cb2, null);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -508,6 +505,10 @@ public class ZabTest extends TestBase  {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
+    peers.add(server3);
 
     /*
      * Case 6
@@ -529,15 +530,10 @@ public class ZabTest extends TestBase  {
     state2.setAckEpoch(0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2, server3);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-    config2.setServers(server1, server2, server3);
 
-    Zab zab1 = new Zab(st, config1, state1, cb1, null);
-    Zab zab2 = new Zab(st, config2, state2, cb2, null);
+    Zab zab1 = new Zab(st, config1, server1, peers, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, server2, peers, state2, cb2, null);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -573,6 +569,10 @@ public class ZabTest extends TestBase  {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
+    peers.add(server3);
 
     PersistentState state1 = makeInitialState(server1, 3);
     state1.setAckEpoch(0);
@@ -581,15 +581,10 @@ public class ZabTest extends TestBase  {
     state2.setAckEpoch(0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2, server3);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-    config2.setServers(server1, server2, server3);
 
-    Zab zab1 = new Zab(st, config1, state1, cb1, null);
-    Zab zab2 = new Zab(st, config2, state2, cb2, null);
+    Zab zab1 = new Zab(st, config1, server1, peers, state1, cb1, null);
+    Zab zab2 = new Zab(st, config2, server2, peers, state2, cb2, null);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -615,6 +610,10 @@ public class ZabTest extends TestBase  {
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
+    peers.add(server3);
 
     // Expecting 5 delivered transactions.
     TestStateMachine st1 = new TestStateMachine(5);
@@ -648,20 +647,12 @@ public class ZabTest extends TestBase  {
     state3.setProposedEpoch(1);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2, server3);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-    config2.setServers(server1, server2, server3);
-
     ZabConfig config3 = new ZabConfig();
-    config3.setServerId(server3);
-    config3.setServers(server1, server2, server3);
 
-    Zab zab1 = new Zab(st1, config1, state1, cb1, null);
-    Zab zab2 = new Zab(st2, config2, state2, cb2, null);
-    Zab zab3 = new Zab(st3, config3, state3, cb3, null);
+    Zab zab1 = new Zab(st1, config1, server1, peers, state1, cb1, null);
+    Zab zab2 = new Zab(st2, config2, server2, peers, state2, cb2, null);
+    Zab zab3 = new Zab(st3, config3, server3, peers, state3, cb3, null);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -700,6 +691,10 @@ public class ZabTest extends TestBase  {
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
     final String server3 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
+    peers.add(server3);
 
     /*
      *  This test simulates that server1 will be crashed after first round
@@ -729,16 +724,8 @@ public class ZabTest extends TestBase  {
     state3.setProposedEpoch(0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2, server3);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-    config2.setServers(server1, server2, server3);
-
     ZabConfig config3 = new ZabConfig();
-    config3.setServerId(server3);
-    config3.setServers(server1, server2, server3);
 
     FailureCaseCallback fcb = new FailureCaseCallback() {
       boolean crashed = false;
@@ -758,9 +745,9 @@ public class ZabTest extends TestBase  {
       }
     };
 
-    Zab zab1 = new Zab(st, config1, state1, cb1, fcb);
-    Zab zab2 = new Zab(st, config2, state2, cb2, fcb);
-    Zab zab3 = new Zab(st, config3, state3, cb3, fcb);
+    Zab zab1 = new Zab(st, config1, server1, peers, state1, cb1, fcb);
+    Zab zab2 = new Zab(st, config2, server2, peers, state2, cb2, fcb);
+    Zab zab3 = new Zab(st, config3, server3, peers, state3, cb3, fcb);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -791,6 +778,10 @@ public class ZabTest extends TestBase  {
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
     final String server3 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
+    peers.add(server3);
 
     /*
      *  This test simulates that 2 followers will crash after
@@ -820,16 +811,8 @@ public class ZabTest extends TestBase  {
     state3.setProposedEpoch(0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2, server3);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-    config2.setServers(server1, server2, server3);
-
     ZabConfig config3 = new ZabConfig();
-    config3.setServerId(server3);
-    config3.setServers(server1, server2, server3);
 
     FailureCaseCallback fcb = new FailureCaseCallback() {
       volatile int crashedCount = 0;
@@ -849,9 +832,9 @@ public class ZabTest extends TestBase  {
       }
     };
 
-    Zab zab1 = new Zab(st, config1, state1, cb1, fcb);
-    Zab zab2 = new Zab(st, config2, state2, cb2, fcb);
-    Zab zab3 = new Zab(st, config3, state3, cb3, fcb);
+    Zab zab1 = new Zab(st, config1, server1, peers, state1, cb1, fcb);
+    Zab zab2 = new Zab(st, config2, server2, peers, state2, cb2, fcb);
+    Zab zab3 = new Zab(st, config3, server3, peers, state3, cb3, fcb);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -882,6 +865,10 @@ public class ZabTest extends TestBase  {
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
     final String server3 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
+    peers.add(server3);
 
     /*
      *  This test simulates that the first leader will be crashed after the
@@ -910,16 +897,8 @@ public class ZabTest extends TestBase  {
     state3.setProposedEpoch(0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2, server3);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-    config2.setServers(server1, server2, server3);
-
     ZabConfig config3 = new ZabConfig();
-    config3.setServerId(server3);
-    config3.setServers(server1, server2, server3);
 
     FailureCaseCallback fcb = new FailureCaseCallback() {
       boolean crashed = false;
@@ -939,9 +918,9 @@ public class ZabTest extends TestBase  {
       }
     };
 
-    Zab zab1 = new Zab(st, config1, state1, cb1, fcb);
-    Zab zab2 = new Zab(st, config2, state2, cb2, fcb);
-    Zab zab3 = new Zab(st, config3, state3, cb3, fcb);
+    Zab zab1 = new Zab(st, config1, server1, peers, state1, cb1, fcb);
+    Zab zab2 = new Zab(st, config2, server2, peers, state2, cb2, fcb);
+    Zab zab3 = new Zab(st, config3, server3, peers, state3, cb3, fcb);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -972,6 +951,10 @@ public class ZabTest extends TestBase  {
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
     final String server3 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
+    peers.add(server3);
 
     /*
      *  This test simulates that two followers will be crash once they
@@ -1001,16 +984,8 @@ public class ZabTest extends TestBase  {
     state3.setProposedEpoch(0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2, server3);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-    config2.setServers(server1, server2, server3);
-
     ZabConfig config3 = new ZabConfig();
-    config3.setServerId(server3);
-    config3.setServers(server1, server2, server3);
 
     FailureCaseCallback fcb = new FailureCaseCallback() {
       volatile int crashCount = 0;
@@ -1030,9 +1005,9 @@ public class ZabTest extends TestBase  {
       }
     };
 
-    Zab zab1 = new Zab(st, config1, state1, cb1, fcb);
-    Zab zab2 = new Zab(st, config2, state2, cb2, fcb);
-    Zab zab3 = new Zab(st, config3, state3, cb3, fcb);
+    Zab zab1 = new Zab(st, config1, server1, peers, state1, cb1, fcb);
+    Zab zab2 = new Zab(st, config2, server2, peers, state2, cb2, fcb);
+    Zab zab3 = new Zab(st, config3, server3, peers, state3, cb3, fcb);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -1063,6 +1038,10 @@ public class ZabTest extends TestBase  {
     final String server1 = getUniqueHostPort();
     final String server2 = getUniqueHostPort();
     final String server3 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
+    peers.add(server3);
 
     /*
      *  This test simulates that the first leader will be crashed after the
@@ -1091,16 +1070,8 @@ public class ZabTest extends TestBase  {
     state3.setProposedEpoch(0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2, server3);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-    config2.setServers(server1, server2, server3);
-
     ZabConfig config3 = new ZabConfig();
-    config3.setServerId(server3);
-    config3.setServers(server1, server2, server3);
 
     FailureCaseCallback fcb = new FailureCaseCallback() {
       boolean crashed = false;
@@ -1120,9 +1091,9 @@ public class ZabTest extends TestBase  {
       }
     };
 
-    Zab zab1 = new Zab(st, config1, state1, cb1, fcb);
-    Zab zab2 = new Zab(st, config2, state2, cb2, fcb);
-    Zab zab3 = new Zab(st, config3, state3, cb3, fcb);
+    Zab zab1 = new Zab(st, config1, server1, peers, state1, cb1, fcb);
+    Zab zab2 = new Zab(st, config2, server2, peers, state2, cb2, fcb);
+    Zab zab3 = new Zab(st, config3, server3, peers, state3, cb3, fcb);
 
     cb1.waitBroadcasting();
     cb2.waitBroadcasting();
@@ -1193,16 +1164,8 @@ public class ZabTest extends TestBase  {
     state3.setLastSeenConfig(cnf3);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2, server3);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-    config2.setServers(server1, server2, server3);
-
     ZabConfig config3 = new ZabConfig();
-    config3.setServerId(server3);
-    config3.setServers(server1, server2, server3);
 
     Zab zab1 = new Zab(st, config1, state1, cb1, null);
     Zab zab2 = new Zab(st, config2, state2, cb2, null);
@@ -1281,16 +1244,8 @@ public class ZabTest extends TestBase  {
     state3.setLastSeenConfig(cnf3);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2, server3);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-    config2.setServers(server1, server2, server3);
-
     ZabConfig config3 = new ZabConfig();
-    config3.setServerId(server3);
-    config3.setServers(server1, server2, server3);
 
     Zab zab1 = new Zab(st, config1, state1, cb1, null);
     Zab zab2 = new Zab(st, config2, state2, cb2, null);
@@ -1373,16 +1328,8 @@ public class ZabTest extends TestBase  {
     state3.setLastSeenConfig(cnf3);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2, server3);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-    config2.setServers(server1, server2, server3);
-
     ZabConfig config3 = new ZabConfig();
-    config3.setServerId(server3);
-    config3.setServers(server1, server2, server3);
 
     Zab zab1 = new Zab(st, config1, state1, cb1, null);
     Zab zab2 = new Zab(st, config2, state2, cb2, null);
@@ -1434,21 +1381,16 @@ public class ZabTest extends TestBase  {
     PersistentState state3 = makeInitialState(server3, 0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-
     ZabConfig config3 = new ZabConfig();
-    config3.setServerId(server3);
 
-    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
+    Zab zab1 = new Zab(st1, config1, server1, server1, state1, cb1, null);
     cb1.waitBroadcasting();
 
-    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
+    Zab zab2 = new Zab(st2, config2, server2, server1, state2, cb2, null);
     cb1.waitCopCommit();
 
-    Zab zab3 = new Zab(st3, config3, server1, state3, cb3, null);
+    Zab zab3 = new Zab(st3, config3, server3, server1, state3, cb3, null);
     cb1.waitCopCommit();
 
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
@@ -1492,23 +1434,18 @@ public class ZabTest extends TestBase  {
     PersistentState state3 = makeInitialState(server3, 0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-
     ZabConfig config3 = new ZabConfig();
-    config3.setServerId(server3);
 
-    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
+    Zab zab1 = new Zab(st1, config1, server1, server1, state1, cb1, null);
     cb1.waitBroadcasting();
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
     zab1.send(ByteBuffer.wrap("req2".getBytes()));
 
-    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
+    Zab zab2 = new Zab(st2, config2, server2, server1, state2, cb2, null);
     cb1.waitCopCommit();
 
-    Zab zab3 = new Zab(st3, config3, server1, state3, cb3, null);
+    Zab zab3 = new Zab(st3, config3, server3, server1, state3, cb3, null);
     cb1.waitCopCommit();
     cb3.waitBroadcasting();
 
@@ -1527,8 +1464,8 @@ public class ZabTest extends TestBase  {
   @Test(timeout=20000)
   public void testJoinCase3() throws Exception {
     /*
-     * This test case shows that after reconfiguration is done, the quorum size
-     * should be changed.
+     * This test case shows that after reconfiguration is done, the quorum
+     * size should be changed.
      *
      * Case 3 :
      *
@@ -1552,16 +1489,13 @@ public class ZabTest extends TestBase  {
     PersistentState state2 = makeInitialState(server2, 0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
 
-    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
+    Zab zab1 = new Zab(st1, config1, server1, server1, state1, cb1, null);
     cb1.waitBroadcasting();
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
 
-    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
+    Zab zab2 = new Zab(st2, config2, server2, server1, state2, cb2, null);
     cb2.waitBroadcasting();
     st2.txnsCount.await();
 
@@ -1608,15 +1542,12 @@ public class ZabTest extends TestBase  {
     PersistentState state2 = makeInitialState(server2, 0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
 
-    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
+    Zab zab1 = new Zab(st1, config1, server1, server1, state1, cb1, null);
     cb1.waitBroadcasting();
 
-    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
+    Zab zab2 = new Zab(st2, config2, server2, server1, state2, cb2, null);
     cb2.waitBroadcasting();
 
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
@@ -1653,15 +1584,12 @@ public class ZabTest extends TestBase  {
     PersistentState state2 = makeInitialState(server2, 0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
 
-    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
+    Zab zab1 = new Zab(st1, config1, server1, server1, state1, cb1, null);
     cb1.waitBroadcasting();
 
-    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
+    Zab zab2 = new Zab(st2, config2, server2, server1, state2, cb2, null);
     cb2.waitBroadcasting();
 
     // serve2 removes server1.
@@ -1689,12 +1617,9 @@ public class ZabTest extends TestBase  {
     PersistentState state2 = makeInitialState(server2, 0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
 
-    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
+    Zab zab1 = new Zab(st1, config1, server1, server1, state1, cb1, null);
     // Waits for clusterChange and leading callback.
     st1.waitMembershipChanged();
     // Make sure first config contains itself.
@@ -1702,7 +1627,7 @@ public class ZabTest extends TestBase  {
     // The cluster size should be 1.
     Assert.assertEquals(1, st1.clusters.size());
 
-    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
+    Zab zab2 = new Zab(st2, config2, server2, server1, state2, cb2, null);
     st2.waitMembershipChanged();
     // Make sure first config contains itself.
     Assert.assertTrue(st2.clusters.contains(server1));
@@ -1734,15 +1659,12 @@ public class ZabTest extends TestBase  {
     PersistentState state2 = makeInitialState(server2, 0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
 
-    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
+    Zab zab1 = new Zab(st1, config1, server1, server1, state1, cb1, null);
     cb1.waitBroadcasting();
     // Server2 gona join in.
-    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
+    Zab zab2 = new Zab(st2, config2, server2, server1, state2, cb2, null);
 
     // While server2 is joining, we start sending 100 requests.
     for (int i = 0; i < 100; ++i) {
@@ -1774,18 +1696,15 @@ public class ZabTest extends TestBase  {
     PersistentState state2 = makeInitialState(server2, 0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
 
-    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
+    Zab zab1 = new Zab(st1, config1, server1, server1, state1, cb1, null);
     cb1.waitBroadcasting();
 
     // Send first request.
     zab1.send(ByteBuffer.wrap("txn".getBytes()));
 
-    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
+    Zab zab2 = new Zab(st2, config2, server2, server1, state2, cb2, null);
     cb2.waitBroadcasting();
     // Server2 removes itself from cluster.
     zab2.remove(server2);
@@ -1828,22 +1747,17 @@ public class ZabTest extends TestBase  {
     PersistentState state3 = makeInitialState(server3, 0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-
     ZabConfig config3 = new ZabConfig();
-    config3.setServerId(server3);
 
-    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
+    Zab zab1 = new Zab(st1, config1, server1, server1, state1, cb1, null);
     cb1.waitBroadcasting();
 
-    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
+    Zab zab2 = new Zab(st2, config2, server2, server1, state2, cb2, null);
     cb2.waitBroadcasting();
     st2.waitMembershipChanged();
 
-    Zab zab3 = new Zab(st3, config3, server1, state3, cb3, null);
+    Zab zab3 = new Zab(st3, config3, server3, server1, state3, cb3, null);
     cb3.waitBroadcasting();
     st3.waitMembershipChanged();
 
@@ -1874,9 +1788,8 @@ public class ZabTest extends TestBase  {
 
     PersistentState state1 = makeInitialState(server1, 0);
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
 
-    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
+    Zab zab1 = new Zab(st1, config1, server1, server1, state1, cb1, null);
     cb1.waitBroadcasting();
 
     zab1.send(ByteBuffer.wrap("req1".getBytes()));
@@ -1906,15 +1819,10 @@ public class ZabTest extends TestBase  {
     PersistentState state2 = makeInitialState(server2, 0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
 
-    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
-    cb1.waitBroadcasting();
-
-    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
+    Zab zab1 = new Zab(st1, config1, server1, server1, state1, cb1, null);
+    Zab zab2 = new Zab(st2, config2, server2, server1, state2, cb2, null);
     cb2.waitBroadcasting();
 
     zab2.send(ByteBuffer.wrap("req1".getBytes()));
@@ -1963,17 +1871,14 @@ public class ZabTest extends TestBase  {
     PersistentState state2 = makeInitialState(server2, 0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
 
-    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
+    Zab zab2 = new Zab(st2, config2, server1, server1, state2, cb2, null);
 
     // Waits for a while to make zab2 first joining fails.
     Thread.sleep(500);
 
-    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
+    Zab zab1 = new Zab(st1, config1, server2, server1, state1, cb1, null);
     // Finally the joiner will join the cluster.
     cb2.waitBroadcasting();
     zab1.shutdown();
@@ -2009,21 +1914,16 @@ public class ZabTest extends TestBase  {
     PersistentState state3 = makeInitialState(server3, 0);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-
     ZabConfig config2 = new ZabConfig();
-    config2.setServerId(server2);
-
     ZabConfig config3 = new ZabConfig();
-    config3.setServerId(server3);
 
-    Zab zab1 = new Zab(st1, config1, server1, state1, cb1, null);
+    Zab zab1 = new Zab(st1, config1, server1, server1, state1, cb1, null);
     cb1.waitBroadcasting();
 
-    Zab zab2 = new Zab(st2, config2, server1, state2, cb2, null);
+    Zab zab2 = new Zab(st2, config2, server2, server1, state2, cb2, null);
     cb2.waitBroadcasting();
 
-    Zab zab3 = new Zab(st3, config3, server1, state3, cb3, null);
+    Zab zab3 = new Zab(st3, config3, server3, server1, state3, cb3, null);
     cb3.waitBroadcasting();
 
     // Simulates zab3 failures.
@@ -2046,13 +1946,13 @@ public class ZabTest extends TestBase  {
     TestStateMachine st = new TestStateMachine();
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
 
     ZabConfig config1 = new ZabConfig();
-    config1.setServerId(server1);
-    config1.setServers(server1, server2);
     config1.setLogDir(new File(getDirectory(), server1).getPath());
-
-    Zab zab1 = new Zab(st, config1);
+    Zab zab1 = new Zab(st, config1, server1, peers);
 
     zab1.send(ByteBuffer.wrap("HelloWorld".getBytes()));
     zab1.shutdown();
