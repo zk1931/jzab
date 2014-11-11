@@ -23,9 +23,9 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeoutException;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,8 +35,8 @@ import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
 import com.github.zk1931.jzab.transport.Transport;
 import com.github.zk1931.jzab.Zab.FailureCaseCallback;
 import com.github.zk1931.jzab.Zab.StateChangeCallback;
-import com.github.zk1931.jzab.ZabException.NotBroadcastingPhaseException;
-import com.github.zk1931.jzab.ZabException.ToManyPendingRequests;
+import com.github.zk1931.jzab.ZabException.NotBroadcastingPhase;
+import com.github.zk1931.jzab.ZabException.TooManyPendingRequests;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import static com.github.zk1931.jzab.proto.ZabMessage.Proposal.ProposalType;
@@ -105,10 +105,12 @@ public abstract class Participant {
   protected final ParticipantState participantState;
 
   /**
-   * The semaphore is used to prevent the internal queues grow infinitely.
+   * The number of pending requests (enqueued by calling send or flush). We
+   * keep track of the number of pending requests because once the number of
+   * pending requests exceeds certain threshold, we'll raise an exception to
+   * user.
    */
-  protected final Semaphore semPendingReqs =
-    new Semaphore(ZabConfig.MAX_PENDING_REQS);
+  protected final AtomicInteger pendingReqs = new AtomicInteger(0);
 
   /**
    *  The maximum batch size for SyncProposalProcessor.
@@ -183,41 +185,53 @@ public abstract class Participant {
     this.maxBatchSize = config.getMaxBatchSize();
   }
 
-  void send(ByteBuffer request) throws NotBroadcastingPhaseException {
+  void send(ByteBuffer request)
+      throws NotBroadcastingPhase, TooManyPendingRequests {
     if (this.currentPhase != Phase.BROADCASTING) {
-      throw new NotBroadcastingPhaseException("Not in Broadcasting phase!");
+      throw new NotBroadcastingPhase("Not in Broadcasting phase!");
     }
-    try {
-      semPendingReqs.acquire();
-    } catch (InterruptedException e) {
-      LOG.error("interupted");
+    if (pendingReqs.get() > ZabConfig.MAX_PENDING_REQS) {
+      // If the size of pending requests exceeds the certain threshold, raise
+      // TooManyPendingRequests exception.
+      throw new TooManyPendingRequests();
     }
+    // Increments the pending requests by one.
+    pendingReqs.incrementAndGet();
     Message msg = MessageBuilder.buildRequest(request);
     sendMessage(this.electedLeader, msg);
   }
 
-  void remove(String peerId) throws NotBroadcastingPhaseException {
+  void remove(String peerId) throws NotBroadcastingPhase {
     if (this.currentPhase != Phase.BROADCASTING) {
-      throw new NotBroadcastingPhaseException("Not in Broadcasting phase!");
+      throw new NotBroadcastingPhase("Not in Broadcasting phase!");
     }
     Message msg = MessageBuilder.buildRemove(peerId);
     sendMessage(this.electedLeader, msg);
   }
 
-  void flush(ByteBuffer request) throws NotBroadcastingPhaseException {
+  void flush(ByteBuffer request)
+      throws NotBroadcastingPhase, TooManyPendingRequests {
     if (this.currentPhase != Phase.BROADCASTING) {
-      throw new NotBroadcastingPhaseException("Not in Broadcasting phase!");
+      throw new NotBroadcastingPhase("Not in Broadcasting phase!");
     }
+    if (pendingReqs.get() > ZabConfig.MAX_PENDING_REQS) {
+      // If the size of pending requests exceeds the certain threshold, raise
+      // TooManyPendingRequests exception.
+      throw new TooManyPendingRequests();
+    }
+    // Increments the pending requests by one.
+    pendingReqs.incrementAndGet();
     Message msg = MessageBuilder.buildFlushRequest(request);
     sendMessage(this.electedLeader, msg);
   }
 
-  void takeSnapshot() throws ZabException {
+  synchronized void takeSnapshot() throws ZabException {
     if (this.currentPhase != Phase.BROADCASTING) {
-      throw new NotBroadcastingPhaseException("Not in Broadcasting phase!");
+      throw new NotBroadcastingPhase("You cannot take snapshots while"
+          + " Jzab is in Recovering phase");
     }
     if (this.isSnapshotInProgress) {
-      throw new ToManyPendingRequests("A pending snapshot is in progress");
+      throw new TooManyPendingRequests("A pending snapshot is in progress");
     }
     this.isSnapshotInProgress = true;
     Message msg = MessageBuilder.buildSnapshot(this.lastDeliveredZxid);

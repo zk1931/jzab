@@ -145,9 +145,6 @@ public class Follower extends Participant {
       if (this.electedLeader != null) {
         this.transport.clear(this.electedLeader);
       }
-      // Releases all the pending transactions while going to next epoch,
-      // probably someone is blocking on acquiring the sempahore.
-      this.semPendingReqs.release(ZabConfig.MAX_PENDING_REQS);
     }
   }
 
@@ -414,7 +411,7 @@ public class Follower extends Participant {
     CommitProcessor commitProcessor
       = new CommitProcessor(stateMachine, lastDeliveredZxid, serverId,
                             transport, null, clusterConfig, electedLeader,
-                            semPendingReqs);
+                            pendingReqs);
     SnapshotProcessor snapProcessor =
       new SnapshotProcessor(stateMachine, persistence, serverId, transport);
     // The last time of HEARTBEAT message comes from leader.

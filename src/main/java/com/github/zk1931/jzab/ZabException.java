@@ -29,16 +29,16 @@ public abstract class ZabException extends Exception {
   /**
    * Sends request in non-broadcasting phase.
    */
-  public static class NotBroadcastingPhaseException extends ZabException {
-    public NotBroadcastingPhaseException() {}
-    public NotBroadcastingPhaseException(String desc) { super(desc); }
+  public static class NotBroadcastingPhase extends ZabException {
+    public NotBroadcastingPhase() {}
+    public NotBroadcastingPhase(String desc) { super(desc); }
   }
 
   /**
-   * Exception of to many pending requests in Jzab.
+   * Thrown when there are too many pending requests.
    */
-  public static class ToManyPendingRequests extends ZabException {
-    public ToManyPendingRequests() {}
-    public ToManyPendingRequests(String desc) { super(desc); }
+  public static class TooManyPendingRequests extends ZabException {
+    public TooManyPendingRequests() {}
+    public TooManyPendingRequests(String desc) { super(desc); }
   }
 }

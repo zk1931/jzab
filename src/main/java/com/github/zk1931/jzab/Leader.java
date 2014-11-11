@@ -193,9 +193,6 @@ public class Leader extends Participant {
         ph.shutdown();
         this.quorumMap.remove(ph.getServerId());
       }
-      // Releases all the pending transactions while going to next epoch,
-      // probably someone is blocking on acquiring the sempahore.
-      this.semPendingReqs.release(ZabConfig.MAX_PENDING_REQS);
     }
   }
 
@@ -598,7 +595,7 @@ public class Leader extends Participant {
     CommitProcessor commitProcessor =
         new CommitProcessor(stateMachine, lastDeliveredZxid, serverId,
                             transport, quorumMap.keySet(),
-                            clusterConfig, electedLeader, semPendingReqs);
+                            clusterConfig, electedLeader, pendingReqs);
     SnapshotProcessor snapProcessor =
       new SnapshotProcessor(stateMachine, persistence, serverId, transport);
     // First time notifies the client active members and cluster configuration.
