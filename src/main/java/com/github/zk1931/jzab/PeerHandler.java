@@ -136,6 +136,11 @@ public class PeerHandler {
   private int syncTimeoutMs = 0;
 
   /**
+   * The zxid of last COMMIT message sent to the peer.
+   */
+  private Zxid lastCommittedZxid = Zxid.ZXID_NOT_EXIST;
+
+  /**
    * If the peer is disconnected.
    */
   private boolean disconnected = false;
@@ -209,6 +214,14 @@ public class PeerHandler {
 
   Zxid getLastAckedZxid() {
     return this.lastAckedZxid;
+  }
+
+  void setLastCommittedZxid(Zxid zxid) {
+    this.lastCommittedZxid = zxid;
+  }
+
+  Zxid getLastCommittedZxid() {
+    return this.lastCommittedZxid;
   }
 
   Zxid getLastProposedZxid() {

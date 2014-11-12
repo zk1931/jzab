@@ -18,6 +18,7 @@
 
 package com.github.zk1931.jzab;
 
+import com.github.zk1931.jzab.Log.DivergingTuple;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
@@ -232,6 +233,33 @@ public class SimpleLog implements Log {
       }
     }
     return iter;
+  }
+
+  /**
+   * See {@link Log#firstDivergingPoint}.
+   *
+   * @param zxid the id of the transaction.
+   * @return a tuple holds first diverging zxid and an iterator points to
+   * subsequent transactions.
+   * @throws IOException in case of IO failures
+   */
+  @Override
+  public DivergingTuple firstDivergingPoint(Zxid zxid) throws IOException {
+    SimpleLogIterator iter =
+      (SimpleLogIterator)getIterator(Zxid.ZXID_NOT_EXIST);
+    Zxid prevZxid = Zxid.ZXID_NOT_EXIST;
+    while (iter.hasNext()) {
+      Zxid curZxid = iter.next().getZxid();
+      if (curZxid.compareTo(zxid) == 0) {
+        return new DivergingTuple(iter, zxid);
+      }
+      if (curZxid.compareTo(zxid) > 0) {
+        iter.backward();
+        return new DivergingTuple(iter, prevZxid);
+      }
+      prevZxid = curZxid;
+    }
+    return new DivergingTuple(iter, prevZxid);
   }
 
   /**

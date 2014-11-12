@@ -334,7 +334,7 @@ public abstract class Participant {
       throws InterruptedException, TimeoutException, IOException {
     LOG.debug("Waiting sync from {}.", peer);
     Log log = this.persistence.getLog();
-    Zxid lastZxid = log.getLatestZxid();
+    Zxid lastZxid = persistence.getLatestZxid();
     // The last zxid of peer.
     Zxid lastZxidPeer = null;
     Message msg = null;
@@ -634,16 +634,26 @@ public abstract class Participant {
    * initial history or the leader syncs its initial history to followers in
    * synchronization phase. Based on the last zxid of peer, the synchronization
    * can be performed by TRUNCATE, DIFF or SNAPSHOT. The assumption is that
-   * the server has all the committed transactions in its transaction log.
+   * the server has all the committed transactions in its transaction log or
+   * snapshot.
    *
-   *  . If the epoch of the last transaction is different from the epoch of
-   *  the last transaction of this server's. The whole log of the peer's will be
-   *  truncated by sending SNAPSHOT message and then this server will
-   *  synchronize its history to the peer.
+   * Some invariants:
    *
-   *  . If the epoch of the last transaction of the peer and this server are
-   *  the same, then this server will send DIFF or TRUNCATE to only synchronize
-   *  or truncate the diff.
+   * 1. PersistentState.getLatestZxid() returns the latest zxid which is
+   * guaranteed on disk, it can be either from log or snapshot.
+   *
+   * 2. The latest zxid of the log is always equal or greater than the lastest
+   * zxid of the snapshot file if the log is non-empty. The only exception is
+   * that the log is empty.
+   *
+   * 3. During the synchronization, we'll only truncate the transaction which
+   * hasn't been committed.
+   *
+   * 4. The zxid of the snapshot file had always been committed in log, so if
+   * the zxid of peer is from its snapshot we'll never truncate this.
+   *
+   * 5. The zxid returned from PersistentState.getLatestZxid() of leader is
+   * guaranteed to be equal or greater than all the committed transactions.
    */
   protected class SyncPeerTask {
     private final String peerId;
@@ -676,9 +686,67 @@ public abstract class Participant {
       this.stop = true;
     }
 
+    void stateTransfer(File snapFile, Zxid snapZxid, Log log)
+        throws IOException {
+      // stateTransfer will transfer the whole state (snapshot + log) to peer.
+      Zxid syncPoint = Zxid.ZXID_NOT_EXIST;
+      if (snapFile != null) {
+        // Synchronizing peer with snapshot file first.
+        Message snapshot = MessageBuilder.buildSnapshot(lastSyncZxid, snapZxid);
+        // Sends snapshot message.
+        transport.send(peerId, snapshot);
+        // Sends actuall snapshot file.
+        transport.send(peerId, snapFile);
+        // Start synchronizing from the zxid right after snapshot.
+        syncPoint = new Zxid(snapZxid.getEpoch(), snapZxid.getXid() + 1);
+      } else {
+        // If we don't have snapshot truncate all the transactions of peers.
+        Message truncate =
+          MessageBuilder.buildTruncate(Zxid.ZXID_NOT_EXIST, lastSyncZxid);
+        sendMessage(peerId, truncate);
+      }
+      try (Log.LogIterator iter = log.getIterator(syncPoint)) {
+        while (iter.hasNext()) {
+          if (stop) {
+            return;
+          }
+          Transaction txn = iter.next();
+          if (txn.getZxid().compareTo(this.lastSyncZxid) > 0) {
+            break;
+          }
+          Message prop = MessageBuilder.buildProposal(txn);
+          sendMessage(peerId, prop);
+        }
+      }
+    }
+
+    void syncFromLog(Log log) throws IOException {
+      // Synchronizes peer from log.
+      Log.DivergingTuple dp = log.firstDivergingPoint(peerLatestZxid);
+      Zxid zxid = dp.getDivergingZxid();
+      if (zxid.compareTo(peerLatestZxid) == 0) {
+        // Means there's no diverging point, send DIFF.
+        Message diff = MessageBuilder.buildDiff(lastSyncZxid);
+        sendMessage(peerId, diff);
+      } else {
+        // The zxid is the first diverging point, truncate after this.
+        Message trunc = MessageBuilder.buildTruncate(zxid, lastSyncZxid);
+        sendMessage(peerId, trunc);
+      }
+      try (Log.LogIterator iter = dp.getIterator()) {
+        while (iter.hasNext()) {
+          if (stop) {
+            return;
+          }
+          Transaction txn = iter.next();
+          Message prop = MessageBuilder.buildProposal(txn);
+          sendMessage(peerId, prop);
+        }
+      }
+    }
+
     public void run() throws IOException {
       LOG.debug("Starts synchronizing {}", peerId);
-      Zxid syncPoint = null;
       Log log = persistence.getLog();
       Zxid snapZxid = persistence.getSnapshotZxid();
       File snapFile = persistence.getSnapshotFile();
@@ -686,75 +754,42 @@ public abstract class Participant {
       LOG.debug("Last peer zxid is {}, last sync zxid is {}, snapshot is {}",
                 peerLatestZxid, lastSyncZxid, snapZxid);
 
-      if (snapFile == null ||
-          (snapZxid.compareTo(peerLatestZxid) <= 0 &&
-           lastSyncZxid.getEpoch() == peerLatestZxid.getEpoch())) {
-        // Starts the synchronization without using snapshot if any of the two
-        // cases happens:
-        //  1) There's no snapshot file.
-        //  2) The peer's log is the superset of the current snapshot and the
-        //     server and peer have the same epoch number in last appended zxid.
-        if (lastSyncZxid.getEpoch() == peerLatestZxid.getEpoch()) {
-          // If the peer has same epoch number as the server.
-          if (lastSyncZxid.compareTo(peerLatestZxid) >= 0) {
-            // Means peer's history is the prefix of the server's.
-            LOG.debug("{}'s history >= {}'s, sending DIFF.", serverId, peerId);
-            syncPoint = new Zxid(peerLatestZxid.getEpoch(),
-                                 peerLatestZxid.getXid() + 1);
-            Message diff = MessageBuilder.buildDiff(lastSyncZxid);
-            sendMessage(peerId, diff);
-          } else {
-            // Means peer's history is the superset of the server's.
-            LOG.debug("{}'s history < {}'s, sending TRUNCATE.", serverId,
-                      peerId);
-            // Doesn't need to synchronize anything, just truncate.
-            syncPoint = null;
-            Message trunc =
-              MessageBuilder.buildTruncate(lastSyncZxid, lastSyncZxid);
-            sendMessage(peerId, trunc);
-          }
-        } else {
-          // They have different epoch numbers. Truncate all.
-          LOG.debug("The last epoch of {} and {} are different, sending "
-                    + "TRUNCATE to truncate whole log.", serverId, peerId);
-          syncPoint = new Zxid(0, 0);
+      if (peerLatestZxid.equals(lastSyncZxid)) {
+        // If the server has the same zxid with the peer's, just send an empty
+        // DIFF.
+        LOG.debug("Peer {} has same latest zxid zxid {}, send empty DIFF.",
+                  peerId, lastSyncZxid);
+        Message diff = MessageBuilder.buildDiff(lastSyncZxid);
+        sendMessage(peerId, diff);
+      } else if (peerLatestZxid.compareTo(lastSyncZxid) > 0) {
+        LOG.debug("Peer {} has larger latest zxid zxid {}.",
+                  peerId, peerLatestZxid);
+        // The peer's latest zxid on disk is larger than the server's, which
+        // means the peerLatestZxid must come from its log file instead of
+        // snapshot file.
+        if (peerLatestZxid.getEpoch() == lastSyncZxid.getEpoch()) {
+          // Means the last zxids the servers are same, which means the server's
+          // log history is a prefix of the peer's, just send truncate.
           Message trunc =
-            MessageBuilder.buildTruncate(Zxid.ZXID_NOT_EXIST, lastSyncZxid);
+            MessageBuilder.buildTruncate(lastSyncZxid, lastSyncZxid);
           sendMessage(peerId, trunc);
+        } else {
+          // Not sure if the server's history is the prefix of the peer's, do
+          // whole state transfer for simplicity.
+          LOG.debug("The peer's zxid has different epoch, start state "
+              + "tranfering.");
+          stateTransfer(snapFile, snapZxid, log);
         }
       } else {
-        // Synchronizing peer with snapshot file.
-        Message snapshot = MessageBuilder.buildSnapshot(lastSyncZxid, snapZxid);
-        // Sends snapshot message.
-        transport.send(peerId, snapshot);
-        // Sends actuall snapshot file.
-        transport.send(peerId, snapFile);
-        if (snapZxid.compareTo(lastSyncZxid) == 0) {
-          // If there's nothing after snapshot needs to by synchronized.
-          syncPoint = null;
+        // The peer's lastest zxid < the server's.
+        if (snapZxid != null && snapZxid.compareTo(peerLatestZxid) >= 0) {
+          stateTransfer(snapFile, snapZxid, log);
         } else {
-          // The first transaction that needs to be synchronized to peer after
-          // snapshot.
-          syncPoint = new Zxid(snapZxid.getEpoch(), snapZxid.getXid() + 1);
+          syncFromLog(log);
         }
       }
-      if (stop) {
+      if (this.stop) {
         return;
-      }
-      if (syncPoint != null) {
-        try (Log.LogIterator iter = log.getIterator(syncPoint)) {
-          while (iter.hasNext()) {
-            if (stop) {
-              return;
-            }
-            Transaction txn = iter.next();
-            if (txn.getZxid().compareTo(this.lastSyncZxid) > 0) {
-              break;
-            }
-            Message prop = MessageBuilder.buildProposal(txn);
-            sendMessage(peerId, prop);
-          }
-        }
       }
       // At the end of the synchronization, send COP.
       Message syncEnd = MessageBuilder.buildSyncEnd(this.clusterConfig);

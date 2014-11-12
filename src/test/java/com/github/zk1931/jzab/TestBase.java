@@ -121,4 +121,11 @@ public class TestBase {
     }
     return state;
   }
+
+  void appendTxns(Log log, Zxid startZxid, int count) throws IOException {
+    for (int i = 0; i < count; ++i) {
+      Zxid zxid = new Zxid(startZxid.getEpoch(), startZxid.getXid() + i);
+      log.append(new Transaction(zxid, ByteBuffer.wrap("Txn".getBytes())));
+    }
+  }
 }

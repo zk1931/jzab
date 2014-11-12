@@ -453,8 +453,8 @@ public class ZabTest extends TestBase  {
     *
     * Before Synchronization.
     *
-    *  L : <0, 0>  <0, 1>                (f.a = 0)
-    *  F : <0, 0>,         <1,0>         (f.a = 1)
+    *  F : <0, 0>  <0, 1>                (f.a = 0)
+    *  L : <0, 0>,         <1,0>         (f.a = 1)
     *
     * Expected history of Leader and Follower after synchronization:
     *

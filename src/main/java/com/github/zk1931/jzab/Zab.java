@@ -240,10 +240,7 @@ public class Zab {
    * Issues the request to take a snapshot. The {@link StateMachine#save}
    * callback will be called for serializing the application's state to disk.
    *
-   * @throws ZabException.NotInBroadcastingPhase if Zab is not in broadcasting
-   * phase.
-   * @throws ZabException.TooManyPendingRequests if there is a pending snapshot
-   * request.
+   * @throws ZabException for exception.
    */
   public void takeSnapshot() throws ZabException {
     this.mainThread.takeSnapshot();

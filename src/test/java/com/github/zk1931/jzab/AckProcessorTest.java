@@ -109,8 +109,7 @@ public class AckProcessorTest extends TestBase {
     quorumMap.put(server2, ph2);
     ClusterConfiguration cnf =
       new ClusterConfiguration(Zxid.ZXID_NOT_EXIST, peers, server1);
-    AckProcessor ackProcessor =
-      new AckProcessor(quorumMap, cnf, Zxid.ZXID_NOT_EXIST);
+    AckProcessor ackProcessor = new AckProcessor(quorumMap, cnf);
     Zxid z1 = new Zxid(0, 0);
     ackProcessor.processRequest(createAck(server1, z1));
     ackProcessor.processRequest(createAck(server2, z1));
@@ -123,7 +122,7 @@ public class AckProcessorTest extends TestBase {
   @Test(timeout=3000)
   public void testQuorumAck() throws Exception {
     // The cluster contains three servers, two of them acknowledeged
-    // <0, 0>, then <0, 0> should stll be committed on all the servers.
+    // <0, 0>, then <0, 0> should stll be committed on server1 and server2.
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     String server3 = getUniqueHostPort();
@@ -152,15 +151,14 @@ public class AckProcessorTest extends TestBase {
     quorumMap.put(server3, ph3);
     ClusterConfiguration cnf =
       new ClusterConfiguration(Zxid.ZXID_NOT_EXIST, peers, server1);
-    AckProcessor ackProcessor =
-      new AckProcessor(quorumMap, cnf, Zxid.ZXID_NOT_EXIST);
+    AckProcessor ackProcessor = new AckProcessor(quorumMap, cnf);
     Zxid z1 = new Zxid(0, 0);
     ackProcessor.processRequest(createAck(server1, z1));
     ackProcessor.processRequest(createAck(server2, z1));
     // Waits COMMIT is sent to both servers.
     receiver1.latch.await();
     receiver2.latch.await();
-    receiver3.latch.await();
+    Assert.assertFalse(receiver3.latch.await(500, TimeUnit.MILLISECONDS));
     ackProcessor.shutdown();
   }
 
@@ -196,8 +194,7 @@ public class AckProcessorTest extends TestBase {
     quorumMap.put(server3, ph3);
     ClusterConfiguration cnf =
       new ClusterConfiguration(Zxid.ZXID_NOT_EXIST, peers, server1);
-    AckProcessor ackProcessor =
-      new AckProcessor(quorumMap, cnf, Zxid.ZXID_NOT_EXIST);
+    AckProcessor ackProcessor = new AckProcessor(quorumMap, cnf);
     Zxid z1 = new Zxid(0, 0);
     ackProcessor.processRequest(createAck(server1, z1));
     // The transaction shouldn't been committed.
@@ -239,8 +236,7 @@ public class AckProcessorTest extends TestBase {
     quorumMap.put(server3, ph3);
     ClusterConfiguration cnf =
       new ClusterConfiguration(Zxid.ZXID_NOT_EXIST, peers, server1);
-    AckProcessor ackProcessor =
-      new AckProcessor(quorumMap, cnf, Zxid.ZXID_NOT_EXIST);
+    AckProcessor ackProcessor = new AckProcessor(quorumMap, cnf);
     Zxid z1 = new Zxid(0, 0);
     ackProcessor.processRequest(createAck(server1, new Zxid(0, 2)));
     ackProcessor.processRequest(createAck(server2, new Zxid(0, 1)));
@@ -251,16 +247,16 @@ public class AckProcessorTest extends TestBase {
     receiver3.latch.await();
     Assert.assertEquals(new Zxid(0, 1), receiver1.committedZxids.get(0));
     Assert.assertEquals(new Zxid(0, 1), receiver2.committedZxids.get(0));
-    Assert.assertEquals(new Zxid(0, 1), receiver3.committedZxids.get(0));
+    Assert.assertEquals(new Zxid(0, 0), receiver3.committedZxids.get(0));
     ackProcessor.shutdown();
   }
 
   @Test(timeout=3000)
   public void testJoin() throws Exception {
     // Initially, the cluster only contains server1, then server2 joins with
-    // COP zxid <0, 2>, then server1 acks <0, 10>, server1 and server2
-    // should only get committed zxid <0, 1> since <0, 2> and <0, 3> belong
-    // to new configuration of quorum size 2.
+    // COP zxid <0, 2>, then server1 acks <0, 10>, server1 should only get
+    // committed zxid <0, 1> since <0, 2> and <0, 3> belong to new
+    // configuration of quorum size 2.
     String server1 = getUniqueHostPort();
     String server2 = getUniqueHostPort();
     TestReceiver receiver1 = new TestReceiver(1);
@@ -275,14 +271,11 @@ public class AckProcessorTest extends TestBase {
     ph2.startBroadcastingTask();
     List<String> peers = new ArrayList<String>();
     peers.add(server1);
-    //peers.add(server2);
     HashMap<String, PeerHandler> quorumMap = new HashMap<String, PeerHandler>();
     quorumMap.put(server1, ph1);
-    //quorumMap.put(server2, ph2);
     ClusterConfiguration cnf =
       new ClusterConfiguration(Zxid.ZXID_NOT_EXIST, peers, server1);
-    AckProcessor ackProcessor =
-      new AckProcessor(quorumMap, cnf, Zxid.ZXID_NOT_EXIST);
+    AckProcessor ackProcessor = new AckProcessor(quorumMap, cnf);
     // Update "original" quorumset so the cloned quorumMap in AckProcessor can
     // access this one.
     quorumMap.put(server2, ph2);
@@ -290,13 +283,12 @@ public class AckProcessorTest extends TestBase {
     ackProcessor.processRequest(createAck(server1, new Zxid(0, 10)));
     // Waits COMMIT is sent to both servers.
     receiver1.latch.await();
-    receiver2.latch.await();
+    Assert.assertFalse(receiver2.latch.await(100, TimeUnit.MILLISECONDS));
     // The transactions before COP(<0, 2>) can be committed.
     Assert.assertEquals(new Zxid(0, 1), receiver1.committedZxids.get(0));
-    Assert.assertEquals(new Zxid(0, 1), receiver2.committedZxids.get(0));
     // There should be only one committed message.
     Assert.assertEquals(1, receiver1.committedZxids.size());
-    Assert.assertEquals(1, receiver2.committedZxids.size());
+    Assert.assertEquals(0, receiver2.committedZxids.size());
     ackProcessor.shutdown();
   }
 
@@ -326,16 +318,16 @@ public class AckProcessorTest extends TestBase {
     quorumMap.put(server2, ph2);
     ClusterConfiguration cnf =
       new ClusterConfiguration(Zxid.ZXID_NOT_EXIST, peers, server1);
-    AckProcessor ackProcessor =
-      new AckProcessor(quorumMap, cnf, Zxid.ZXID_NOT_EXIST);
+    AckProcessor ackProcessor = new AckProcessor(quorumMap, cnf);
     ackProcessor.processRequest(createRemove(server2, new Zxid(0, 2)));
     ackProcessor.processRequest(createAck(server1, new Zxid(0, 3)));
+    ackProcessor.processRequest(createAck(server2, new Zxid(0, 2)));
     // Waits COMMIT is sent to both servers.
     receiver1.latch.await();
     receiver2.latch.await();
     // The transactions before COP(<0, 2>) can be committed.
     Assert.assertEquals(new Zxid(0, 3), receiver1.committedZxids.get(0));
-    Assert.assertEquals(new Zxid(0, 3), receiver2.committedZxids.get(0));
+    Assert.assertEquals(new Zxid(0, 2), receiver2.committedZxids.get(0));
     // There should be only one committed message.
     Assert.assertEquals(1, receiver1.committedZxids.size());
     Assert.assertEquals(1, receiver2.committedZxids.size());
@@ -358,8 +350,7 @@ public class AckProcessorTest extends TestBase {
     quorumMap.put(server1, ph1);
     ClusterConfiguration cnf =
       new ClusterConfiguration(Zxid.ZXID_NOT_EXIST, peers, server1);
-    AckProcessor ackProcessor =
-      new AckProcessor(quorumMap, cnf, Zxid.ZXID_NOT_EXIST);
+    AckProcessor ackProcessor = new AckProcessor(quorumMap, cnf);
     Zxid z1 = new Zxid(0, 0);
     ackProcessor.processRequest(createRemove(server1, z1));
     ackProcessor.processRequest(createAck(server1, z1));
@@ -389,8 +380,7 @@ public class AckProcessorTest extends TestBase {
     quorumMap.put(server1, ph1);
     ClusterConfiguration cnf =
       new ClusterConfiguration(Zxid.ZXID_NOT_EXIST, peers, server1);
-    AckProcessor ackProcessor =
-      new AckProcessor(quorumMap, cnf, Zxid.ZXID_NOT_EXIST);
+    AckProcessor ackProcessor = new AckProcessor(quorumMap, cnf);
     ackProcessor.processRequest(createAck(server1, new Zxid(0, 0)));
     ackProcessor.processRequest(createAck(server1, new Zxid(0, 1)));
     // Server2 joins in.

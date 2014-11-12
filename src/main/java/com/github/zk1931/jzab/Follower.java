@@ -188,7 +188,7 @@ public class Follower extends Participant {
         } catch (TimeoutException | BackToElectionException ex) {
           LOG.debug("Timeout({} ms) in synchronizing, retrying. Last zxid : {}",
                     getSyncTimeoutMs(),
-                    persistence.getLog().getLatestZxid());
+                    persistence.getLatestZxid());
           transport.clear(electedLeader);
           clearMessageQueue();
         }
@@ -332,7 +332,7 @@ public class Follower extends Participant {
     LOG.debug("Received the new epoch proposal {} from {}.",
               epoch.getNewEpoch(),
               source);
-    Zxid zxid = persistence.getLog().getLatestZxid();
+    Zxid zxid = persistence.getLatestZxid();
     // Sends ACK to leader.
     sendMessage(this.electedLeader,
                 MessageBuilder.buildAckEpoch(persistence.getAckEpoch(),
@@ -364,7 +364,7 @@ public class Follower extends Participant {
     // Sync Ack epoch to disk.
     log.sync();
     persistence.setAckEpoch(epoch);
-    Message ack = MessageBuilder.buildAck(log.getLatestZxid());
+    Message ack = MessageBuilder.buildAck(persistence.getLatestZxid());
     sendMessage(source, ack);
   }
 
@@ -383,7 +383,7 @@ public class Follower extends Participant {
     Zxid zxid = MessageBuilder.fromProtoZxid(tuple.getMessage()
                                                   .getCommit()
                                                   .getZxid());
-    Zxid lastZxid = persistence.getLog().getLatestZxid();
+    Zxid lastZxid = persistence.getLatestZxid();
     // If the followers are appropriately synchronized, the Zxid of ACK should
     // match the last Zxid in followers' log.
     if (zxid.compareTo(lastZxid) != 0) {
@@ -510,8 +510,7 @@ public class Follower extends Participant {
   // depends on the length of the synchronization.
   private void joinSynchronization()
       throws IOException, TimeoutException, InterruptedException {
-    Log log = persistence.getLog();
-    Message sync = MessageBuilder.buildSyncHistory(log.getLatestZxid());
+    Message sync = MessageBuilder.buildSyncHistory(persistence.getLatestZxid());
     sendMessage(this.electedLeader, sync);
     MessageTuple tuple =
       getExpectedMessage(MessageType.SYNC_HISTORY_REPLY, electedLeader);
@@ -521,8 +520,8 @@ public class Follower extends Participant {
     // Waits for the first synchronization completes.
     waitForSync(this.electedLeader);
 
-    // Gets the last zxid in log after first synchronization.
-    Zxid lastZxid = log.getLatestZxid();
+    // Gets the last zxid in disk after first synchronization.
+    Zxid lastZxid = persistence.getLatestZxid();
     LOG.debug("After first synchronization, the last zxid is {}", lastZxid);
     // Then issues the JOIN message.
     Message join = MessageBuilder.buildJoin(lastZxid);

@@ -29,6 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
 import java.util.Iterator;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
@@ -169,7 +170,7 @@ public class SnapshotTest extends TestBase {
     zab.shutdown();
   }
 
-  @Test(timeout=30000)
+  @Test(timeout=20000)
   public void testSnapshotCluster() throws Exception {
     final int nTxns = 20;
     QuorumTestCallback cb1 = new QuorumTestCallback();
@@ -221,8 +222,8 @@ public class SnapshotTest extends TestBase {
     zab2.shutdown();
   }
 
-  @Test(timeout=30000)
-  public void testSnapshotSynchronization() throws Exception {
+  @Test(timeout=20000)
+  public void testSnapshotSynchronizationCase1() throws Exception {
     // Starts server1, sends transactions txn1,txn2 ... txnn.
     // Starts server2 joins server1, the snapshot will be used to synchronize
     // server2. In the end, we verify the two state machines have the same state
@@ -258,6 +259,134 @@ public class SnapshotTest extends TestBase {
     Zab zab2 = new Zab(st2, config2, server2, server1);
     st2.waitMemberChanged();
     Assert.assertEquals(st1.state, st2.state);
+    zab2.shutdown();
+
+    st2 = new SnapshotStateMachine(nTxns);
+    // zab2 recovers.
+    zab2 = new Zab(st2, config2);
+    st2.waitMemberChanged();
+    // After recovery, we verify they still have same states.
+    Assert.assertEquals(st1.state, st2.state);
+    zab2.shutdown();
+    zab1.shutdown();
+  }
+
+  @Test(timeout=20000)
+  public void testSnapshotSynchronizationCase2() throws Exception {
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    SnapshotStateMachine st1 = new SnapshotStateMachine(0);
+    SnapshotStateMachine st2 = new SnapshotStateMachine(0);
+
+    String server1 = getUniqueHostPort();
+    String server2 = getUniqueHostPort();
+    String server3 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
+    peers.add(server3);
+    PersistentState state1 = makeInitialState(server1, 5);
+    state1.setAckEpoch(0);
+
+    PersistentState state2 = makeInitialState(server2, 1);
+    state2.setAckEpoch(0);
+
+    ZabConfig config1 = new ZabConfig();
+    ZabConfig config2 = new ZabConfig();
+
+    Zab zab1 = new Zab(st1, config1, server1, peers, state1, cb1, null);
+    Zab zab2 = new Zab(st2, config2, server2, peers, state2, cb2, null);
+
+    cb1.waitBroadcasting();
+    cb2.waitBroadcasting();
+    Assert.assertEquals(cb1.initialHistory.size(), 5);
+    Assert.assertEquals(cb1.initialHistory.get(0).getZxid(), new Zxid(0, 0));
+    Assert.assertTrue(cb2.initialHistory.size() == 5);
+    Assert.assertEquals(cb2.initialHistory.get(0).getZxid(), new Zxid(0, 0));
+
+    // server1 gonna take snapshot.
+    zab1.takeSnapshot();
+    st1.waitSnapshot();
+    // Make sure server1 does take snapshot.
+    Assert.assertEquals(new Zxid(0, 4), state1.getSnapshotZxid());
+
+    // Shutdown zab2.
+    zab2.shutdown();
+    // Mannuly truncate all the logs of server2.
+    state2.getLog().truncate(Zxid.ZXID_NOT_EXIST);
+
+    st2 = new SnapshotStateMachine(0);
+    cb2 = new QuorumTestCallback();
+    // Restarts server2.
+    zab2 = new Zab(st2, config2, state2, cb2, null);
+    cb2.waitBroadcasting();
+    // server2 should get snapshot file synchronized from server1.
+    Assert.assertEquals(new Zxid(0, 4), state2.getSnapshotZxid());
+    // Eventually they will have same state.
+    Assert.assertEquals(st2.state, st1.state);
+
+    zab1.shutdown();
+    zab2.shutdown();
+  }
+
+  @Test(timeout=20000)
+  public void testSnapshotSynchronizationCase3() throws Exception {
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    SnapshotStateMachine st1 = new SnapshotStateMachine(0);
+    SnapshotStateMachine st2 = new SnapshotStateMachine(0);
+
+    String server1 = getUniqueHostPort();
+    String server2 = getUniqueHostPort();
+    String server3 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
+    peers.add(server3);
+    PersistentState state1 = makeInitialState(server1, 5);
+    state1.setProposedEpoch(2);
+    state1.setAckEpoch(2);
+
+    PersistentState state2 = makeInitialState(server2, 1);
+    state2.setAckEpoch(0);
+
+    ZabConfig config1 = new ZabConfig();
+    ZabConfig config2 = new ZabConfig();
+
+    Zab zab1 = new Zab(st1, config1, server1, peers, state1, cb1, null);
+    Zab zab2 = new Zab(st2, config2, server2, peers, state2, cb2, null);
+
+    cb1.waitBroadcasting();
+    cb2.waitBroadcasting();
+    Assert.assertEquals(cb1.initialHistory.size(), 5);
+    Assert.assertEquals(cb1.initialHistory.get(0).getZxid(), new Zxid(0, 0));
+    Assert.assertTrue(cb2.initialHistory.size() == 5);
+    Assert.assertEquals(cb2.initialHistory.get(0).getZxid(), new Zxid(0, 0));
+
+    // server1 takes snapshot.
+    zab1.takeSnapshot();
+    st1.waitSnapshot();
+    // Make sure server1 did take snapshot.
+    Assert.assertEquals(new Zxid(0, 4), state1.getSnapshotZxid());
+
+    // Shutdown zab2.
+    zab2.shutdown();
+    // Add one more transaction to make server1 and server2 have different
+    // epochs.
+    appendTxns(state2.getLog(), new Zxid(1, 0), 1);
+    // Reset epoch number to make sure server1 becomes leader.
+    state2.setProposedEpoch(0);
+    state2.setAckEpoch(0);
+
+    st2 = new SnapshotStateMachine(0);
+    cb2 = new QuorumTestCallback();
+    // Restarts server2.
+    zab2 = new Zab(st2, config2, state2, cb2, null);
+    cb2.waitBroadcasting();
+    // server2 should get snapshot file synchronized from server1.
+    Assert.assertEquals(new Zxid(0, 4), state2.getSnapshotZxid());
+    // Eventuall they will have same state.
+    Assert.assertEquals(st2.state, st1.state);
     zab1.shutdown();
     zab2.shutdown();
   }
