@@ -202,14 +202,16 @@ public class PersistentState {
    *
    * @param tempFile the temporary file which stores current state.
    * @param zxid the last applied zxid for state machine.
+   * @return the snapshot file.
    */
-  void setSnapshotFile(File tempFile, Zxid zxid) throws IOException {
+  File setSnapshotFile(File tempFile, Zxid zxid) throws IOException {
     File snapshot =
       new File(logDir, String.format("snapshot.%s", zxid.toSimpleString()));
     LOG.debug("Atomically move snapshot file to {}", snapshot);
     FileUtils.atomicMove(tempFile, snapshot);
     // Since the new snapshot file gets created, we need to fsync the directory.
     fsyncDirectory();
+    return snapshot;
   }
 
   /**

@@ -30,6 +30,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
 import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
+import com.github.zk1931.jzab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,12 +50,20 @@ public class SnapshotProcessor implements RequestProcessor,
 
   private final PersistentState persistence;
 
+  private final Transport transport;
+
+  private final String serverId;
+
   Future<Void> ft;
 
   public SnapshotProcessor(StateMachine stateMachine,
-                           PersistentState persistence) {
+                           PersistentState persistence,
+                           String serverId,
+                           Transport transport) {
     this.stateMachine = stateMachine;
     this.persistence = persistence;
+    this.serverId = serverId;
+    this.transport = transport;
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
     ft = es.submit(this);
@@ -94,7 +103,10 @@ public class SnapshotProcessor implements RequestProcessor,
             stateMachine.save(fout);
             fout.close();
             // Mark it valid.
-            persistence.setSnapshotFile(temp, zxid);
+            File file = persistence.setSnapshotFile(temp, zxid);
+            Message done = MessageBuilder.buildSnapshotDone(file.getPath());
+            // Sends it back to main thread.
+            this.transport.send(this.serverId, done);
           }
         } else {
           if (LOG.isWarnEnabled()) {

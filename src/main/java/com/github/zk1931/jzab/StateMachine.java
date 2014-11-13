@@ -40,7 +40,7 @@ public interface StateMachine {
   ByteBuffer preprocess(Zxid zxid, ByteBuffer message);
 
   /**
-   * Upcall to deliver a state update. This method is called from a single
+   * Callback to deliver a state update. This method is called from a single
    * thread to ensure that the state updates are applied in the same order
    * they arrived. Application MUST apply the transaction in the callback,
    * after deliver returns, Zab assumes the transaction has been applied to
@@ -54,7 +54,7 @@ public interface StateMachine {
   void deliver(Zxid zxid, ByteBuffer stateUpdate, String clientId);
 
   /**
-   * Upcall to deliver the flush request. This method is called from the same
+   * Callback to deliver the flush request. This method is called from the same
    * thread as the deliver callback.
    *
    * @param  flushRequest the flush request.
@@ -62,12 +62,19 @@ public interface StateMachine {
   void flushed(ByteBuffer flushRequest);
 
   /**
-   * Upcall to serialize the application state using an OutputStream. Upon a
+   * Callback to serialize the application state using an OutputStream. Upon a
    * call to save, the application writes its state to os.
    *
    * @param os the output stream
    */
   void save(OutputStream os);
+
+  /**
+   * Callback to notify that the snapshot is successfully stored on disk.
+   *
+   * @param filePath the path for the snapshot file.
+   */
+  void snapshotDone(String filePath);
 
   /**
    * Deserializes the state of the application from the InputStream. Once this
@@ -78,13 +85,13 @@ public interface StateMachine {
   void restore(InputStream is);
 
   /**
-   * Upcall to notify the server it's in recovering phase. Servers in recovering
-   * phase shouldn't issue or process any requests.
+   * Callback to notify the server it's in recovering phase. Servers in
+   * recovering phase shouldn't issue or process any requests.
    */
   void recovering();
 
   /**
-   * Upcall to notify the application who is running on the leader role of ZAB
+   * Callback to notify the application who is running on the leader role of ZAB
    * instance the membership changes of Zab cluster. The membership changes
    * include the detection of recovered members or disconnected members in
    * current configuration or new configuration after some one joined or be
@@ -97,8 +104,8 @@ public interface StateMachine {
   void leading(Set<String> activeFollowers, Set<String> clusterMembers);
 
   /**
-   * Upcall to notify the application who is running on the follower role of ZAB
-   * instance the membership changes of Zab cluster. The membership changes
+   * Callback to notify the application who is running on the follower role of
+   * ZAB instance the membership changes of Zab cluster. The membership changes
    * include the detection of the leader or the new cluster configuration after
    * some servers are joined or removed. This callback will be called from the
    * same thread as deliver callback.

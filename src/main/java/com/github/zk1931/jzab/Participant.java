@@ -23,9 +23,9 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeoutException;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,7 +35,8 @@ import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
 import com.github.zk1931.jzab.transport.Transport;
 import com.github.zk1931.jzab.Zab.FailureCaseCallback;
 import com.github.zk1931.jzab.Zab.StateChangeCallback;
-import com.github.zk1931.jzab.ZabException.NotBroadcastingPhaseException;
+import com.github.zk1931.jzab.ZabException.NotBroadcastingPhase;
+import com.github.zk1931.jzab.ZabException.TooManyPendingRequests;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import static com.github.zk1931.jzab.proto.ZabMessage.Proposal.ProposalType;
@@ -104,21 +105,12 @@ public abstract class Participant {
   protected final ParticipantState participantState;
 
   /**
-   * The maximum number of transactions can be appended to log before taking
-   * snapshot.
+   * The number of pending requests (enqueued by calling send or flush). We
+   * keep track of the number of pending requests because once the number of
+   * pending requests exceeds certain threshold, we'll raise an exception to
+   * user.
    */
-  protected final long snapshotThreshold;
-
-  /**
-   * Total number of bytes of delivered transactions since last snapshot.
-   */
-  protected long numDeliveredBytes = 0;
-
-  /**
-   * The semaphore is used to prevent the internal queues grow infinitely.
-   */
-  protected final Semaphore semPendingReqs =
-    new Semaphore(ZabConfig.MAX_PENDING_REQS);
+  protected final AtomicInteger pendingReqs = new AtomicInteger(0);
 
   /**
    *  The maximum batch size for SyncProposalProcessor.
@@ -136,6 +128,11 @@ public abstract class Participant {
    * Current phase of Participant.
    */
   protected Phase currentPhase = Phase.DISCOVERING;
+
+  /**
+   * Whether there's is a snapshot request in progress.
+   */
+  protected boolean isSnapshotInProgress = false;
 
   private static final Logger LOG = LoggerFactory.getLogger(Participant.class);
 
@@ -181,7 +178,6 @@ public abstract class Participant {
     this.serverId = participantState.getServerId();
     this.messageQueue = participantState.getMessageQueue();
     this.stateMachine = stateMachine;
-    this.snapshotThreshold = config.getSnapshotThreshold();
     this.stateChangeCallback = participantState.getStateChangeCallback();
     this.failCallback = participantState.getFailureCaseCallback();
     this.config = config;
@@ -189,33 +185,57 @@ public abstract class Participant {
     this.maxBatchSize = config.getMaxBatchSize();
   }
 
-  void send(ByteBuffer request) throws NotBroadcastingPhaseException {
+  void send(ByteBuffer request)
+      throws NotBroadcastingPhase, TooManyPendingRequests {
     if (this.currentPhase != Phase.BROADCASTING) {
-      throw new NotBroadcastingPhaseException("Not in Broadcasting phase!");
+      throw new NotBroadcastingPhase("Not in Broadcasting phase!");
     }
-    try {
-      semPendingReqs.acquire();
-    } catch (InterruptedException e) {
-      LOG.error("interupted");
+    if (pendingReqs.get() > ZabConfig.MAX_PENDING_REQS) {
+      // If the size of pending requests exceeds the certain threshold, raise
+      // TooManyPendingRequests exception.
+      throw new TooManyPendingRequests();
     }
+    // Increments the pending requests by one.
+    pendingReqs.incrementAndGet();
     Message msg = MessageBuilder.buildRequest(request);
     sendMessage(this.electedLeader, msg);
   }
 
-  void remove(String peerId) throws NotBroadcastingPhaseException {
+  void remove(String peerId) throws NotBroadcastingPhase {
     if (this.currentPhase != Phase.BROADCASTING) {
-      throw new NotBroadcastingPhaseException("Not in Broadcasting phase!");
+      throw new NotBroadcastingPhase("Not in Broadcasting phase!");
     }
     Message msg = MessageBuilder.buildRemove(peerId);
     sendMessage(this.electedLeader, msg);
   }
 
-  void flush(ByteBuffer request) throws NotBroadcastingPhaseException {
+  void flush(ByteBuffer request)
+      throws NotBroadcastingPhase, TooManyPendingRequests {
     if (this.currentPhase != Phase.BROADCASTING) {
-      throw new NotBroadcastingPhaseException("Not in Broadcasting phase!");
+      throw new NotBroadcastingPhase("Not in Broadcasting phase!");
     }
+    if (pendingReqs.get() > ZabConfig.MAX_PENDING_REQS) {
+      // If the size of pending requests exceeds the certain threshold, raise
+      // TooManyPendingRequests exception.
+      throw new TooManyPendingRequests();
+    }
+    // Increments the pending requests by one.
+    pendingReqs.incrementAndGet();
     Message msg = MessageBuilder.buildFlushRequest(request);
     sendMessage(this.electedLeader, msg);
+  }
+
+  synchronized void takeSnapshot() throws ZabException {
+    if (this.currentPhase != Phase.BROADCASTING) {
+      throw new NotBroadcastingPhase("You cannot take snapshots while"
+          + " Jzab is in Recovering phase");
+    }
+    if (this.isSnapshotInProgress) {
+      throw new TooManyPendingRequests("A pending snapshot is in progress");
+    }
+    this.isSnapshotInProgress = true;
+    Message msg = MessageBuilder.buildSnapshot(this.lastDeliveredZxid);
+    sendMessage(this.serverId, msg);
   }
 
   protected abstract void join(String peer) throws Exception;
@@ -535,19 +555,6 @@ public abstract class Participant {
     // Updates last delivered zxid.
     this.lastDeliveredZxid =
       MessageBuilder.fromProtoZxid(msg.getDelivered().getZxid());
-    // Gets number of bytes delivered for last commit message.
-    long nBytes = msg.getDelivered().getNumBytes();
-    this.numDeliveredBytes += nBytes;
-    if (snapshotThreshold > 0 &&
-      numDeliveredBytes  >= snapshotThreshold) {
-      // Reaches the threshold, going to take snashot.
-      LOG.debug("Delivered {} bytes to application since last " +
-          "snapshot, going to take snapshot.", numDeliveredBytes);
-      Message snap = MessageBuilder.buildSnapshot(lastDeliveredZxid);
-      snapProcessor.processRequest(new MessageTuple(null, snap));
-      // Resets it to zero.
-      numDeliveredBytes = 0;
-    }
   }
 
   protected void onFlush(MessageTuple tuple, CommitProcessor commitProcessor) {

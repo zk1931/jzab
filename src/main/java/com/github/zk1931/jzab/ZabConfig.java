@@ -28,7 +28,6 @@ public class ZabConfig {
   static final int MAX_PENDING_REQS = 5000;
   private int timeoutMs = 1000;
   private int minSyncTimeoutMs = 3000;
-  private long snapshotThresholdBytes = -1;
   // The default logDir is current working directory.
   private String logDir = System.getProperty("user.dir");
   private int maxBatchSize = 1000;
@@ -87,29 +86,6 @@ public class ZabConfig {
    */
   public void setMinSyncTimeoutMs(int timeout) {
     this.minSyncTimeoutMs = timeout;
-  }
-
-  /**
-   * The threshold for taking snapshot.
-   *
-   * @return long integer of threshold, we'll take snapshot once this number of
-   * bytes transactions are delivered to application since last snapshot. If
-   * it's set to -1, then we won't take snapshot.
-   */
-  public long getSnapshotThreshold() {
-    return this.snapshotThresholdBytes;
-  }
-
-  /**
-   * Sets the threshold for taking snapshot. -1 means the snapshot is disabled.
-   * It's disabled by default. However, if you don't take the snapshot the log
-   * might grow to be very large thus take long time for recovery and
-   * synchronization.
-   *
-   * @param bytes the number of bytes.
-   */
-  public void setSnapshotThreshold(long bytes) {
-    this.snapshotThresholdBytes = bytes;
   }
 
   /**
