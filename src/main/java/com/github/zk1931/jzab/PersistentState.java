@@ -49,36 +49,66 @@ public class PersistentState {
   private final File fProposedEpoch;
 
   /**
-   * The directory for all the persistent variables.
+   * The root directory for all the persistent variables.
    */
-  private final File logDir;
+  private final File rootDir;
+
+  /**
+   * The sub directory for log and snapshots.
+   */
+  private final File dataDir;
 
   private static final Logger LOG
     = LoggerFactory.getLogger(PersistentState.class);
 
   public PersistentState(String dir) throws IOException {
-    this(new File(dir), null);
+    this(new File(dir));
   }
 
   public PersistentState(File dir) throws IOException {
-    this(dir, null);
+    this(dir, null, null);
   }
 
-  PersistentState(File dir, Log log) throws IOException {
-    this.logDir = dir;
-    LOG.debug("Trying to create log directory {}", logDir.getAbsolutePath());
-    if (!logDir.mkdir()) {
+  PersistentState(File dir, File dtDir, Log log) throws IOException {
+    this.rootDir = dir;
+    LOG.debug("Trying to create log directory {}", rootDir.getAbsolutePath());
+    if (!rootDir.mkdir()) {
       LOG.debug("Creating log directory {} failed, already exists?",
-                logDir.getAbsolutePath());
+                rootDir.getAbsolutePath());
     }
-    this.fAckEpoch = new File(logDir, "ack_epoch");
-    this.fProposedEpoch = new File(logDir, "proposed_epoch");
-    File logFile = new File(logDir, "transaction.log");
+    if (dtDir == null) {
+      this.dataDir = new File(rootDir, "data");
+    } else {
+      this.dataDir = dtDir;
+    }
+    if (!this.dataDir.mkdir()) {
+      LOG.debug("Creating data directory {} failed, already exists?",
+                dataDir.getAbsolutePath());
+    }
+    this.fAckEpoch = new File(rootDir, "ack_epoch");
+    this.fProposedEpoch = new File(rootDir, "proposed_epoch");
+    File logFile = new File(dataDir, "transaction.log");
     if (log == null) {
       this.log = new SimpleLog(logFile);
     } else {
       this.log = log;
     }
+  }
+
+  /**
+   * Gets the latest zxid from persistent state. If the log file is not empty,
+   * gets the latest zxid from log file since zxid of log is always equal or
+   * larger than the zxid of the snapshot file. If the log file is empty, gets
+   * the zxid from snapshot file.
+   *
+   * @return the latest zxid which is guaranteed on disk.
+   */
+  Zxid getLatestZxid() throws IOException {
+    Zxid zxid = this.log.getLatestZxid();
+    if (zxid.compareTo(Zxid.ZXID_NOT_EXIST) == 0) {
+      zxid = getSnapshotZxid();
+    }
+    return zxid;
   }
 
   /**
@@ -151,7 +181,7 @@ public class PersistentState {
    * @throws IOException in case of IO failure.
    */
   ClusterConfiguration getLastSeenConfig() throws IOException {
-    File file = getLatestFileWithPrefix("cluster_config");
+    File file = getLatestFileWithPrefix(this.rootDir, "cluster_config");
     if (file == null) {
       return null;
     }
@@ -173,7 +203,7 @@ public class PersistentState {
    */
   void setLastSeenConfig(ClusterConfiguration conf) throws IOException {
     String version = conf.getVersion().toSimpleString();
-    File file = new File(logDir, String.format("cluster_config.%s", version));
+    File file = new File(rootDir, String.format("cluster_config.%s", version));
     FileUtils.writePropertiesToFile(conf.toProperties(), file);
     // Since the new config file gets created, we need to fsync the directory.
     fsyncDirectory();
@@ -194,7 +224,7 @@ public class PersistentState {
    * @return true if it's empty.
    */
   boolean isEmpty() {
-    return this.logDir.listFiles().length == 1;
+    return this.rootDir.listFiles().length == 1;
   }
 
   /**
@@ -206,7 +236,7 @@ public class PersistentState {
    */
   File setSnapshotFile(File tempFile, Zxid zxid) throws IOException {
     File snapshot =
-      new File(logDir, String.format("snapshot.%s", zxid.toSimpleString()));
+      new File(dataDir, String.format("snapshot.%s", zxid.toSimpleString()));
     LOG.debug("Atomically move snapshot file to {}", snapshot);
     FileUtils.atomicMove(tempFile, snapshot);
     // Since the new snapshot file gets created, we need to fsync the directory.
@@ -220,7 +250,7 @@ public class PersistentState {
    * @return the last snapshot file.
    */
   File getSnapshotFile() {
-    return getLatestFileWithPrefix("snapshot");
+    return getLatestFileWithPrefix(this.dataDir, "snapshot");
   }
 
   /**
@@ -244,11 +274,11 @@ public class PersistentState {
    * @param prefix the prefix of the file.
    */
   File createTempFile(String prefix) throws IOException {
-    return File.createTempFile(prefix, "", this.logDir);
+    return File.createTempFile(prefix, "", this.rootDir);
   }
 
   File getLogDir() {
-    return this.logDir;
+    return this.rootDir;
   }
 
   /**
@@ -258,10 +288,10 @@ public class PersistentState {
    * @return the file with highest zxid in its name for given prefix, or null
    * if there's no such files.
    */
-  File getLatestFileWithPrefix(String prefix) {
+  File getLatestFileWithPrefix(File dir, String prefix) {
     List<File> files = new ArrayList<File>();
     String pattern = prefix + "\\.\\d+_\\d+";
-    for (File file : this.logDir.listFiles()) {
+    for (File file : dir.listFiles()) {
       if (!file.isDirectory() &&
           file.getName().matches(pattern)) {
         // Only consider those with valid name.
@@ -279,9 +309,8 @@ public class PersistentState {
   // We need also fsync file directory when file gets created. This is related
   // to ZOOKEEPER-2003 https://issues.apache.org/jira/browse/ZOOKEEPER-2003
   void fsyncDirectory() throws IOException {
-    try (FileChannel channel = FileChannel.open(this.logDir.toPath())) {
+    try (FileChannel channel = FileChannel.open(this.rootDir.toPath())) {
       channel.force(true);
     }
   }
 }
-

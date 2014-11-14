@@ -80,13 +80,6 @@ public class LogTest extends TestBase {
     ra.close();
   }
 
-  void appendTxns(Log log, Zxid startZxid, int count) throws IOException {
-    for (int i = 0; i < count; ++i) {
-      Zxid zxid = new Zxid(startZxid.getEpoch(), startZxid.getXid() + i);
-      log.append(new Transaction(zxid, ByteBuffer.wrap("txn".getBytes())));
-    }
-  }
-
   /**
    * Gets transaction id of all the transactions after zxid in log.
    */
@@ -301,5 +294,74 @@ public class LogTest extends TestBase {
     } else {
       throw new RuntimeException("Simulated exception for RollingLog.");
     }
+  }
+
+  @Test
+  public void testDivergingPoint() throws Exception {
+    /*
+     * case 1:
+     *  the log : <0, 0>, <0, 1>, <1, 1>
+     *  zxid : <0, 2>
+     *  returns (<0, 1>, iter points to <1, 1>)
+     */
+    Log log = getLog();
+    appendTxns(log, new Zxid(0, 0), 2);
+    appendTxns(log, new Zxid(1, 1), 1);
+    Log.DivergingTuple dp = log.firstDivergingPoint(new Zxid(0, 2));
+    Assert.assertEquals(new Zxid(0, 1), dp.getDivergingZxid());
+    Assert.assertEquals(new Zxid(1, 1), dp.getIterator().next().getZxid());
+
+    /*
+     * case 2:
+     *  the log : <0, 0>, <0, 1>, <1, 1>
+     *  zxid : <0, 1>
+     *  returns (<0, 1>, iter points to <1, 1>)
+     */
+    dp = log.firstDivergingPoint(new Zxid(0, 1));
+    Assert.assertEquals(new Zxid(0, 1), dp.getDivergingZxid());
+    Assert.assertEquals(new Zxid(1, 1), dp.getIterator().next().getZxid());
+
+    /*
+     * case 3:
+     *  the log : <0, 0>, <0, 1>, <1, 1>
+     *  zxid : <1, 2>
+     *  returns (<1, 1>, iter points to end of the log)
+     */
+    dp = log.firstDivergingPoint(new Zxid(1, 2));
+    Assert.assertEquals(new Zxid(1, 1), dp.getDivergingZxid());
+    Assert.assertFalse(dp.getIterator().hasNext());
+
+    /*
+     * case 4:
+     *  the log : <0, 2>
+     *  zxid : <0, 1>
+     *  returns (<0, -1>, iter points <0, 2>)
+     */
+    log.truncate(Zxid.ZXID_NOT_EXIST);
+    appendTxns(log, new Zxid(0, 2), 1);
+    dp = log.firstDivergingPoint(new Zxid(0, 1));
+    Assert.assertEquals(Zxid.ZXID_NOT_EXIST, dp.getDivergingZxid());
+    Assert.assertEquals(new Zxid(0, 2), dp.getIterator().next().getZxid());
+
+    /*
+     * case 5:
+     *  the log : <0, 2>
+     *  zxid : <0, -1>
+     *  returns (<0, -1>, iter points <0, 2>)
+     */
+    dp = log.firstDivergingPoint(Zxid.ZXID_NOT_EXIST);
+    Assert.assertEquals(Zxid.ZXID_NOT_EXIST, dp.getDivergingZxid());
+    Assert.assertEquals(new Zxid(0, 2), dp.getIterator().next().getZxid());
+
+    /*
+     * case 6:
+     *  the log : empty
+     *  zxid : <0, 1>
+     *  returns (<0, -1>, iter points to end of the log)
+     */
+    log.truncate(Zxid.ZXID_NOT_EXIST);
+    dp = log.firstDivergingPoint(new Zxid(0, 1));
+    Assert.assertEquals(Zxid.ZXID_NOT_EXIST, dp.getDivergingZxid());
+    Assert.assertFalse(dp.getIterator().hasNext());
   }
 }

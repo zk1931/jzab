@@ -274,10 +274,9 @@ public class Leader extends Participant {
       // Adjusts the sync timeout based on this synchronization time.
       adjustSyncTimeout((int)(syncTime / 1000000));
 
-      // Broadcasts commit message.
-      Message commit = MessageBuilder
-                       .buildCommit(persistence.getLog().getLatestZxid());
-      broadcast(this.quorumMap.keySet().iterator(), commit);
+      // After receiving ACKs from all peers in quorum, broadcasts COMMIT
+      // message to all peers in quorum map.
+      broadcastCommitMessage();
       // See if it can be restored from the snapshot file.
       restoreFromSnapshot();
       // Delivers all the txns in log before entering broadcasting phase.
@@ -473,7 +472,7 @@ public class Leader extends Participant {
     // of the new epoch. Follwer f is such that for every f' in the quorum,
     // f'.a < f.a or (f'.a == f.a && f'.zxid <= f.zxid).
     long ackEpoch = persistence.getAckEpoch();
-    Zxid zxid = persistence.getLog().getLatestZxid();
+    Zxid zxid = persistence.getLatestZxid();
     String peerId = this.serverId;
     Iterator<Map.Entry<String, PeerHandler>> iter;
     iter = this.quorumMap.entrySet().iterator();
@@ -504,7 +503,7 @@ public class Leader extends Participant {
   void synchronizeFromFollower(String peerId)
       throws IOException, TimeoutException, InterruptedException {
     LOG.debug("Begins synchronizing from follower {}.", peerId);
-    Zxid lastZxid = persistence.getLog().getLatestZxid();
+    Zxid lastZxid = persistence.getLatestZxid();
     Message pullTxn = MessageBuilder.buildPullTxnReq(lastZxid);
     LOG.debug("Last zxid of {} is {}", this.serverId, lastZxid);
     sendMessage(peerId, pullTxn);
@@ -522,7 +521,7 @@ public class Leader extends Participant {
       throws TimeoutException, InterruptedException, IOException {
     LOG.debug("Waiting for synchronization to followers complete.");
     int completeCount = 0;
-    Zxid lastZxid = persistence.getLog().getLatestZxid();
+    Zxid lastZxid = persistence.getLatestZxid();
     while (completeCount < this.quorumMap.size()) {
       // Here we should use sync_timeout.
       MessageTuple tuple =
@@ -545,6 +544,16 @@ public class Leader extends Participant {
     }
   }
 
+  void broadcastCommitMessage() throws IOException {
+    // Broadcasts commit message.
+    Zxid zxid = persistence.getLatestZxid();
+    Message commit = MessageBuilder.buildCommit(zxid);
+    broadcast(this.quorumMap.keySet().iterator(), commit);
+    for (PeerHandler ph : this.quorumMap.values()) {
+      ph.setLastCommittedZxid(zxid);
+    }
+  }
+
   /**
    * Starts synchronizing peers in background threads.
    *
@@ -553,7 +562,7 @@ public class Leader extends Participant {
    */
   void beginSynchronizing() throws IOException {
     // Synchronization is performed in other threads.
-    Zxid lastZxid = persistence.getLog().getLatestZxid();
+    Zxid lastZxid = persistence.getLatestZxid();
     ClusterConfiguration clusterConfig = persistence.getLastSeenConfig();
     long proposedEpoch = persistence.getProposedEpoch();
     for (PeerHandler ph : this.quorumMap.values()) {
@@ -576,20 +585,20 @@ public class Leader extends Participant {
   void broadcasting()
       throws TimeoutException, InterruptedException, IOException,
       ExecutionException {
-    Zxid lastZxid = persistence.getLog().getLatestZxid();
+    Zxid lastZxid = persistence.getLatestZxid();
     this.establishedEpoch = persistence.getAckEpoch();
     // Add leader itself to quorumMap.
     PeerHandler lh =
       new PeerHandler(serverId, transport, config.getTimeoutMs()/3);
     lh.setLastAckedZxid(lastZxid);
+    lh.setLastCommittedZxid(lastZxid);
     lh.startBroadcastingTask();
     quorumMap.put(this.serverId, lh);
     // Gets the initial configuration at the beginning of broadcasting.
     ClusterConfiguration clusterConfig = persistence.getLastSeenConfig();
     PreProcessor preProcessor =
       new PreProcessor(stateMachine, quorumMap, clusterConfig.clone());
-    AckProcessor ackProcessor =
-      new AckProcessor(quorumMap, clusterConfig, lastZxid);
+    AckProcessor ackProcessor = new AckProcessor(quorumMap, clusterConfig);
     SyncProposalProcessor syncProcessor =
         new SyncProposalProcessor(persistence, transport, maxBatchSize);
     CommitProcessor commitProcessor =
@@ -792,6 +801,7 @@ public class Leader extends Participant {
                     ackZxid);
           Message commit = MessageBuilder.buildCommit(ackZxid);
           sendMessage(ph.getServerId(), commit);
+          ph.setLastCommittedZxid(ackZxid);
           ph.startBroadcastingTask();
           iter.remove();
         }
@@ -846,6 +856,7 @@ public class Leader extends Participant {
         LOG.debug("The ACK of pending peer is committed already, send COMMIT.");
         Message commit = MessageBuilder.buildCommit(ackZxid);
         sendMessage(peer.getServerId(), commit);
+        peer.setLastCommittedZxid(ackZxid);
         peer.startBroadcastingTask();
         pendingPeers.remove(source);
       }

@@ -56,12 +56,48 @@ public interface Log extends AutoCloseable {
    * Gets an iterator to read transactions from this log starting
    * at the given zxid (including zxid).
    *
-   * @param zxid the id of the transaction. If zxid id null,
-   * return the iterator from beginning of the log.
+   * @param zxid the id of the transaction.
    * @return an iterator to read the next transaction in logs.
    * @throws IOException in case of IO failures
    */
   LogIterator getIterator(Zxid zxid) throws IOException;
+
+  /**
+   * Given a zxid, finds out the first diverging point and returns a tuple
+   * of (diverging zxid, iterator points to next txn after diverging zxid).
+   * If there's no diverging point, which means the zxid is a prefix of the
+   * server's log, then the diverging zxid will be as same as giving zxid.
+   *
+   * Examples:
+   *
+   * <pre>
+   * case 1:
+   *  the log : (0, 0), (0, 1), (1, 1)
+   *  zxid : (0, 2)
+   *  returns ((0, 1), iter points to (1, 1))
+   *
+   * case 2:
+   *  the log : (0, 0), (0, 1), (1, 1)
+   *  zxid : (0, 1)
+   *  returns ((0, 1), iter points to (1, 1))
+   *
+   * case 3:
+   *  the log : (0, 0), (0, 1), (1, 1)
+   *  zxid : (1, 2)
+   *  returns ((1, 1), iter points to end of the log)
+   *
+   * case 4:
+   *  the log : (0, 2)
+   *  zxid : (0, 1)
+   *  returns ((0, -1), iter points (0, 2))
+   *</pre>
+   *
+   * @param zxid the id of the transaction.
+   * @return a tuple holds first diverging zxid and an iterator points to
+   * subsequent transactions.
+   * @throws IOException in case of IO failures
+   */
+  DivergingTuple firstDivergingPoint(Zxid zxid) throws IOException;
 
   /**
    * Syncs all the appended transactions to the physical media.
@@ -114,5 +150,26 @@ public interface Log extends AutoCloseable {
      */
     @Override
     void close() throws IOException;
+  }
+
+  /**
+   * The tuple holds the return value of firstDivergingPoint function.
+   */
+  static class DivergingTuple {
+    private final LogIterator iter;
+    private final Zxid zxid;
+
+    public DivergingTuple(LogIterator iter, Zxid zxid) {
+      this.iter = iter;
+      this.zxid = zxid;
+    }
+
+    public LogIterator getIterator() {
+      return this.iter;
+    }
+
+    public Zxid getDivergingZxid() {
+      return this.zxid;
+    }
   }
 }

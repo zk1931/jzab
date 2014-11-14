@@ -70,19 +70,11 @@ public class AckProcessor implements RequestProcessor,
 
   Future<Void> ft;
 
-  /**
-   * Last committed zxid sent by AckProcessor. Used to avoid sending duplicated
-   * COMMIT message.
-   */
-  private Zxid lastCommittedZxid;
-
   public AckProcessor(Map<String, PeerHandler> quorumMap,
-                      ClusterConfiguration cnf,
-                      Zxid lastCommittedZxid) {
+                      ClusterConfiguration cnf) {
     this.quorumMapOriginal = quorumMap;
     this.quorumMap = new HashMap<String, PeerHandler>(quorumMap);
     this.clusterConfig = cnf.clone();
-    this.lastCommittedZxid = lastCommittedZxid;
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
     ft = es.submit(this);
@@ -178,7 +170,7 @@ public class AckProcessor implements RequestProcessor,
               if (version.getXid() == 0) {
                 // Means the COP is the first transaction in this epoch, no
                 // transactions before COP needs to be committed.
-                zxidCanCommit = lastCommittedZxid;
+                continue;
               } else {
                 // We can commit the transaction up to the one before COP.
                 zxidCanCommit =
@@ -189,14 +181,24 @@ public class AckProcessor implements RequestProcessor,
                       zxidCanCommit);
           }
           LOG.debug("Can COMMIT : {}", zxidCanCommit);
-          if (zxidCanCommit.compareTo(this.lastCommittedZxid) > 0) {
-            // Avoid sending duplicated COMMIT message.
-            LOG.debug("Will send commit {} to quorumMap.", zxidCanCommit);
-            Message commit = MessageBuilder.buildCommit(zxidCanCommit);
-            for (PeerHandler ph : quorumMap.values()) {
-              ph.queueMessage(commit);
+          for (PeerHandler ph : quorumMap.values()) {
+            if (ph.getLastAckedZxid() == null) {
+              // Means the server hasn't acked any proposal.
+              continue;
             }
-            this.lastCommittedZxid = zxidCanCommit;
+            Zxid zxidCommit = zxidCanCommit;
+            if (zxidCommit.compareTo(ph.getLastAckedZxid()) > 0) {
+              // We shouldn't send COMMIT with zxid higher than what the peer
+              // acknowledged.
+              zxidCommit = ph.getLastAckedZxid();
+            }
+            if (zxidCommit.compareTo(ph.getLastCommittedZxid()) > 0) {
+              // Avoids sending duplicate transactions even the transactions
+              // are idempotent.
+              Message commit = MessageBuilder.buildCommit(zxidCommit);
+              ph.queueMessage(commit);
+              ph.setLastCommittedZxid(zxidCommit);
+            }
           }
         } else if (msg.getType() == MessageType.JOIN ||
                    msg.getType() == MessageType.ACK_EPOCH) {

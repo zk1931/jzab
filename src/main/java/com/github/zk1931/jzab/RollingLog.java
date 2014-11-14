@@ -18,6 +18,7 @@
 
 package com.github.zk1931.jzab;
 
+import com.github.zk1931.jzab.Log.DivergingTuple;
 import java.io.File;
 import java.io.IOException;
 import java.util.Collections;
@@ -177,6 +178,38 @@ public class RollingLog implements Log {
   @Override
   public LogIterator getIterator(Zxid zxid) throws IOException {
     return new RollingLogIterator(zxid);
+  }
+
+  /**
+   * See {@link Log#firstDivergingPoint}.
+   *
+   * @param zxid the id of the transaction.
+   * @return a tuple holds first diverging zxid and an iterator points to
+   * subsequent transactions.
+   * @throws IOException in case of IO failures
+   */
+  @Override
+  public DivergingTuple firstDivergingPoint(Zxid zxid) throws IOException {
+    int idx = getFileIdx(zxid);
+    if (idx == -1) {
+      Log.LogIterator iter = new RollingLogIterator(Zxid.ZXID_NOT_EXIST);
+      return new DivergingTuple(iter, Zxid.ZXID_NOT_EXIST);
+    }
+    Zxid firstZxid = getZxidFromFileName(logFiles.get(idx));
+    Log.LogIterator iter = new RollingLogIterator(firstZxid);
+    Zxid prevZxid = firstZxid;
+    while (iter.hasNext()) {
+      Zxid curZxid = iter.next().getZxid();
+      if (curZxid.compareTo(zxid) == 0) {
+        return new DivergingTuple(iter, zxid);
+      }
+      if (curZxid.compareTo(zxid) > 0) {
+        iter.close();
+        return new DivergingTuple(new RollingLogIterator(curZxid), prevZxid);
+      }
+      prevZxid = curZxid;
+    }
+    return new DivergingTuple(iter, prevZxid);
   }
 
   /**
