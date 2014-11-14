@@ -130,18 +130,19 @@ public class PreProcessor implements RequestProcessor,
           addToQuorumSet(source);
         } else if (msg.getType() == MessageType.REMOVE) {
           String peerId = msg.getRemove().getServerId();
+          String clientId = request.getServerId();
           LOG.debug("Got REMOVE for {}.", peerId);
           this.clusterConfig.removePeer(peerId);
           this.clusterConfig.setVersion(zxid);
           ByteBuffer cop = this.clusterConfig.toByteBuffer();
           Transaction txn = new Transaction(zxid, ProposalType.COP_VALUE, cop);
-          Message prop = MessageBuilder.buildProposal(txn);
+          Message prop = MessageBuilder.buildProposal(txn, clientId);
           // Broadcasts COP.
           for (PeerHandler ph : quorumMap.values()) {
             ph.queueMessage(prop);
           }
           // Removes it from quorum set.
-          removeFromQuorumSet(msg.getDisconnected().getServerId());
+          removeFromQuorumSet(peerId);
         } else if (msg.getType() == MessageType.DISCONNECTED) {
           String peerId = msg.getDisconnected().getServerId();
           LOG.debug("Got DISCONNECTED from {}.", peerId);

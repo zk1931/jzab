@@ -24,7 +24,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -32,6 +31,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import com.github.zk1931.jzab.PendingRequests.Tuple;
 import com.github.zk1931.jzab.proto.ZabMessage;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
 import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
@@ -71,9 +71,9 @@ public class CommitProcessor implements RequestProcessor,
 
   private final Queue<PendingFlush> flushQueue = new LinkedList<PendingFlush>();
 
-  Future<Void> ft;
+  private final PendingRequests pendings;
 
-  private final AtomicInteger pendingRequests;
+  Future<Void> ft;
 
   /**
    * Constructs a CommitProcessor. The CommitProcesor accepts both COMMIT and
@@ -88,7 +88,7 @@ public class CommitProcessor implements RequestProcessor,
    * @param quorumSet the initial quorum set. It's null on follower's side.
    * @param clusterConfig the initial cluster configurations.
    * @param leader the current established leader.
-   * @param pendingRequests the AtomicInteger object for pending requests.
+   * @param pendings the pending requests.
    */
   public CommitProcessor(StateMachine stateMachine,
                          Zxid lastDeliveredZxid,
@@ -97,14 +97,14 @@ public class CommitProcessor implements RequestProcessor,
                          Set<String> quorumSet,
                          ClusterConfiguration clusterConfig,
                          String leader,
-                         AtomicInteger pendingRequests) {
+                         PendingRequests pendings) {
     this.stateMachine = stateMachine;
     this.lastDeliveredZxid = lastDeliveredZxid;
     this.serverId = serverId;
     this.transport = transport;
-    this.clusterConfig = clusterConfig;
+    this.clusterConfig = clusterConfig.clone();
     this.leader = leader;
-    this.pendingRequests = pendingRequests;
+    this.pendings = pendings;
     if (quorumSet != null) {
       this.quorumSet = new HashSet<String>(quorumSet);
     } else {
@@ -158,26 +158,16 @@ public class CommitProcessor implements RequestProcessor,
               break;
             }
             if (txn.getType() == ProposalType.USER_REQUEST_VALUE) {
-              LOG.debug("Delivering transaction {}.", txn.getZxid());
-              stateMachine.deliver(txn.getZxid(), txn.getBody(), clientId);
-              if (clientId.equals(serverId)) {
-                // Decrements the size of pending requests.
-                pendingRequests.decrementAndGet();
-              }
+              deliverTxn(txn, clientId);
             } else if (txn.getType() == ProposalType.COP_VALUE) {
-              LOG.debug("Delivering COP {}.", txn.getZxid());
-              ClusterConfiguration cnf =
-                ClusterConfiguration.fromByteBuffer(txn.getBody(), "");
-              // Updates current cluster configuration.
-              clusterConfig = cnf;
-              // Notifies client the updated cluster configuration.
-              notifyClient();
-              if (!cnf.contains(this.serverId)) {
+              deliverConfiguration(txn, clientId);
+              if (!clusterConfig.contains(this.serverId)) {
                 // If the new configuration doesn't contain this server, we'll
                 // enqueue SHUT_DOWN message to main thread to let it quit.
                 LOG.debug("The new configuration doesn't contain {}", serverId);
                 Message shutdown = MessageBuilder.buildShutDown();
                 transport.send(this.serverId, shutdown);
+                return null;
               }
             } else {
               LOG.warn("Unknown proposal type.");
@@ -185,22 +175,11 @@ public class CommitProcessor implements RequestProcessor,
             }
             this.lastDeliveredZxid = txn.getZxid();
             // See if any pending flush requests are waiting for this COMMIT.
-            if (!flushQueue.isEmpty()) {
-              while(flushQueue.peek() != null) {
-                PendingFlush flush = flushQueue.peek();
-                if (flush.getWaitZxid().compareTo(lastDeliveredZxid) <= 0) {
-                  // Decrements the size of pending requests.
-                  pendingRequests.decrementAndGet();
-                  stateMachine.flushed(flush.getBody());
-                  flushQueue.remove();
-                } else {
-                  break;
-                }
-              }
-            }
+            deliverPendingFlushes(lastDeliveredZxid);
           }
           if (!zxid.equals(lastDeliveredZxid)) {
-            LOG.error("a bug?");
+            LOG.error("The last delivered zxid {} doesn't match committed zxid"
+                + " {}", lastDeliveredZxid, zxid);
             throw new RuntimeException("Potential bug found");
           }
           // Removes the delivered transactions.
@@ -227,16 +206,14 @@ public class CommitProcessor implements RequestProcessor,
           ZabMessage.Flush flush = msg.getFlush();
           ByteBuffer body = flush.getBody().asReadOnlyByteBuffer();
           Zxid zxid = MessageBuilder.fromProtoZxid(flush.getZxid());
-          if (lastDeliveredZxid.compareTo(zxid) >= 0) {
-            // Decrements the size of pending requests.
-            pendingRequests.decrementAndGet();
-            stateMachine.flushed(body);
-          } else {
-            flushQueue.add(new PendingFlush(zxid, body));
-          }
+          flushQueue.add(new PendingFlush(zxid, body));
+          // It's possible this flush request can be delivered immediately if
+          // the zxid it's waiting for has already been committed.
+          deliverPendingFlushes(lastDeliveredZxid);
         } else if (msg.getType() == MessageType.SNAPSHOT_DONE) {
           // Notify user the snapshot file is stored on disk.
-          this.stateMachine.snapshotDone(msg.getSnapshotDone().getFilePath());
+          Object ctx = pendings.pendingSnapshots.remove(0);
+          stateMachine.snapshotDone(msg.getSnapshotDone().getFilePath(), ctx);
         } else {
           if (LOG.isWarnEnabled()) {
             LOG.warn("Unexpected message {}", TextFormat.shortDebugString(msg));
@@ -267,6 +244,64 @@ public class CommitProcessor implements RequestProcessor,
   public void shutdown() throws InterruptedException, ExecutionException {
     this.commitQueue.add(MessageTuple.REQUEST_OF_DEATH);
     this.ft.get();
+  }
+
+  void deliverTxn(Transaction txn, String clientId) {
+    LOG.debug("Delivering transaction {}.", txn.getZxid());
+    Object ctx = null;
+    if (clientId != null && clientId.equals(serverId)) {
+      Tuple tp = pendings.pendingSends.remove(0);
+      if (tp == null) {
+        throw new RuntimeException("There's no element in "
+            + "pendingSends.");
+      }
+      ctx = tp.ctx;
+    }
+    stateMachine.deliver(txn.getZxid(), txn.getBody(), clientId, ctx);
+  }
+
+  void deliverConfiguration(Transaction txn, String clientId)
+      throws Exception {
+    LOG.debug("Delivering COP {}.", txn.getZxid());
+    ClusterConfiguration cnf =
+      ClusterConfiguration.fromByteBuffer(txn.getBody(), "");
+    // If the COP comes from itself, it must be REMOVE.
+    if (clientId != null && clientId.equals(this.serverId)) {
+      Tuple tp = pendings.pendingRemoves.remove(0);
+      if (tp == null) {
+        throw new RuntimeException("There's no element in "
+            + "pendingRemoves.");
+      }
+      Object ctx = tp.ctx;
+      String peerID = (String)tp.param;
+      stateMachine.removed(peerID, ctx);
+    }
+    // Updates current cluster configuration.
+    clusterConfig = cnf;
+    // Notifies client the updated cluster configuration.
+    notifyClient();
+  }
+
+  // Delivers all the pending flush requests with zxid equal or smaller than
+  // given zxid.
+  void deliverPendingFlushes(Zxid zxid) {
+    if (!flushQueue.isEmpty()) {
+      while(flushQueue.peek() != null) {
+        PendingFlush flush = flushQueue.peek();
+        if (flush.getWaitZxid().compareTo(zxid) <= 0) {
+          Tuple tp = pendings.pendingFlushes.remove(0);
+          if (tp == null) {
+            throw new RuntimeException("There's no element in "
+                + "pendingFlushes.");
+          }
+          Object ctx = tp.ctx;
+          stateMachine.flushed(flush.getBody(), ctx);
+          flushQueue.remove();
+        } else {
+          break;
+        }
+      }
+    }
   }
 
   public Zxid getLastDeliveredZxid() {

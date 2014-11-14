@@ -187,7 +187,7 @@ public class Leader extends Participant {
       }
     } else if (phase == Phase.FINALIZING) {
       MDC.put("phase", "finalizing");
-      this.stateMachine.recovering();
+      stateMachine.recovering(pendings);
       if (persistence.isInStateTransfer()) {
         // If the participant goes back to recovering phase in state
         // transferring mode, we need to explicitly undo the state transferring.
@@ -609,7 +609,7 @@ public class Leader extends Participant {
     CommitProcessor commitProcessor =
         new CommitProcessor(stateMachine, lastDeliveredZxid, serverId,
                             transport, quorumMap.keySet(),
-                            clusterConfig, electedLeader, pendingReqs);
+                            clusterConfig, electedLeader, pendings);
     SnapshotProcessor snapProcessor =
       new SnapshotProcessor(stateMachine, persistence, serverId, transport);
     // First time notifies the client active members and cluster configuration.

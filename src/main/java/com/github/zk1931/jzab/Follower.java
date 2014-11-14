@@ -140,7 +140,7 @@ public class Follower extends Participant {
       }
     } else if (phase == Phase.FINALIZING) {
       MDC.put("phase", "finalizing");
-      this.stateMachine.recovering();
+      stateMachine.recovering(pendings);
       if (persistence.isInStateTransfer()) {
         // If the participant goes back to recovering phase in state
         // trasferring mode, we need to explicitly undo the state transferring.
@@ -416,7 +416,7 @@ public class Follower extends Participant {
     CommitProcessor commitProcessor
       = new CommitProcessor(stateMachine, lastDeliveredZxid, serverId,
                             transport, null, clusterConfig, electedLeader,
-                            pendingReqs);
+                            pendings);
     SnapshotProcessor snapProcessor =
       new SnapshotProcessor(stateMachine, persistence, serverId, transport);
     // The last time of HEARTBEAT message comes from leader.

@@ -60,7 +60,8 @@ class SnapshotStateMachine implements StateMachine {
   }
 
   @Override
-  public void deliver(Zxid zxid, ByteBuffer stateUpdate, String clientId) {
+  public void deliver(Zxid zxid, ByteBuffer stateUpdate, String clientId,
+                      Object ctx) {
     byte[] buffer = new byte[stateUpdate.remaining()];
     stateUpdate.get(buffer);
     String key = new String(buffer);
@@ -70,7 +71,7 @@ class SnapshotStateMachine implements StateMachine {
   }
 
   @Override
-  public void flushed(ByteBuffer flushReq) {}
+  public void flushed(ByteBuffer flushReq, Object ctx) {}
 
   @Override
   public void save(OutputStream os) {
@@ -84,7 +85,7 @@ class SnapshotStateMachine implements StateMachine {
   }
 
   @Override
-  public void snapshotDone(String filePath) {
+  public void snapshotDone(String filePath, Object ctx) {
     LOG.debug("Snapshot is stored at {}", filePath);
     semSnapshot.release();
   }
@@ -109,7 +110,11 @@ class SnapshotStateMachine implements StateMachine {
   }
 
   @Override
-  public void recovering() {}
+  public void removed(String serverId, Object ctx) {
+  }
+
+  @Override
+  public void recovering(PendingRequests pendings) {}
 
   @Override
   public void leading(Set<String> followers, Set<String> members) {
@@ -152,11 +157,11 @@ public class SnapshotTest extends TestBase {
     st1.waitMemberChanged();
 
     for (int i = 0; i < nTxns; ++i) {
-      zab.send(ByteBuffer.wrap(("txns" + i).getBytes()));
+      zab.send(ByteBuffer.wrap(("txns" + i).getBytes()), null);
     }
     st1.txnsCount.await();
     // Take the snapshot after all transaction gets delivered.
-    zab.takeSnapshot();
+    zab.takeSnapshot(null);
     st1.waitSnapshot();
 
     Thread.sleep(1000);
@@ -192,11 +197,11 @@ public class SnapshotTest extends TestBase {
     st2.waitMemberChanged();
     int snapIdx = new Random().nextInt(nTxns);
     for (int i = 0; i < nTxns; ++i) {
-      zab1.send(ByteBuffer.wrap(("txns" + i).getBytes()));
+      zab1.send(ByteBuffer.wrap(("txns" + i).getBytes()), null);
       Thread.sleep(5);
       if (i == snapIdx) {
-        zab1.takeSnapshot();
-        zab2.takeSnapshot();
+        zab1.takeSnapshot(null);
+        zab2.takeSnapshot(null);
         st1.waitSnapshot();
         st2.waitSnapshot();
       }
@@ -246,11 +251,11 @@ public class SnapshotTest extends TestBase {
 
     int snapIdx = new Random().nextInt(nTxns);
     for (int i = 0; i < nTxns; ++i) {
-      zab1.send(ByteBuffer.wrap(("txns" + i).getBytes()));
+      zab1.send(ByteBuffer.wrap(("txns" + i).getBytes()), null);
       // Sleep a while to avoid all the transactions batch together.
       Thread.sleep(5);
       if (i == snapIdx) {
-        zab1.takeSnapshot();
+        zab1.takeSnapshot(null);
         st1.waitSnapshot();
       }
     }
@@ -305,7 +310,7 @@ public class SnapshotTest extends TestBase {
     Assert.assertEquals(cb2.initialHistory.get(0).getZxid(), new Zxid(0, 0));
 
     // server1 gonna take snapshot.
-    zab1.takeSnapshot();
+    zab1.takeSnapshot(null);
     st1.waitSnapshot();
     // Make sure server1 does take snapshot.
     Assert.assertEquals(new Zxid(0, 4), state1.getSnapshotZxid());
@@ -364,7 +369,7 @@ public class SnapshotTest extends TestBase {
     Assert.assertEquals(cb2.initialHistory.get(0).getZxid(), new Zxid(0, 0));
 
     // server1 takes snapshot.
-    zab1.takeSnapshot();
+    zab1.takeSnapshot(null);
     st1.waitSnapshot();
     // Make sure server1 did take snapshot.
     Assert.assertEquals(new Zxid(0, 4), state1.getSnapshotZxid());

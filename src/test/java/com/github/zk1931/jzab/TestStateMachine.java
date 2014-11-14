@@ -60,7 +60,8 @@ class TestStateMachine implements StateMachine {
   }
 
   @Override
-  public void deliver(Zxid zxid, ByteBuffer stateUpdate, String clientId) {
+  public void deliver(Zxid zxid, ByteBuffer stateUpdate, String clientId,
+                      Object ctx) {
     // Add the delivered message to list.
     LOG.debug("Delivers txn {}. Origin : {}", zxid, clientId);
     this.deliveredTxns.add(new Transaction(zxid, stateUpdate));
@@ -70,12 +71,16 @@ class TestStateMachine implements StateMachine {
   }
 
   @Override
-  public void flushed(ByteBuffer flushReq) {
+  public void flushed(ByteBuffer flushReq, Object ctx) {
     LOG.debug("Deliver syncReq {}.");
     this.deliveredTxns.add(new Transaction(Zxid.ZXID_NOT_EXIST, flushReq));
     if (txnsCount != null) {
       txnsCount.countDown();
     }
+  }
+
+  @Override
+  public void removed(String serverId, Object ctx) {
   }
 
   @Override
@@ -85,7 +90,7 @@ class TestStateMachine implements StateMachine {
   }
 
   @Override
-  public void snapshotDone(String filePath) {
+  public void snapshotDone(String filePath, Object ctx) {
   }
 
   @Override
@@ -95,8 +100,7 @@ class TestStateMachine implements StateMachine {
   }
 
   @Override
-  public void recovering() {
-  }
+  public void recovering(PendingRequests pendings) {}
 
   @Override
   public void leading(Set<String> followers, Set<String> clusterMembers) {
