@@ -188,6 +188,11 @@ public class Leader extends Participant {
     } else if (phase == Phase.FINALIZING) {
       MDC.put("phase", "finalizing");
       this.stateMachine.recovering();
+      if (persistence.isInStateTransfer()) {
+        // If the participant goes back to recovering phase in state
+        // transferring mode, we need to explicitly undo the state transferring.
+        persistence.undoStateTransfer();
+      }
       // Shuts down all the handler of followers.
       for (PeerHandler ph : this.quorumMap.values()) {
         ph.shutdown();

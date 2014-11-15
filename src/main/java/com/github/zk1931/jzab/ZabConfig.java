@@ -26,6 +26,7 @@ public class ZabConfig {
    * Maximum number of pending requests allowed for each server.
    */
   static final int MAX_PENDING_REQS = 5000;
+  static final long ROLLING_SIZE = 1024 * 1024 * 1024;
   private int timeoutMs = 1000;
   private int minSyncTimeoutMs = 3000;
   // The default logDir is current working directory.

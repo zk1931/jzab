@@ -141,6 +141,11 @@ public class Follower extends Participant {
     } else if (phase == Phase.FINALIZING) {
       MDC.put("phase", "finalizing");
       this.stateMachine.recovering();
+      if (persistence.isInStateTransfer()) {
+        // If the participant goes back to recovering phase in state
+        // trasferring mode, we need to explicitly undo the state transferring.
+        persistence.undoStateTransfer();
+      }
       // Closes the connection to leader.
       if (this.electedLeader != null) {
         this.transport.clear(this.electedLeader);
