@@ -219,7 +219,9 @@ public class RollingLog implements Log {
    */
   @Override
   public void sync() throws IOException {
-    this.currentLog.sync();
+    if (this.currentLog != null) {
+      this.currentLog.sync();
+    }
   }
 
   /**

@@ -102,8 +102,7 @@ public class PersistentState {
    * @param dir the log directory.
    */
   Log createLog(File dir) throws IOException {
-    File logFile = new File(dir, "transaction.log");
-    return new SimpleLog(logFile);
+    return new RollingLog(dir, ZabConfig.ROLLING_SIZE);
   }
 
   /**
