@@ -23,7 +23,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
@@ -106,14 +105,6 @@ public abstract class Participant {
   protected final ParticipantState participantState;
 
   /**
-   * The number of pending requests (enqueued by calling send or flush). We
-   * keep track of the number of pending requests because once the number of
-   * pending requests exceeds certain threshold, we'll raise an exception to
-   * user.
-   */
-  protected final AtomicInteger pendingReqs = new AtomicInteger(0);
-
-  /**
    *  The maximum batch size for SyncProposalProcessor.
    */
   protected final int maxBatchSize;
@@ -131,14 +122,29 @@ public abstract class Participant {
   protected Phase currentPhase = Phase.DISCOVERING;
 
   /**
-   * Whether there's is a snapshot request in progress.
-   */
-  protected boolean isSnapshotInProgress = false;
-
-  /**
    * Different kinds of pending requests.
    */
   protected final PendingRequests pendings = new PendingRequests();
+
+  /**
+   * SyncProposalProcessor logs the transaction to disk.
+   */
+  protected SyncProposalProcessor syncProcessor = null;
+
+  /**
+   * CommitProcessor notifies user different kinds of events.
+   */
+  protected CommitProcessor commitProcessor = null;
+
+  /**
+   * SnapshotProcessor takes snapshot.
+   */
+  protected SnapshotProcessor snapProcessor = null;
+
+  /**
+   * Current cluster configuration.
+   */
+  protected ClusterConfiguration clusterConfig = null;
 
   private static final Logger LOG = LoggerFactory.getLogger(Participant.class);
 
@@ -573,13 +579,18 @@ public abstract class Participant {
   /**
    * Handled the DELIVERED message comes from CommitProcessor.
    */
-  protected void onDelivered(Message msg, SnapshotProcessor snapProcessor) {
+  protected void onDelivered(Message msg) {
     // Updates last delivered zxid.
     this.lastDeliveredZxid =
       MessageBuilder.fromProtoZxid(msg.getDelivered().getZxid());
   }
 
-  protected void onFlush(MessageTuple tuple, CommitProcessor commitProcessor) {
+  protected void onFlush(MessageTuple tuple) {
+    commitProcessor.processRequest(tuple);
+  }
+
+  protected void onProposal(MessageTuple tuple) {
+    syncProcessor.processRequest(tuple);
     commitProcessor.processRequest(tuple);
   }
 
