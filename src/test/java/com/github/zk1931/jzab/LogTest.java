@@ -364,4 +364,11 @@ public class LogTest extends TestBase {
     Assert.assertEquals(Zxid.ZXID_NOT_EXIST, dp.getDivergingZxid());
     Assert.assertFalse(dp.getIterator().hasNext());
   }
+
+  @Test
+  public void testSyncEmptyLog() throws Exception {
+    Log log = getLog();
+    log.sync();
+    log.close();
+  }
 }

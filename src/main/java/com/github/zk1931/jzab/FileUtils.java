@@ -32,6 +32,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 /**
  * A static class that contains file-related utility methods.
@@ -138,6 +139,6 @@ public final class FileUtils {
    * @throws IOException if an I/O error occurs.
    */
   public static void atomicMove(File source, File dest) throws IOException {
-    Files.move(source.toPath(), dest.toPath(), ATOMIC_MOVE);
+    Files.move(source.toPath(), dest.toPath(), ATOMIC_MOVE, REPLACE_EXISTING);
   }
 }

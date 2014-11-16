@@ -119,7 +119,7 @@ public class SyncProposalProcessorTest extends TestBase {
     Log log = getLog(String.format("%d_%d_%d_%d", epoch, transactionSize,
                                    numTransactions, batchSize));
     PersistentState persistence =
-      new PersistentState(getDirectory(), null, log);
+      new PersistentState(getDirectory(), log);
     TestReceiver receiver = new TestReceiver();
     Transport transport = new NettyTransport(leader, receiver, getDirectory());
     ClusterConfiguration cnf =

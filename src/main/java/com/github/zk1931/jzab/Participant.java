@@ -410,7 +410,13 @@ public abstract class Participant {
       Zxid lastPrefixZxid =
         MessageBuilder.fromProtoZxid(trunc.getLastPrefixZxid());
       lastZxidPeer = MessageBuilder.fromProtoZxid(trunc.getLastZxid());
-      log.truncate(lastPrefixZxid);
+      if (lastZxidPeer.equals(Zxid.ZXID_NOT_EXIST)) {
+        // When the truncate zxid is <0, -1>, we treat this as a state
+        // transfer even it might not be.
+        persistence.beginStateTransfer();
+      } else {
+        log.truncate(lastPrefixZxid);
+      }
       if (lastZxidPeer.compareTo(lastPrefixZxid) == 0) {
         waitForSyncEnd(peer);
         return;
@@ -428,6 +434,8 @@ public abstract class Participant {
       msg = getExpectedMessage(MessageType.FILE_RECEIVED, peer).getMessage();
       // Turns the temp file to snapshot file.
       File file = new File(msg.getFileReceived().getFullPath());
+      // If the message is SNAPSHOT, it's state transferring.
+      persistence.beginStateTransfer();
       persistence.setSnapshotFile(file, snapZxid);
       // Truncates the whole log.
       log.truncate(Zxid.ZXID_NOT_EXIST);
@@ -438,6 +446,7 @@ public abstract class Participant {
         return;
       }
     }
+    log = persistence.getLog();
     // Get subsequent proposals.
     while (true) {
       MessageTuple tuple = getExpectedMessage(MessageType.PROPOSAL, peer,
@@ -478,6 +487,9 @@ public abstract class Participant {
                                        this.serverId);
     LOG.debug("Got SYNC_END {} from {}", cnf, peerId);
     this.persistence.setLastSeenConfig(cnf);
+    if (persistence.isInStateTransfer()) {
+      persistence.endStateTransfer();
+    }
   }
 
   /**

@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -36,7 +37,7 @@ public class PersistentState {
   /**
    * The transaction log.
    */
-  protected final Log log;
+  protected Log log;
 
   /**
    * The file to store the last acknowledged epoch.
@@ -56,7 +57,12 @@ public class PersistentState {
   /**
    * The sub directory for log and snapshots.
    */
-  private final File dataDir;
+  private File dataDir;
+
+  /**
+   * The boolean flag indicates whether the state is in state tranfering mode.
+   */
+  private boolean isTransferring = false;
 
   private static final Logger LOG
     = LoggerFactory.getLogger(PersistentState.class);
@@ -66,33 +72,37 @@ public class PersistentState {
   }
 
   public PersistentState(File dir) throws IOException {
-    this(dir, null, null);
+    this(dir, null);
   }
 
-  PersistentState(File dir, File dtDir, Log log) throws IOException {
+  PersistentState(File dir, Log log) throws IOException {
     this.rootDir = dir;
     LOG.debug("Trying to create log directory {}", rootDir.getAbsolutePath());
     if (!rootDir.mkdir()) {
       LOG.debug("Creating log directory {} failed, already exists?",
                 rootDir.getAbsolutePath());
     }
-    if (dtDir == null) {
-      this.dataDir = new File(rootDir, "data");
-    } else {
-      this.dataDir = dtDir;
-    }
-    if (!this.dataDir.mkdir()) {
-      LOG.debug("Creating data directory {} failed, already exists?",
-                dataDir.getAbsolutePath());
+    this.dataDir = getLatestDataDir();
+    if (this.dataDir == null) {
+      this.dataDir = getNextDataDir();
+      this.dataDir.mkdir();
     }
     this.fAckEpoch = new File(rootDir, "ack_epoch");
     this.fProposedEpoch = new File(rootDir, "proposed_epoch");
-    File logFile = new File(dataDir, "transaction.log");
     if (log == null) {
-      this.log = new SimpleLog(logFile);
+      this.log = createLog(this.dataDir);
     } else {
       this.log = log;
     }
+  }
+
+  /**
+   * Creates or restores the transaction log from a given directory.
+   *
+   * @param dir the log directory.
+   */
+  Log createLog(File dir) throws IOException {
+    return new RollingLog(dir, ZabConfig.ROLLING_SIZE);
   }
 
   /**
@@ -292,8 +302,7 @@ public class PersistentState {
     List<File> files = new ArrayList<File>();
     String pattern = prefix + "\\.\\d+_\\d+";
     for (File file : dir.listFiles()) {
-      if (!file.isDirectory() &&
-          file.getName().matches(pattern)) {
+      if (!file.isDirectory() && file.getName().matches(pattern)) {
         // Only consider those with valid name.
         files.add(file);
       }
@@ -312,5 +321,86 @@ public class PersistentState {
     try (FileChannel channel = FileChannel.open(this.rootDir.toPath())) {
       channel.force(true);
     }
+  }
+
+  /**
+   * Begins state transfering mode, all txns and snapshots persisted in state
+   * transfering mode will not show up after recovery if you do not call
+   * {@link endStateTransfer}.
+   */
+  void beginStateTransfer() throws IOException {
+    this.isTransferring = true;
+    this.dataDir =
+      Files.createTempDirectory(this.rootDir.toPath(), "tmp_data").toFile();
+    this.log = createLog(this.dataDir);
+  }
+
+  /**
+   * Ends state transfering mode, after calling this function, all the txns
+   * and snapshots persisted during the transfering mode will be visible from
+   * now.
+   */
+  void endStateTransfer() throws IOException {
+    File nextDir = getNextDataDir();
+    FileUtils.atomicMove(this.dataDir, nextDir);
+    // Update current data directory.
+    this.dataDir = nextDir;
+    // Restores transaction log.
+    this.log = createLog(dataDir);
+    fsyncDirectory();
+    this.isTransferring = false;
+  }
+
+  /**
+   * Whether the persistent state is in state transfering mode or not.
+   */
+  boolean isInStateTransfer() {
+    return this.isTransferring;
+  }
+
+  /**
+   * Clear all the data in state transfering mode and restores to previous
+   * state.
+   */
+  void undoStateTransfer() throws IOException {
+    this.isTransferring = false;
+    // Restores data directory.
+    this.dataDir = getLatestDataDir();
+    // Restores transaction log.
+    this.log = createLog(dataDir);
+  }
+
+  /**
+   * Gets the latest data directory.
+   */
+  File getLatestDataDir() {
+    List<String> files = new ArrayList<String>();
+    String pattern = "data\\d+";
+    for (File file : this.rootDir.listFiles()) {
+      if (file.getName().matches(pattern) && file.isDirectory()) {
+        files.add(file.getName());
+      }
+    }
+    if (!files.isEmpty()) {
+      // Picks the last one.
+      Collections.sort(files);
+      return new File(this.rootDir, files.get(files.size() - 1));
+    }
+    return null;
+  }
+
+  /**
+   * Gets the next data directory.
+   */
+  File getNextDataDir() {
+    File latest = getLatestDataDir();
+    long newID;
+    if (latest == null) {
+      newID = 0;
+    } else {
+      newID = Long.parseLong(latest.getName().substring(4)) + 1;
+    }
+    String suffix = String.format("%015d", newID);
+    return new File(this.rootDir, "data" + suffix);
   }
 }

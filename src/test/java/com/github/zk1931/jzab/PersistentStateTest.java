@@ -23,11 +23,18 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import org.junit.Assert;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *  Test PersistentState.
  */
 public class PersistentStateTest extends TestBase {
+
+  private static final Logger LOG = LoggerFactory.getLogger(LogTest.class);
+
+  Class<Log> logClass;
+
   @Test
   public void testEmpty() throws IOException {
     // Test for empty directory.
@@ -83,5 +90,71 @@ public class PersistentStateTest extends TestBase {
     Assert.assertEquals(new Zxid(0, 1), cnf.getVersion());
     Assert.assertEquals("v", cnf.getServerId());
     Assert.assertEquals(true, cnf.getPeers().isEmpty());
+  }
+
+  @Test
+  public void testStateTransfering() throws IOException {
+    PersistentState persistence = new PersistentState(getDirectory());
+    appendTxns(persistence.getLog(), new Zxid(0, 0), 2);
+    Assert.assertEquals(new Zxid(0, 1), persistence.getLatestZxid());
+    /*
+     * Test case 1:
+     *
+     * Appends 100 txns in state transfering mode then ends transfering mode
+     * and verify they show up in log.
+     */
+    // Begins state transfering mode.
+    persistence.beginStateTransfer();
+    // Make sure it's in state transfering mode.
+    Assert.assertTrue(persistence.isInStateTransfer());
+    // Appends 100 txns.
+    appendTxns(persistence.getLog(), new Zxid(0, 0), 100);
+    // Make sure the appended txns show up.
+    Assert.assertEquals(new Zxid(0, 99), persistence.getLatestZxid());
+    // Ends state transfering.
+    persistence.endStateTransfer();
+    // Restores state.
+    persistence = new PersistentState(getDirectory());
+    // Make sure the appended txns show up.
+    Assert.assertEquals(new Zxid(0, 99), persistence.getLatestZxid());
+
+    /*
+     * Test case 2:
+     *
+     * Appends 10 txns in state transfering mode, but without calling
+     * endStateTransfering we restore persistent state and verify the
+     * 10 txns will not show up.
+     */
+    // Begins state transfering mode again.
+    persistence.beginStateTransfer();
+    // Make sure it's in state transfering mode.
+    Assert.assertTrue(persistence.isInStateTransfer());
+    // Appends 10 txns.
+    appendTxns(persistence.getLog(), new Zxid(0, 0), 10);
+    // Make sure the appended txns show up.
+    Assert.assertEquals(new Zxid(0, 9), persistence.getLatestZxid());
+    // But we'll not call endStateTransfering, the intermediate result will be
+    // discarded.
+    persistence = new PersistentState(getDirectory());
+    // Still show old data.
+    Assert.assertEquals(new Zxid(0, 99), persistence.getLatestZxid());
+
+    /*
+     * Test case 3:
+     *
+     * Appends 10 txns in state transfering mode, but without calling
+     * endStateTransfering we undo the state transfering explicitly and verify
+     * the 10 txns will not show up.
+     */
+    persistence.beginStateTransfer();
+    // Appends 10 txns.
+    appendTxns(persistence.getLog(), new Zxid(0, 0), 10);
+    // Make sure the appended txns show up.
+    Assert.assertEquals(new Zxid(0, 9), persistence.getLatestZxid());
+    Assert.assertTrue(persistence.isInStateTransfer());
+    // Undo state transfering manually.
+    persistence.undoStateTransfer();
+    // Still show old data.
+    Assert.assertEquals(new Zxid(0, 99), persistence.getLatestZxid());
   }
 }
