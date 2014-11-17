@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import org.junit.Assert;
@@ -658,9 +659,9 @@ public class ZabTest extends TestBase  {
     cb2.waitBroadcasting();
     cb3.waitBroadcasting();
 
-    zab1.send(ByteBuffer.wrap("HelloWorld1".getBytes()));
-    zab1.send(ByteBuffer.wrap("HelloWorld2".getBytes()));
-    zab2.send(ByteBuffer.wrap("HelloWorld3".getBytes()));
+    zab1.send(ByteBuffer.wrap("HelloWorld1".getBytes()), null);
+    zab1.send(ByteBuffer.wrap("HelloWorld2".getBytes()), null);
+    zab2.send(ByteBuffer.wrap("HelloWorld3".getBytes()), null);
 
     st1.txnsCount.await();
     st2.txnsCount.await();
@@ -1393,7 +1394,7 @@ public class ZabTest extends TestBase  {
     Zab zab3 = new Zab(st3, config3, server3, server1, state3, cb3, null);
     cb1.waitCopCommit();
 
-    zab1.send(ByteBuffer.wrap("req1".getBytes()));
+    zab1.send(ByteBuffer.wrap("req1".getBytes()), null);
     // Waits for the transaction delivered.
     st1.txnsCount.await();
     st2.txnsCount.await();
@@ -1439,8 +1440,8 @@ public class ZabTest extends TestBase  {
 
     Zab zab1 = new Zab(st1, config1, server1, server1, state1, cb1, null);
     cb1.waitBroadcasting();
-    zab1.send(ByteBuffer.wrap("req1".getBytes()));
-    zab1.send(ByteBuffer.wrap("req2".getBytes()));
+    zab1.send(ByteBuffer.wrap("req1".getBytes()), null);
+    zab1.send(ByteBuffer.wrap("req2".getBytes()), null);
 
     Zab zab2 = new Zab(st2, config2, server2, server1, state2, cb2, null);
     cb1.waitCopCommit();
@@ -1449,7 +1450,7 @@ public class ZabTest extends TestBase  {
     cb1.waitCopCommit();
     cb3.waitBroadcasting();
 
-    zab1.send(ByteBuffer.wrap("req3".getBytes()));
+    zab1.send(ByteBuffer.wrap("req3".getBytes()), null);
 
     // Waits for all the transactions delivered.
     st1.txnsCount.await();
@@ -1493,7 +1494,7 @@ public class ZabTest extends TestBase  {
 
     Zab zab1 = new Zab(st1, config1, server1, server1, state1, cb1, null);
     cb1.waitBroadcasting();
-    zab1.send(ByteBuffer.wrap("req1".getBytes()));
+    zab1.send(ByteBuffer.wrap("req1".getBytes()), null);
 
     Zab zab2 = new Zab(st2, config2, server2, server1, state2, cb2, null);
     cb2.waitBroadcasting();
@@ -1503,7 +1504,7 @@ public class ZabTest extends TestBase  {
     zab2.shutdown();
 
     try {
-      zab1.send(ByteBuffer.wrap("req2".getBytes()));
+      zab1.send(ByteBuffer.wrap("req2".getBytes()), null);
     } catch (ZabException.NotBroadcastingPhase ex) {
       LOG.debug("No in broadcasting phase.");
     }
@@ -1550,11 +1551,11 @@ public class ZabTest extends TestBase  {
     Zab zab2 = new Zab(st2, config2, server2, server1, state2, cb2, null);
     cb2.waitBroadcasting();
 
-    zab1.send(ByteBuffer.wrap("req1".getBytes()));
-    zab1.remove(server2);
+    zab1.send(ByteBuffer.wrap("req1".getBytes()), null);
+    zab1.remove(server2, null);
     // Waits server2 exits.
     cb2.waitExit();
-    zab1.send(ByteBuffer.wrap("req2".getBytes()));
+    zab1.send(ByteBuffer.wrap("req2".getBytes()), null);
     st1.txnsCount.await();
     st2.txnsCount.await();
     zab1.shutdown();
@@ -1593,7 +1594,7 @@ public class ZabTest extends TestBase  {
     cb2.waitBroadcasting();
 
     // serve2 removes server1.
-    zab2.remove(server1);
+    zab2.remove(server1, null);
     // Waits old leader exits.
     cb1.waitExit();
     // Waits for server2 goes back to broadcasting phase again.
@@ -1668,7 +1669,7 @@ public class ZabTest extends TestBase  {
 
     // While server2 is joining, we start sending 100 requests.
     for (int i = 0; i < 100; ++i) {
-      zab1.send(ByteBuffer.wrap("txn".getBytes()));
+      zab1.send(ByteBuffer.wrap("txn".getBytes()), null);
     }
     st1.txnsCount.await();
     st2.txnsCount.await();
@@ -1702,15 +1703,15 @@ public class ZabTest extends TestBase  {
     cb1.waitBroadcasting();
 
     // Send first request.
-    zab1.send(ByteBuffer.wrap("txn".getBytes()));
+    zab1.send(ByteBuffer.wrap("txn".getBytes()), null);
 
     Zab zab2 = new Zab(st2, config2, server2, server1, state2, cb2, null);
     cb2.waitBroadcasting();
     // Server2 removes itself from cluster.
-    zab2.remove(server2);
+    zab2.remove(server2, null);
 
     for (int i = 0; i < 100; ++i) {
-      zab1.send(ByteBuffer.wrap("txn".getBytes()));
+      zab1.send(ByteBuffer.wrap("txn".getBytes()), null);
     }
     // Waits server 1 delivers all the 101 transactions.
     st1.txnsCount.await();
@@ -1762,7 +1763,7 @@ public class ZabTest extends TestBase  {
     st3.waitMembershipChanged();
 
     // Server1 exits.
-    zab1.remove(server1);
+    zab1.remove(server1, null);
     // Waits server1 exit.
     cb1.waitExit();
 
@@ -1792,8 +1793,8 @@ public class ZabTest extends TestBase  {
     Zab zab1 = new Zab(st1, config1, server1, server1, state1, cb1, null);
     cb1.waitBroadcasting();
 
-    zab1.send(ByteBuffer.wrap("req1".getBytes()));
-    zab1.flush(ByteBuffer.wrap("flush".getBytes()));
+    zab1.send(ByteBuffer.wrap("req1".getBytes()), null);
+    zab1.flush(ByteBuffer.wrap("flush".getBytes()), null);
 
     st1.txnsCount.await();
     // Make sure first delivered txn is req1.
@@ -1825,11 +1826,11 @@ public class ZabTest extends TestBase  {
     Zab zab2 = new Zab(st2, config2, server2, server1, state2, cb2, null);
     cb2.waitBroadcasting();
 
-    zab2.send(ByteBuffer.wrap("req1".getBytes()));
-    zab2.flush(ByteBuffer.wrap("flush1".getBytes()));
-    zab2.send(ByteBuffer.wrap("req2".getBytes()));
-    zab2.flush(ByteBuffer.wrap("flush2".getBytes()));
-    zab2.send(ByteBuffer.wrap("req3".getBytes()));
+    zab2.send(ByteBuffer.wrap("req1".getBytes()), null);
+    zab2.flush(ByteBuffer.wrap("flush1".getBytes()), null);
+    zab2.send(ByteBuffer.wrap("req2".getBytes()), null);
+    zab2.flush(ByteBuffer.wrap("flush2".getBytes()), null);
+    zab2.send(ByteBuffer.wrap("req3".getBytes()), null);
 
     st1.txnsCount.await();
     st2.txnsCount.await();
@@ -1954,7 +1955,106 @@ public class ZabTest extends TestBase  {
     config1.setLogDir(new File(getDirectory(), server1).getPath());
     Zab zab1 = new Zab(st, config1, server1, peers);
 
-    zab1.send(ByteBuffer.wrap("HelloWorld".getBytes()));
+    zab1.send(ByteBuffer.wrap("HelloWorld".getBytes()), null);
     zab1.shutdown();
+  }
+
+  @Test(timeout=20000)
+  public void testContext() throws Exception {
+    // State machine implementation.
+    class CtxStateMachine  extends TestStateMachine {
+      ArrayList<Object> sendCtxs = new ArrayList<Object>();
+      ArrayList<Object> flushCtxs = new ArrayList<Object>();
+      ArrayList<Object> removeCtxs = new ArrayList<Object>();
+      ArrayList<Object> snapshotCtxs = new ArrayList<Object>();
+      CountDownLatch condRemoved = new CountDownLatch(1);
+
+      CtxStateMachine(int count) {
+        super(count);
+      }
+
+      @Override
+      public void deliver(Zxid zxid, ByteBuffer stateUpdate, String clientId,
+                          Object ctx) {
+        if (ctx != null) {
+          sendCtxs.add(ctx);
+        }
+        super.deliver(zxid, stateUpdate, clientId, ctx);
+      }
+
+      @Override
+      public void flushed(ByteBuffer flushReq, Object ctx) {
+        flushCtxs.add(ctx);
+        super.flushed(flushReq, ctx);
+      }
+
+      @Override
+      public void removed(String serverId, Object ctx) {
+        removeCtxs.add(ctx);
+        condRemoved.countDown();
+      }
+
+      @Override
+      public void snapshotDone(String filePath, Object ctx) {
+        snapshotCtxs.add(ctx);
+      }
+    }
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+
+    CtxStateMachine st1 = new CtxStateMachine(6);
+    CtxStateMachine st2 = new CtxStateMachine(5);
+
+    String server1 = getUniqueHostPort();
+    String server2 = getUniqueHostPort();
+    Set<String> peers = new HashSet<>();
+    peers.add(server1);
+    peers.add(server2);
+
+    ZabConfig config1 = new ZabConfig();
+    ZabConfig config2 = new ZabConfig();
+    PersistentState state1 = makeInitialState(server1, 0);
+    state1.setProposedEpoch(1);
+    state1.setAckEpoch(1);
+    PersistentState state2 = makeInitialState(server2, 0);
+
+    Zab zab1 = new Zab(st1, config1, server1, peers, state1, cb1, null);
+    Zab zab2 = new Zab(st2, config2, server2, peers, state2, cb2, null);
+
+    st1.waitMembershipChanged();
+    cb1.waitBroadcasting();
+    cb2.waitBroadcasting();
+
+    zab1.send(ByteBuffer.wrap("HelloWorld1".getBytes()), "server1_1");
+    zab1.send(ByteBuffer.wrap("HelloWorld2".getBytes()), "server1_2");
+    zab1.send(ByteBuffer.wrap("HelloWorld3".getBytes()), "server1_3");
+    zab1.flush(ByteBuffer.wrap("HelloWorld3".getBytes()), "server1_4");
+    zab2.send(ByteBuffer.wrap("HelloWorld3".getBytes()), "server2_1");
+    zab2.send(ByteBuffer.wrap("HelloWorld3".getBytes()), "server2_2");
+
+    st1.txnsCount.await();
+    st2.txnsCount.await();
+
+    // There are 3 sent requests delivered with context on server1.
+    Assert.assertEquals(3, st1.sendCtxs.size());
+    // There are 1 flushed request delivered with context on server1.
+    Assert.assertEquals(1, st1.flushCtxs.size());
+    // There are 2 sent request delivered with context on server2.
+    Assert.assertEquals(2, st2.sendCtxs.size());
+
+    Assert.assertEquals((String)st1.sendCtxs.get(0), "server1_1");
+    Assert.assertEquals((String)st1.sendCtxs.get(1), "server1_2");
+    Assert.assertEquals((String)st1.sendCtxs.get(2), "server1_3");
+    Assert.assertEquals((String)st2.sendCtxs.get(0), "server2_1");
+    Assert.assertEquals((String)st2.sendCtxs.get(1), "server2_2");
+
+    // Removes server2.
+    zab1.remove(server2, "remove from server1");
+    st1.condRemoved.await();
+
+    // There are 1 remove request delivered with context on server1.
+    Assert.assertEquals(1, st1.removeCtxs.size());
+    zab1.shutdown();
+    zab2.shutdown();
   }
 }

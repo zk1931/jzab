@@ -32,6 +32,7 @@ import java.util.List;
 import com.github.zk1931.jzab.proto.ZabMessage;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
 import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
+import com.github.zk1931.jzab.PendingRequests.Tuple;
 import com.github.zk1931.jzab.transport.Transport;
 import com.github.zk1931.jzab.Zab.FailureCaseCallback;
 import com.github.zk1931.jzab.Zab.StateChangeCallback;
@@ -134,6 +135,11 @@ public abstract class Participant {
    */
   protected boolean isSnapshotInProgress = false;
 
+  /**
+   * Different kinds of pending requests.
+   */
+  protected final PendingRequests pendings = new PendingRequests();
+
   private static final Logger LOG = LoggerFactory.getLogger(Participant.class);
 
   protected enum Phase {
@@ -185,55 +191,59 @@ public abstract class Participant {
     this.maxBatchSize = config.getMaxBatchSize();
   }
 
-  void send(ByteBuffer request)
+  synchronized void send(ByteBuffer request, Object ctx)
       throws NotBroadcastingPhase, TooManyPendingRequests {
     if (this.currentPhase != Phase.BROADCASTING) {
       throw new NotBroadcastingPhase("Not in Broadcasting phase!");
     }
-    if (pendingReqs.get() > ZabConfig.MAX_PENDING_REQS) {
+    if (pendings.pendingSends.size() > ZabConfig.MAX_PENDING_REQS) {
       // If the size of pending requests exceeds the certain threshold, raise
       // TooManyPendingRequests exception.
       throw new TooManyPendingRequests();
     }
-    // Increments the pending requests by one.
-    pendingReqs.incrementAndGet();
+    pendings.pendingSends.add(new Tuple(request, ctx));
     Message msg = MessageBuilder.buildRequest(request);
     sendMessage(this.electedLeader, msg);
   }
 
-  void remove(String peerId) throws NotBroadcastingPhase {
-    if (this.currentPhase != Phase.BROADCASTING) {
-      throw new NotBroadcastingPhase("Not in Broadcasting phase!");
-    }
-    Message msg = MessageBuilder.buildRemove(peerId);
-    sendMessage(this.electedLeader, msg);
-  }
-
-  void flush(ByteBuffer request)
+  synchronized void remove(String peerId, Object ctx)
       throws NotBroadcastingPhase, TooManyPendingRequests {
     if (this.currentPhase != Phase.BROADCASTING) {
       throw new NotBroadcastingPhase("Not in Broadcasting phase!");
     }
-    if (pendingReqs.get() > ZabConfig.MAX_PENDING_REQS) {
+    if (pendings.pendingRemoves.size() > 0) {
+      throw new TooManyPendingRequests("Snapshot already in progress");
+    }
+    pendings.pendingRemoves.add(new Tuple(peerId, ctx));
+    Message msg = MessageBuilder.buildRemove(peerId);
+    sendMessage(this.electedLeader, msg);
+  }
+
+  synchronized void flush(ByteBuffer request, Object ctx)
+      throws NotBroadcastingPhase, TooManyPendingRequests {
+    if (this.currentPhase != Phase.BROADCASTING) {
+      throw new NotBroadcastingPhase("Not in Broadcasting phase!");
+    }
+    if (pendings.pendingFlushes.size() > ZabConfig.MAX_PENDING_REQS) {
       // If the size of pending requests exceeds the certain threshold, raise
       // TooManyPendingRequests exception.
       throw new TooManyPendingRequests();
     }
-    // Increments the pending requests by one.
-    pendingReqs.incrementAndGet();
+    pendings.pendingFlushes.add(new Tuple(request, ctx));
     Message msg = MessageBuilder.buildFlushRequest(request);
     sendMessage(this.electedLeader, msg);
   }
 
-  synchronized void takeSnapshot() throws ZabException {
+  synchronized void takeSnapshot(Object ctx)
+      throws NotBroadcastingPhase, TooManyPendingRequests {
     if (this.currentPhase != Phase.BROADCASTING) {
       throw new NotBroadcastingPhase("You cannot take snapshots while"
           + " Jzab is in Recovering phase");
     }
-    if (this.isSnapshotInProgress) {
+    if (!pendings.pendingSnapshots.isEmpty()) {
       throw new TooManyPendingRequests("A pending snapshot is in progress");
     }
-    this.isSnapshotInProgress = true;
+    pendings.pendingSnapshots.add(ctx);
     Message msg = MessageBuilder.buildSnapshot(this.lastDeliveredZxid);
     sendMessage(this.serverId, msg);
   }
@@ -543,7 +553,7 @@ public abstract class Participant {
         Transaction txn = iter.next();
         if (txn.getType() == ProposalType.USER_REQUEST_VALUE) {
           // Only delivers REQUEST proposal, ignores COP.
-          stateMachine.deliver(txn.getZxid(), txn.getBody(), null);
+          stateMachine.deliver(txn.getZxid(), txn.getBody(), null, null);
         }
         lastDeliveredZxid = txn.getZxid();
       }

@@ -196,14 +196,16 @@ public class Zab {
    * non-broadcasting phase, the operation will fail.
    *
    * @param request the request to send through Zab
-   * @throws NotBroadcastingPhase if Zab is not in broadcasting phase.
-   * @throws TooManyPendingRequests if the pending requests exceeds the certain
-   * size, for example: if there are more pending requests than
+   * @param ctx context to be provided to the callback
+   * @throws ZabException.NotBroadcastingPhase if Zab is not in broadcasting
+   * phase.
+   * @throws ZabException.TooManyPendingRequests if the pending requests exceeds
+   * the certain size, for example: if there are more pending requests than
    * ZabConfig.MAX_PENDING_REQS.
    */
-  public void send(ByteBuffer request)
+  public void send(ByteBuffer request, Object ctx)
       throws NotBroadcastingPhase, TooManyPendingRequests {
-    this.mainThread.send(request);
+    this.mainThread.send(request, ctx);
   }
 
   /**
@@ -215,14 +217,16 @@ public class Zab {
    * request in non-broadcasting phase, the operation will fail.
    *
    * @param request the request to be flushed.
-   * @throws NotBroadcastingPhase if Zab is not in broadcasting phase.
-   * @throws TooManyPendingRequests if the pending requests exceeds the certain
-   * size, for example: if there are more pending requests than
+   * @param ctx context to be provided to the callback
+   * @throws ZabException.NotBroadcastingPhase if Zab is not in broadcasting
+   * phase.
+   * @throws ZabException.TooManyPendingRequests if the pending requests exceeds
+   * the certain size, for example: if there are more pending requests than
    * ZabConfig.MAX_PENDING_REQS.
    */
-  public void flush(ByteBuffer request)
-      throws NotBroadcastingPhase, TooManyPendingRequests  {
-    this.mainThread.flush(request);
+  public void flush(ByteBuffer request, Object ctx)
+      throws NotBroadcastingPhase, TooManyPendingRequests {
+    this.mainThread.flush(request, ctx);
   }
 
   /**
@@ -230,20 +234,30 @@ public class Zab {
    * non-broadcasting phase, the operation will fail.
    *
    * @param peerId the id of the peer who will be removed from the cluster.
-   * @throws NotBroadcastingPhase if Zab is not in broadcasting phase.
+   * @param ctx context to be provided to the callback
+   * @throws ZabException.NotBroadcastingPhase if Zab is not in broadcasting
+   * phase.
+   * @throws ZabException.TooManyPendingRequests if there is a pending snapshot
+   * request.
    */
-  public void remove(String peerId) throws NotBroadcastingPhase {
-    this.mainThread.remove(peerId);
+  public void remove(String peerId, Object ctx)
+      throws NotBroadcastingPhase, TooManyPendingRequests {
+    this.mainThread.remove(peerId, ctx);
   }
 
   /**
    * Issues the request to take a snapshot. The {@link StateMachine#save}
    * callback will be called for serializing the application's state to disk.
    *
-   * @throws ZabException for exception.
+   * @param ctx context to be provided to the callback
+   * @throws ZabException.NotBroadcastingPhase if Zab is not in broadcasting
+   * phase.
+   * @throws ZabException.TooManyPendingRequests if there is a pending snapshot
+   * request.
    */
-  public void takeSnapshot() throws ZabException {
-    this.mainThread.takeSnapshot();
+  public void takeSnapshot(Object ctx)
+      throws NotBroadcastingPhase, TooManyPendingRequests {
+    this.mainThread.takeSnapshot(ctx);
   }
 
   /**
@@ -563,35 +577,37 @@ public class Zab {
       participant.join(peer);
     }
 
-    void send(ByteBuffer buffer)
+    void send(ByteBuffer buffer, Object ctx)
         throws NotBroadcastingPhase, TooManyPendingRequests {
       if (this.participant == null) {
         throw new NotBroadcastingPhase("Not in Broadcasting phase!");
       }
-      this.participant.send(buffer);
+      this.participant.send(buffer, ctx);
     }
 
-    void remove(String peerId) throws NotBroadcastingPhase {
-      if (this.participant == null) {
-        throw new NotBroadcastingPhase("Not in Broadcasting phase!");
-      }
-      this.participant.remove(peerId);
-    }
-
-    void flush(ByteBuffer buffer)
+    void remove(String peerId, Object ctx)
         throws NotBroadcastingPhase, TooManyPendingRequests {
       if (this.participant == null) {
         throw new NotBroadcastingPhase("Not in Broadcasting phase!");
       }
-      this.participant.flush(buffer);
+      this.participant.remove(peerId, ctx);
     }
 
-    void takeSnapshot() throws ZabException {
+    void flush(ByteBuffer buffer, Object ctx)
+        throws NotBroadcastingPhase, TooManyPendingRequests {
+      if (this.participant == null) {
+        throw new NotBroadcastingPhase("Not in Broadcasting phase!");
+      }
+      this.participant.flush(buffer, ctx);
+    }
+
+    void takeSnapshot(Object ctx)
+        throws NotBroadcastingPhase, TooManyPendingRequests {
       if (this.participant == null) {
         throw new NotBroadcastingPhase("Can't take snapshot in " +
             "recovering phase");
       }
-      this.participant.takeSnapshot();
+      this.participant.takeSnapshot(ctx);
     }
 
     // Waits until MainThread thread has been shutdown. This function should be

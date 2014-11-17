@@ -50,16 +50,18 @@ public interface StateMachine {
    * @param stateUpdate the incremental state update
    * @param clientId the id of the client who sends the request. The request
    * delivered in RECOVERING phase has clientId sets to null.
+   * @param ctx the context object.
    */
-  void deliver(Zxid zxid, ByteBuffer stateUpdate, String clientId);
+  void deliver(Zxid zxid, ByteBuffer stateUpdate, String clientId, Object ctx);
 
   /**
    * Callback to deliver the flush request. This method is called from the same
    * thread as the deliver callback.
    *
    * @param  flushRequest the flush request.
+   * @param ctx the context object.
    */
-  void flushed(ByteBuffer flushRequest);
+  void flushed(ByteBuffer flushRequest, Object ctx);
 
   /**
    * Callback to serialize the application state using an OutputStream. Upon a
@@ -73,8 +75,17 @@ public interface StateMachine {
    * Callback to notify that the snapshot is successfully stored on disk.
    *
    * @param filePath the path for the snapshot file.
+   * @param ctx the context object.
    */
-  void snapshotDone(String filePath);
+  void snapshotDone(String filePath, Object ctx);
+
+  /**
+   * Callback to notify that the remove call completed.
+   *
+   * @param serverId the ID of the server whom gets removed.
+   * @param ctx the context object.
+   */
+  void removed(String serverId, Object ctx);
 
   /**
    * Deserializes the state of the application from the InputStream. Once this
@@ -86,9 +97,16 @@ public interface StateMachine {
 
   /**
    * Callback to notify the server it's in recovering phase. Servers in
-   * recovering phase shouldn't issue or process any requests.
+   * recovering phase shouldn't issue or process any requests. The callback will
+   * also notify user the pending requests which have been submitted to Zab but
+   * haven't been delivered back to user. For the pending sends and pending
+   * removes, it's possible they get committed but just haven't been delivered.
+   * For pendingSnapshots and pendingFlushes requests, they will be simply
+   * discarded.
+   *
+   * @param pendingRequests the pending requests, see {@link PendingRequests}.
    */
-  void recovering();
+  void recovering(PendingRequests pendingRequests);
 
   /**
    * Callback to notify the application who is running on the leader role of ZAB
