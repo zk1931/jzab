@@ -29,6 +29,7 @@ if [ "$TRAVIS_REPO_SLUG" == "zk1931/jzab" ] &&
   mv $HOME/doc-latest $VERSION
   # put the doc from the master branch to http://zk1931.github.io/jzab/master/
   if [ "$TRAVIS_BRANCH" == "master" ]; then
+    git rm -rf --ignore-unmatch master
     cp -Rf $VERSION master
   fi
   cp -Rf $HOME/javadoc-latest $VERSION/javadoc
