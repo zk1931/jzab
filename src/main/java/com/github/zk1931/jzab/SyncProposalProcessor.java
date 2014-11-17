@@ -134,7 +134,6 @@ public class SyncProposalProcessor implements RequestProcessor,
           // TODO : avoid this?
           ByteBuffer body = txn.getBody().asReadOnlyBuffer();
           LOG.debug("Syncing transaction {} to disk.", txn.getZxid());
-          this.log.append(txn);
           batchCount++;
           lastReq = req;
           if (txn.getType() == ProposalType.COP_VALUE) {
@@ -147,6 +146,11 @@ public class SyncProposalProcessor implements RequestProcessor,
             batchCount = 0;
             lastReq = null;
           }
+          // If it's COP we need to write to cluster_config file first then
+          // append to log in case of failures between writing to cluster_config
+          // and appending to log. In this case cluster_config is one more txn
+          // ahead the log file and we'll just delete it when we restart Zab.
+          this.log.append(txn);
         }
       }
     } catch (Exception e) {

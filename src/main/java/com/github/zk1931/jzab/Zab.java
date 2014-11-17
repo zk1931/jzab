@@ -480,10 +480,10 @@ public class Zab {
         // Means either it starts booting from static configuration or
         // recovering from a log directory.
         if (serverId != null) {
-          // TODO : Static configuration should be removed eventually.
           LOG.debug("Boots from static configuration.");
+          Zxid version = new Zxid(0, -1);
           ClusterConfiguration cnf =
-            new ClusterConfiguration(new Zxid(0, 0), peers, serverId);
+            new ClusterConfiguration(version, peers, serverId);
           persistence.setLastSeenConfig(cnf);
         } else {
           // Restore from log directory.
@@ -493,6 +493,7 @@ public class Zab {
             throw new RuntimeException("Can't find configuration file.");
           }
           serverId = cnf.getServerId();
+          persistence.cleanupClusterConfigFiles();
         }
       }
       MDC.put("serverId", serverId);
@@ -501,8 +502,9 @@ public class Zab {
                                           this,
                                           config.getSslParameters(),
                                           persistence.getLogDir());
-      this.election =
-          new FastLeaderElection(persistence, transport, messageQueue);
+
+      election = new FastLeaderElection(persistence, transport, messageQueue);
+
       participantState = new ParticipantState(persistence,
                                               serverId,
                                               transport,
@@ -510,7 +512,7 @@ public class Zab {
                                               stateChangeCallback,
                                               failureCallback,
                                               config.getMinSyncTimeoutMs(),
-                                              this.election);
+                                              election);
     }
 
     @Override

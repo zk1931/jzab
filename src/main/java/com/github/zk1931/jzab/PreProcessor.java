@@ -30,7 +30,6 @@ import java.util.Map;
 import com.github.zk1931.jzab.proto.ZabMessage;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
 import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
-import com.github.zk1931.jzab.proto.ZabMessage.Proposal.ProposalType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -112,13 +111,12 @@ public class PreProcessor implements RequestProcessor,
           }
         } else if (msg.getType() == MessageType.JOIN) {
           LOG.debug("Got JOIN from {}.", source);
-          if (!this.clusterConfig.contains(source)) {
-            this.clusterConfig.addPeer(source);
+          if (!clusterConfig.contains(source)) {
+            clusterConfig.addPeer(source);
           }
-          this.clusterConfig.setVersion(zxid);
-          ByteBuffer cop = this.clusterConfig.toByteBuffer();
-          Transaction txn = new Transaction(zxid, ProposalType.COP_VALUE, cop);
-          Message prop = MessageBuilder.buildProposal(txn);
+          clusterConfig.setVersion(zxid);
+          Message prop =
+            MessageBuilder.buildProposal(clusterConfig.toTransaction());
           // Broadcasts COP.
           for (PeerHandler ph : quorumMap.values()) {
             ph.queueMessage(prop);
@@ -132,11 +130,11 @@ public class PreProcessor implements RequestProcessor,
           String peerId = msg.getRemove().getServerId();
           String clientId = request.getServerId();
           LOG.debug("Got REMOVE for {}.", peerId);
-          this.clusterConfig.removePeer(peerId);
-          this.clusterConfig.setVersion(zxid);
-          ByteBuffer cop = this.clusterConfig.toByteBuffer();
-          Transaction txn = new Transaction(zxid, ProposalType.COP_VALUE, cop);
-          Message prop = MessageBuilder.buildProposal(txn, clientId);
+          clusterConfig.removePeer(peerId);
+          clusterConfig.setVersion(zxid);
+          Message prop =
+            MessageBuilder.buildProposal(clusterConfig.toTransaction(),
+                                         clientId);
           // Broadcasts COP.
           for (PeerHandler ph : quorumMap.values()) {
             ph.queueMessage(prop);

@@ -25,6 +25,7 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
 import org.slf4j.Logger;
@@ -299,8 +300,16 @@ public class PersistentState {
    * if there's no such files.
    */
   File getLatestFileWithPrefix(File dir, String prefix) {
+    List<File> files = getFilesWithPrefix(dir, prefix);
+    if (!files.isEmpty()) {
+      return files.get(files.size() - 1);
+    }
+    return null;
+  }
+
+  List<File> getFilesWithPrefix(File dir, String prefix) {
     List<File> files = new ArrayList<File>();
-    String pattern = prefix + "\\.\\d+_\\d+";
+    String pattern = prefix + "\\.\\d+_-?\\d+";
     for (File file : dir.listFiles()) {
       if (!file.isDirectory() && file.getName().matches(pattern)) {
         // Only consider those with valid name.
@@ -310,9 +319,8 @@ public class PersistentState {
     if (!files.isEmpty()) {
       // Picks the last one.
       Collections.sort(files);
-      return files.get(files.size() - 1);
     }
-    return null;
+    return files;
   }
 
   // We need also fsync file directory when file gets created. This is related
@@ -402,5 +410,39 @@ public class PersistentState {
     }
     String suffix = String.format("%015d", newID);
     return new File(this.rootDir, "data" + suffix);
+  }
+
+
+   // In some cases the zxid of the cluster configuration files might be larger
+   // than the zxid in log and snapshot, we consider these cluster configuration
+   // files invalid. Since everytime we pick the "latest" cluster_config file in
+   // directory as current configuration, we need to clean up these invalid
+   // cluster_config files.
+  void cleanupClusterConfigFiles() throws IOException {
+    Zxid latestZxid = getLatestZxid();
+    List<File> files = getFilesWithPrefix(this.rootDir, "cluster_config");
+    if (files.isEmpty()) {
+      LOG.error("There's no cluster_config files in log directory.");
+      throw new RuntimeException("There's no cluster_config files!");
+    }
+    Iterator<File> iter = files.iterator();
+    while (iter.hasNext()) {
+      File file = iter.next();
+      String fileName = file.getName();
+      String strZxid = fileName.substring(fileName.indexOf('.') + 1);
+      Zxid zxid = Zxid.fromSimpleString(strZxid);
+      if (zxid.compareTo(latestZxid) > 0) {
+        // Deletes the config file if its zxid is larger than the latest zxid on
+        // disk.
+        file.delete();
+        iter.remove();
+      }
+    }
+    if (files.isEmpty()) {
+      LOG.error("There's no cluster_config files after cleaning up.");
+      throw new RuntimeException("There's no cluster_config files!");
+    }
+    // Persists changes.
+    fsyncDirectory();
   }
 }

@@ -1234,12 +1234,12 @@ public class ZabTest extends TestBase  {
     state1.setAckEpoch(0);
     state1.setLastSeenConfig(cnf1);
 
-    PersistentState state2 = makeInitialState(server2, 1);
+    PersistentState state2 = makeInitialState(server2, 2);
     state2.setAckEpoch(0);
     state2.setProposedEpoch(0);
     state2.setLastSeenConfig(cnf2);
 
-    PersistentState state3 = makeInitialState(server3, 1);
+    PersistentState state3 = makeInitialState(server3, 2);
     state3.setAckEpoch(0);
     state3.setProposedEpoch(0);
     state3.setLastSeenConfig(cnf3);
@@ -1313,7 +1313,7 @@ public class ZabTest extends TestBase  {
     ClusterConfiguration cnf3 = new ClusterConfiguration(version2, peers2,
                                                          server3);
 
-    PersistentState state1 = makeInitialState(server1, 1);
+    PersistentState state1 = makeInitialState(server1, 2);
     state1.setProposedEpoch(0);
     state1.setAckEpoch(0);
     state1.setLastSeenConfig(cnf1);
