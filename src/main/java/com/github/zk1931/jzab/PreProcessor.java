@@ -63,7 +63,7 @@ public class PreProcessor implements RequestProcessor,
     this.stateMachine = stateMachine;
     this.quorumMapOriginal = quorumMap;
     this.quorumMap = new HashMap<String, PeerHandler>(quorumMap);
-    this.clusterConfig = config;
+    this.clusterConfig = config.clone();
     ExecutorService es =
         Executors.newSingleThreadExecutor(DaemonThreadFactory.FACTORY);
     ft = es.submit(this);

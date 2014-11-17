@@ -77,6 +77,16 @@ public class Leader extends Participant {
    */
   private Zxid pendingCopZxid = null;
 
+  /**
+   * PreProcessor converts requests to idempotent transactions.
+   */
+  private PreProcessor preProcessor = null;
+
+  /**
+   * Determines which transaction can be committed.
+   */
+  private AckProcessor ackProcessor = null;
+
   private static final Logger LOG = LoggerFactory.getLogger(Leader.class);
 
   public Leader(ParticipantState participantState,
@@ -578,6 +588,37 @@ public class Leader extends Participant {
     }
   }
 
+  void broadcastingInit() throws IOException {
+    Zxid lastZxid = persistence.getLatestZxid();
+    this.establishedEpoch = persistence.getAckEpoch();
+    // Gets the initial configuration at the beginning of broadcasting.
+    clusterConfig = persistence.getLastSeenConfig();
+    // Add leader itself to quorumMap.
+    PeerHandler lh =
+      new PeerHandler(serverId, transport, config.getTimeoutMs()/3);
+    lh.setLastAckedZxid(lastZxid);
+    lh.setLastCommittedZxid(lastZxid);
+    lh.startBroadcastingTask();
+    quorumMap.put(this.serverId, lh);
+    this.preProcessor =
+      new PreProcessor(stateMachine, quorumMap, clusterConfig);
+    this.ackProcessor = new AckProcessor(quorumMap, clusterConfig);
+    this.syncProcessor =
+        new SyncProposalProcessor(persistence, transport, maxBatchSize);
+    this.commitProcessor =
+        new CommitProcessor(stateMachine, lastDeliveredZxid, serverId,
+                            transport, quorumMap.keySet(),
+                            clusterConfig, electedLeader, pendings);
+    this.snapProcessor =
+      new SnapshotProcessor(stateMachine, persistence, serverId, transport);
+    // First time notifies the client active members and cluster configuration.
+    stateMachine.leading(new HashSet<String>(quorumMap.keySet()),
+                         new HashSet<String>(clusterConfig.getPeers()));
+    this.lastCommittedZxid = lastZxid;
+    this.lastProposedZxid = lastZxid;
+    this.lastAckedZxid = lastZxid;
+  }
+
   /**
    * Entering broadcasting phase, leader broadcasts proposal to
    * followers.
@@ -590,34 +631,8 @@ public class Leader extends Participant {
   void broadcasting()
       throws TimeoutException, InterruptedException, IOException,
       ExecutionException {
-    Zxid lastZxid = persistence.getLatestZxid();
-    this.establishedEpoch = persistence.getAckEpoch();
-    // Add leader itself to quorumMap.
-    PeerHandler lh =
-      new PeerHandler(serverId, transport, config.getTimeoutMs()/3);
-    lh.setLastAckedZxid(lastZxid);
-    lh.setLastCommittedZxid(lastZxid);
-    lh.startBroadcastingTask();
-    quorumMap.put(this.serverId, lh);
-    // Gets the initial configuration at the beginning of broadcasting.
-    ClusterConfiguration clusterConfig = persistence.getLastSeenConfig();
-    PreProcessor preProcessor =
-      new PreProcessor(stateMachine, quorumMap, clusterConfig.clone());
-    AckProcessor ackProcessor = new AckProcessor(quorumMap, clusterConfig);
-    SyncProposalProcessor syncProcessor =
-        new SyncProposalProcessor(persistence, transport, maxBatchSize);
-    CommitProcessor commitProcessor =
-        new CommitProcessor(stateMachine, lastDeliveredZxid, serverId,
-                            transport, quorumMap.keySet(),
-                            clusterConfig, electedLeader, pendings);
-    SnapshotProcessor snapProcessor =
-      new SnapshotProcessor(stateMachine, persistence, serverId, transport);
-    // First time notifies the client active members and cluster configuration.
-    stateMachine.leading(new HashSet<String>(quorumMap.keySet()),
-                         new HashSet<String>(clusterConfig.getPeers()));
-    this.lastCommittedZxid = lastZxid;
-    this.lastProposedZxid = lastZxid;
-    this.lastAckedZxid = lastZxid;
+    // Initialization.
+    broadcastingInit();
     try {
       while (this.quorumMap.size() >= clusterConfig.getQuorumSize()) {
         MessageTuple tuple = getMessage();
@@ -645,7 +660,7 @@ public class Leader extends Participant {
           LOG.debug("Got ACK_EPOCH from {}", source);
           // We'll synchronize the follower up to last proposed zxid.
           tuple.setZxid(lastProposedZxid);
-          onAckEpoch(tuple, preProcessor, ackProcessor, commitProcessor);
+          onAckEpoch(tuple);
         } else if (msg.getType() == MessageType.QUERY_LEADER) {
           LOG.debug("Got QUERY_LEADER from {}", source);
           Message reply = MessageBuilder.buildQueryReply(this.serverId);
@@ -673,7 +688,7 @@ public class Leader extends Participant {
                       TextFormat.shortDebugString(msg), source);
           }
           if (msg.getType() == MessageType.ACK) {
-            onAck(tuple, ackProcessor);
+            onAck(tuple);
           } else if (msg.getType() == MessageType.REQUEST) {
             Zxid proposedZxid = getNextProposedZxid();
             // Updates last proposed zxid for this peer. The FLUSH
@@ -685,16 +700,15 @@ public class Leader extends Participant {
           } else if (msg.getType() == MessageType.FLUSH_REQ) {
             onFlushReq(tuple);
           } else if (msg.getType() == MessageType.FLUSH) {
-            onFlush(tuple, commitProcessor);
+            onFlush(tuple);
           } else if (msg.getType() == MessageType.HEARTBEAT) {
             LOG.trace("Got HEARTBEAT replies from {}", source);
           } else if (msg.getType() == MessageType.PROPOSAL) {
-            syncProcessor.processRequest(tuple);
-            commitProcessor.processRequest(tuple);
+            onProposal(tuple);
           } else if (msg.getType() == MessageType.COMMIT) {
-            onCommit(tuple, commitProcessor);
+            onCommit(tuple);
           } else if (msg.getType() == MessageType.DISCONNECTED) {
-            onDisconnected(tuple, preProcessor, ackProcessor, commitProcessor);
+            onDisconnected(tuple);
           } else if (msg.getType() == MessageType.REMOVE) {
             if (pendingCopZxid != null) {
               LOG.warn("There's a pending reconfiguration still in progress.");
@@ -702,9 +716,9 @@ public class Leader extends Participant {
             }
             pendingCopZxid = getNextProposedZxid();
             tuple.setZxid(pendingCopZxid);
-            onRemove(tuple, preProcessor, ackProcessor, clusterConfig);
+            onRemove(tuple);
           } else if (msg.getType() == MessageType.DELIVERED) {
-            onDelivered(msg, snapProcessor);
+            onDelivered(msg);
           } else if (msg.getType() == MessageType.JOIN) {
             LOG.debug("Got JOIN from {}", source);
             if (pendingCopZxid != null) {
@@ -713,12 +727,10 @@ public class Leader extends Participant {
             }
             pendingCopZxid = getNextProposedZxid();
             tuple.setZxid(pendingCopZxid);
-            onJoin(tuple, preProcessor, ackProcessor, commitProcessor,
-                   clusterConfig);
+            onJoin(tuple);
           } else if (msg.getType() == MessageType.SNAPSHOT) {
             snapProcessor.processRequest(tuple);
           } else if (msg.getType() == MessageType.SNAPSHOT_DONE) {
-            this.isSnapshotInProgress = false;
             commitProcessor.processRequest(tuple);
           } else {
             if (LOG.isWarnEnabled()) {
@@ -748,9 +760,7 @@ public class Leader extends Participant {
     }
   }
 
-  void onJoin(MessageTuple tuple, PreProcessor preProcessor,
-              AckProcessor ackProcessor, CommitProcessor commitProcessor,
-              ClusterConfiguration clusterConfig)
+  void onJoin(MessageTuple tuple)
       throws IOException {
     // For JOIN message, we simply create a PeerHandler and add to quorum set
     // of main thread and pending set. Then we pass the JOIN message to
@@ -773,7 +783,7 @@ public class Leader extends Participant {
     commitProcessor.processRequest(tuple);
   }
 
-  void onCommit(MessageTuple tuple, CommitProcessor commitProcessor) {
+  void onCommit(MessageTuple tuple) {
     Message msg = tuple.getMessage();
     this.lastCommittedZxid =
       MessageBuilder.fromProtoZxid(msg.getCommit().getZxid());
@@ -815,10 +825,7 @@ public class Leader extends Participant {
     commitProcessor.processRequest(tuple);
   }
 
-  void onDisconnected(MessageTuple tuple,
-                      PreProcessor preProcessor,
-                      AckProcessor ackProcessor,
-                      CommitProcessor commitProcessor)
+  void onDisconnected(MessageTuple tuple)
       throws InterruptedException, ExecutionException {
     Message msg = tuple.getMessage();
     String peerId = msg.getDisconnected().getServerId();
@@ -839,8 +846,7 @@ public class Leader extends Participant {
     commitProcessor.processRequest(tuple);
   }
 
-  Zxid onAck(MessageTuple tuple,
-             AckProcessor ackProcessor) throws IOException {
+  Zxid onAck(MessageTuple tuple) throws IOException {
     String source = tuple.getServerId();
     Message msg = tuple.getMessage();
     ZabMessage.Ack ack = msg.getAck();
@@ -891,10 +897,7 @@ public class Leader extends Participant {
     return ackZxid;
   }
 
-  void onAckEpoch(MessageTuple tuple,
-                  PreProcessor preProcessor,
-                  AckProcessor ackProcessor,
-                  CommitProcessor commitProcessor) throws IOException {
+  void onAckEpoch(MessageTuple tuple) throws IOException {
     String source = tuple.getServerId();
     Message msg = tuple.getMessage();
     // This is the last proposed zxid from leader, we'll synchronize the
@@ -929,9 +932,7 @@ public class Leader extends Participant {
     }
   }
 
-  void onRemove(MessageTuple tuple, PreProcessor preProcessor,
-                AckProcessor ackProcessor,
-                ClusterConfiguration clusterConfig) throws IOException {
+  void onRemove(MessageTuple tuple) throws IOException {
     // NOTE : For REMOVE message, we shouldn't remove server from quorumMap
     // here, the leaving server will close the transport once the COP gets
     // committed and then we'll remove it like normal DISCONNECTED server.

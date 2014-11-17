@@ -399,6 +399,21 @@ public class Follower extends Participant {
     }
   }
 
+  void acceptingInit() throws IOException {
+    this.clusterConfig = persistence.getLastSeenConfig();
+    this.syncProcessor =
+      new SyncProposalProcessor(persistence, transport, maxBatchSize);
+    this.commitProcessor
+      = new CommitProcessor(stateMachine, lastDeliveredZxid, serverId,
+                            transport, null, clusterConfig, electedLeader,
+                            pendings);
+    this.snapProcessor =
+      new SnapshotProcessor(stateMachine, persistence, serverId, transport);
+    // Notifies the client current configuration.
+    stateMachine.following(electedLeader,
+                           new HashSet<String>(clusterConfig.getPeers()));
+  }
+
   /**
    * Entering broadcasting phase.
    *
@@ -410,21 +425,11 @@ public class Follower extends Participant {
   void accepting()
       throws TimeoutException, InterruptedException, IOException,
       ExecutionException {
-    ClusterConfiguration clusterConfig = persistence.getLastSeenConfig();
-    SyncProposalProcessor syncProcessor =
-      new SyncProposalProcessor(persistence, transport, maxBatchSize);
-    CommitProcessor commitProcessor
-      = new CommitProcessor(stateMachine, lastDeliveredZxid, serverId,
-                            transport, null, clusterConfig, electedLeader,
-                            pendings);
-    SnapshotProcessor snapProcessor =
-      new SnapshotProcessor(stateMachine, persistence, serverId, transport);
+    // Initialization.
+    acceptingInit();
     // The last time of HEARTBEAT message comes from leader.
     long lastHeartbeatTime = System.nanoTime();
     long ackEpoch = persistence.getAckEpoch();
-    // Notifies the client current configuration.
-    stateMachine.following(electedLeader,
-                           new HashSet<String>(clusterConfig.getPeers()));
     try {
       while (true) {
         MessageTuple tuple = getMessage();
@@ -452,11 +457,10 @@ public class Follower extends Participant {
             this.election.reply(tuple);
           } else if (msg.getType() == MessageType.DELIVERED) {
             // DELIVERED message should come from itself.
-            onDelivered(msg, snapProcessor);
+            onDelivered(msg);
           } else if (msg.getType() == MessageType.SNAPSHOT) {
             snapProcessor.processRequest(tuple);
           } else if (msg.getType() == MessageType.SNAPSHOT_DONE) {
-            this.isSnapshotInProgress = false;
             commitProcessor.processRequest(tuple);
           } else {
             LOG.debug("Got unexpected message from {}, ignores.", source);
@@ -471,9 +475,7 @@ public class Follower extends Participant {
           Transaction txn = MessageBuilder.fromProposal(msg.getProposal());
           Zxid zxid = txn.getZxid();
           if (zxid.getEpoch() == ackEpoch) {
-            // Dispatch to SyncProposalProcessor and CommitProcessor.
-            syncProcessor.processRequest(tuple);
-            commitProcessor.processRequest(tuple);
+            onProposal(tuple);
           } else {
             LOG.debug("The proposal has the wrong epoch {}, expecting {}.",
                       zxid.getEpoch(), ackEpoch);
@@ -487,7 +489,7 @@ public class Follower extends Participant {
           Message heartbeatReply = MessageBuilder.buildHeartbeat();
           sendMessage(source, heartbeatReply);
         } else if (msg.getType() == MessageType.FLUSH) {
-          onFlush(tuple, commitProcessor);
+          onFlush(tuple);
         } else {
           if (LOG.isWarnEnabled()) {
             LOG.warn("Unexpected messgae : {} from {}",
