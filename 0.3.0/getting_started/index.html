@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en-us">
+
+  <head>
+  <link href="http://gmpg.org/xfn/11" rel="profile">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+  <!-- Enable responsiveness on mobile devices-->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+
+  <title>
+    
+      Getting started &middot; Jzab
+    
+  </title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="/jzab/0.3.0/public/css/poole.css">
+  <link rel="stylesheet" href="/jzab/0.3.0/public/css/syntax.css">
+  <link rel="stylesheet" href="/jzab/0.3.0/public/css/hyde.css">
+  <link rel="stylesheet" href="http://fonts.googleapis.com/css?family=PT+Sans:400,400italic,700|Abril+Fatface">
+
+  <!-- Icons -->
+  <link rel="apple-touch-icon-precomposed" sizes="144x144" href="/jzab/0.3.0/public/apple-touch-icon-144-precomposed.png">
+                                 <link rel="shortcut icon" href="/jzab/0.3.0/public/favicon.ico">
+
+  <!-- RSS -->
+  <link rel="alternate" type="application/rss+xml" title="RSS" href="/atom.xml">
+</head>
+
+
+  <body>
+
+    <div class="sidebar">
+  <div class="container sidebar-sticky">
+    <div class="sidebar-about">
+      <h1>
+        <a href="/jzab/0.3.0/">
+          Jzab
+        </a>
+      </h1>
+      <p class="lead">An implementation of ZooKeeper Atomic Broadcast in Java</p>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a class="sidebar-nav-item" href="/jzab/0.3.0/">Home</a>
+      <a class="sidebar-nav-item active" href="/jzab/0.3.0/getting_started/">Getting started</a>
+      <a class="sidebar-nav-item" href="https://github.com/zk1931/jzab">GitHub project</a>
+      <a class="sidebar-nav-item" href="/jzab/0.3.0//javadoc/">Javadoc</a>
+      <span class="sidebar-nav-item">0.3.0</span>
+    </nav>
+
+  </div>
+</div>
+
+
+    <div class="content container">
+      <div class="page">
+  <h1 class="page-title">Getting started</h1>
+  <p>Jzab is designed for hiding the complexities of underlying Zab protocol and
+providing an easy-to-use user interface, but a brief understanding of Zab
+protocol will help you use Jzab correctly.</p>
+
+<h3>Overview</h3>
+
+<p>Here is a simple diagram of how an application works with Jzab. You can use
+Jzab to replicate state of the application consistently, which means that
+transactions get applied to all replicas in the same order. Transactions get
+persisted (i.e. fdatasync&#39;ed) to a majority of servers before they get
+acknowledged to the application.</p>
+
+<p><img align="middle" src="/jzab/0.3.0//imgs/overview.png"/></p>
+
+<p>You can write the replicated application as easy as writing a standalone
+application. The only difference is that whenever you want to execute a command
+that will change the state of your application, instead of executing it
+immediately, you pass it to Jzab and Jzab will replicate it and deliver it back
+to your application when it&#39;s safe to execute.</p>
+
+<p>Another thing you need to notice is that there are three states that Jzab might
+be in. They are <code>recovering</code>, <code>leading</code> and <code>following</code>. When Jzab is in
+<code>recovering</code> phase, any requests you passed to it will fail. Jzab will notify you
+the state change via callbacks (See interface <a href="http://zk1931.github.io/jzab/0.3.0//javadoc/com/github/zk1931/jzab/StateMachine.html">StateMachine</a>).</p>
+
+<p><img align="middle" src="/jzab/0.3.0//imgs/state_transition.png"/></p>
+
+<p>This is the state transition diagram of Jzab. It begins with <code>recovering</code>
+state, after that it goes to either <code>leading</code> or <code>following</code> state depends
+on whether it&#39;s follower or leader. These two are the states Jzab will spend
+most of its time in. Once leader dies or there&#39;s no quorum of servers in
+cluster, Zab will go back to <code>recovering</code> state again.</p>
+
+<p>This diagram is the typical workfolow of using Jzab.
+<img align="middle" src="/jzab/0.3.0//imgs/workflow.gif"/></p>
+
+<h3>Usage</h3>
+
+<p>This is the <a href="http://zk1931.github.io/jzab//0.3.0/javadoc/">Javadoc</a> from latest
+version build.
+For how to use Jzab, you can take a look at our reference key-value store implementation
+<a href="https://github.com/zk1931/zabkv">zabkv</a>.</p>
+
+</div>
+
+    </div>
+
+  </body>
+</html>

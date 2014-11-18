@@ -1,0 +1,34 @@
+#!/bin/bash
+
+if [ "$#" -ne 1 ]; then
+  VERSION="developer-build"
+else
+  VERSION=$1
+fi
+
+cat << EOF > _config.yml
+# Dependencies
+markdown:         redcarpet
+highlighter:      pygments
+
+# Permalinks
+permalink:        pretty
+relative_permalinks: true
+
+# Setup
+title:            Jzab
+tagline:          'An implementation of ZooKeeper Atomic Broadcast in Java'
+description:      'An implementation of ZooKeeper Atomic Broadcast in Java'
+url:              https://github.com/zk1931/jzab
+baseurl:          /jzab/$VERSION/
+
+author:
+  name:           'zk1931'
+  url:            https://github.com/zk1931
+
+# Custom vars
+version:          $VERSION
+
+github:
+  repo:           https://github.com/zk1931/jzab
+EOF
