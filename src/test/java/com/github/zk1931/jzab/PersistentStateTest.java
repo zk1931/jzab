@@ -21,6 +21,8 @@ package com.github.zk1931.jzab;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import org.junit.Assert;
 import org.junit.Test;
 import org.slf4j.Logger;
@@ -156,5 +158,54 @@ public class PersistentStateTest extends TestBase {
     persistence.undoStateTransfer();
     // Still show old data.
     Assert.assertEquals(new Zxid(0, 99), persistence.getLatestZxid());
+  }
+
+  @Test
+  public void testClusterConfigFiles() throws IOException {
+    Set<String> peers = new HashSet<String>();
+    ClusterConfiguration cnf =
+      new ClusterConfiguration(new Zxid(0, -1), peers, "");
+    PersistentState persistence = new PersistentState(getDirectory());
+    persistence.setLastSeenConfig(cnf);
+    cnf = new ClusterConfiguration(new Zxid(0, 1), peers, "");
+    persistence.setLastSeenConfig(cnf);
+    // Make sures <0, -1> is smaller than <0, 1>.
+    Assert.assertEquals(persistence.getLastSeenConfig().getVersion(),
+                        new Zxid(0, 1));
+  }
+
+  @Test
+  public void testCleanupClusterConfigFiles() throws IOException {
+    PersistentState persistence = new PersistentState(getDirectory());
+    Set<String> peers = new HashSet<String>();
+    ClusterConfiguration cnf =
+      new ClusterConfiguration(new Zxid(0, -1), peers, "");
+    // Initialy set version to <0, -1>
+    persistence.setLastSeenConfig(cnf);
+
+    // Appends 3 txns so the latest zxid is <0, 2>
+    appendTxns(persistence.getLog(), new Zxid(0, 0), 3);
+
+    // Sets config files with version <0, 3> ~ <0, 5>
+    for (int i = 3; i < 6; ++i) {
+      cnf = new ClusterConfiguration(new Zxid(0, i), peers, "");
+      persistence.setLastSeenConfig(cnf);
+    }
+    Assert.assertEquals(persistence.getLastSeenConfig().getVersion(),
+                        new Zxid(0, 5));
+
+    // Latest zxid in log is <0, 2>, the latest zxid of config is
+    // <0, 3>, this one will be deleted.
+    persistence.cleanupClusterConfigFiles();
+    Assert.assertEquals(persistence.getLastSeenConfig().getVersion(),
+                        new Zxid(0, -1));
+
+
+    cnf = new ClusterConfiguration(new Zxid(0, 2), peers, "");
+    persistence.setLastSeenConfig(cnf);
+    persistence.cleanupClusterConfigFiles();
+    // After cleaning up, the version of config should be <0, 2>.
+    Assert.assertEquals(persistence.getLastSeenConfig().getVersion(),
+                        new Zxid(0, 2));
   }
 }

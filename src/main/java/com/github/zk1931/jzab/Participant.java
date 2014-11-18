@@ -506,6 +506,10 @@ public abstract class Participant {
     if (persistence.isInStateTransfer()) {
       persistence.endStateTransfer();
     }
+    // If the synchronization is performed by truncation, then it's possible
+    // the content of cluster_config has been truncated in log, then we'll
+    // delete these invalid cluster_config files.
+    persistence.cleanupClusterConfigFiles();
   }
 
   /**

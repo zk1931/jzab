@@ -26,6 +26,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.Properties;
 import com.github.zk1931.jzab.proto.ZabMessage;
+import com.github.zk1931.jzab.proto.ZabMessage.Proposal.ProposalType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -124,6 +125,12 @@ class ClusterConfiguration implements Cloneable {
     buffer.get(bufArray);
     return fromProto(ZabMessage.ClusterConfiguration.parseFrom(bufArray),
                      serverId);
+  }
+
+  public Transaction toTransaction() {
+    ByteBuffer cop = this.toByteBuffer();
+    Transaction txn = new Transaction(version, ProposalType.COP_VALUE, cop);
+    return txn;
   }
 
   public boolean contains(String peerId) {
