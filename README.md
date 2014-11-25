@@ -19,3 +19,8 @@ How to build
 To build the project, run:
 
     mvn verify
+
+Example
+-------
+
+[ZabKV](https://github.com/zk1931/zabkv) - A simple replicated key-value store  built on top of Jzab.
