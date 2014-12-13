@@ -208,4 +208,30 @@ public class PersistentStateTest extends TestBase {
     Assert.assertEquals(persistence.getLastSeenConfig().getVersion(),
                         new Zxid(0, 2));
   }
+
+  @Test
+  public void testLastConfig() throws IOException {
+    PersistentState persistence = new PersistentState(getDirectory());
+    Set<String> peers = new HashSet<String>();
+    ClusterConfiguration cnf =
+      new ClusterConfiguration(new Zxid(0, 1), peers, "");
+    // Initialy set version to <0, 1>
+    persistence.setLastSeenConfig(cnf);
+
+    cnf = persistence.getLastConfigWithin(new Zxid(0, 1));
+    // Now the last config within <0, 1> should be <0, 1>
+    Assert.assertEquals(new Zxid(0, 1), cnf.getVersion());
+
+    cnf = new ClusterConfiguration(new Zxid(0, 2), peers, "");
+    persistence.setLastSeenConfig(cnf);
+    // Now the last config within <0, 2> should be <0, 2>
+    cnf = persistence.getLastConfigWithin(new Zxid(0, 2));
+    Assert.assertEquals(new Zxid(0, 2), cnf.getVersion());
+    cnf = persistence.getLastConfigWithin(new Zxid(0, 1));
+    // Now the last config within <0, 1> should be <0, 1>
+    Assert.assertEquals(new Zxid(0, 1), cnf.getVersion());
+
+    cnf = persistence.getLastConfigWithin(new Zxid(0, 0));
+    Assert.assertTrue(cnf == null);
+  }
 }

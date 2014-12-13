@@ -2057,4 +2057,45 @@ public class ZabTest extends TestBase  {
     zab1.shutdown();
     zab2.shutdown();
   }
+
+  @Test(timeout=20000)
+  public void testJoinWithoutSync() throws Exception {
+    // Test joining without synchronization, starts 3 servers simultaneously
+    // and verify in the end all of them get started.
+    QuorumTestCallback cb1 = new QuorumTestCallback();
+    QuorumTestCallback cb2 = new QuorumTestCallback();
+    QuorumTestCallback cb3 = new QuorumTestCallback();
+    TestStateMachine st1 = new TestStateMachine(1);
+    TestStateMachine st2 = new TestStateMachine(1);
+    TestStateMachine st3 = new TestStateMachine(1);
+
+    final String server1 = getUniqueHostPort();
+    final String server2 = getUniqueHostPort();
+    final String server3 = getUniqueHostPort();
+
+    PersistentState state1 = makeInitialState(server1, 0);
+    PersistentState state2 = makeInitialState(server2, 0);
+    PersistentState state3 = makeInitialState(server3, 0);
+
+    ZabConfig config1 = new ZabConfig();
+    ZabConfig config2 = new ZabConfig();
+    ZabConfig config3 = new ZabConfig();
+
+    Zab zab1 = new Zab(st1, config1, server1, server1, state1, cb1, null);
+    Thread.sleep(500);
+    Zab zab2 = new Zab(st2, config2, server2, server1, state2, cb2, null);
+    Zab zab3 = new Zab(st3, config3, server3, server1, state3, cb3, null);
+    cb1.waitCopCommit();
+    cb1.waitCopCommit();
+
+    zab1.send(ByteBuffer.wrap("req1".getBytes()), null);
+    // Waits for the transaction delivered.
+    st1.txnsCount.await();
+    st2.txnsCount.await();
+    st3.txnsCount.await();
+
+    zab1.shutdown();
+    zab2.shutdown();
+    zab3.shutdown();
+  }
 }
