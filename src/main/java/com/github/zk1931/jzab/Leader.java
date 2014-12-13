@@ -883,10 +883,13 @@ public class Leader extends Participant {
         for (PeerHandler ph : pendingPeers.values()) {
           if (!ph.isSyncStarted() &&
               ackZxid.compareTo(ph.getLastSyncedZxid()) >= 0) {
+            // Gets the last configuration which is <= lastSynced zxid.
+            ClusterConfiguration cnf =
+              persistence.getLastConfigWithin(ph.getLastSyncedZxid());
             ph.setSyncTask(new SyncPeerTask(ph.getServerId(),
                                             ph.getLastZxid(),
                                             ph.getLastSyncedZxid(),
-                                            persistence.getLastSeenConfig()),
+                                            cnf),
                            establishedEpoch);
             ph.startSynchronizingTask();
           }
@@ -923,10 +926,12 @@ public class Leader extends Participant {
     if (lastAckedZxid.compareTo(zxid) >= 0) {
       // If current last proposed zxid is already in log, starts synchronization
       // immediately.
+      ClusterConfiguration cnf =
+        persistence.getLastConfigWithin(ph.getLastSyncedZxid());
       ph.setSyncTask(new SyncPeerTask(ph.getServerId(),
                                       ph.getLastZxid(),
                                       ph.getLastSyncedZxid(),
-                                      persistence.getLastSeenConfig()),
+                                      cnf),
                      this.establishedEpoch);
       ph.startSynchronizingTask();
     }
@@ -970,10 +975,12 @@ public class Leader extends Participant {
     // We'll synchronize the peer up to the last zxid that is guaranteed in the
     // leader's log.
     ph.setLastSyncedZxid(this.lastAckedZxid);
+    ClusterConfiguration cnf =
+      persistence.getLastConfigWithin(ph.getLastSyncedZxid());
     ph.setSyncTask(new SyncPeerTask(ph.getServerId(),
                                     ph.getLastZxid(),
                                     ph.getLastSyncedZxid(),
-                                    persistence.getLastSeenConfig()),
+                                    cnf),
                    establishedEpoch);
     Message reply = MessageBuilder.buildSyncHistoryReply(getSyncTimeoutMs());
     // Sends the reply to tell new joiner the sync timeout.

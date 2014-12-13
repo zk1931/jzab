@@ -207,6 +207,44 @@ public class PersistentState {
   }
 
   /**
+   * Gets the last configuration which has version equal or smaller than zxid.
+   *
+   * @param zxid the zxid.
+   * @return the last configuration which is equal or smaller than zxid.
+   * @throws IOException in case of IO failure.
+   */
+  ClusterConfiguration getLastConfigWithin(Zxid zxid) throws IOException {
+    String pattern = "cluster_config\\.\\d+_-?\\d+";
+    String zxidFileName = "cluster_config." + zxid.toSimpleString();
+    String lastFileName = null;
+
+    for (File file : this.rootDir.listFiles()) {
+      if (!file.isDirectory() && file.getName().matches(pattern)) {
+        String fileName = file.getName();
+        if (lastFileName == null && fileName.compareTo(zxidFileName) <= 0) {
+          lastFileName = fileName;
+        } else if (lastFileName != null &&
+                   fileName.compareTo(lastFileName) > 0 &&
+                   fileName.compareTo(zxidFileName) <= 0) {
+          lastFileName = fileName;
+        }
+      }
+    }
+    if (lastFileName == null) {
+      return null;
+    }
+    File file = new File(this.rootDir, lastFileName);
+    try {
+      Properties prop = FileUtils.readPropertiesFromFile(file);
+      return ClusterConfiguration.fromProperties(prop);
+    } catch (FileNotFoundException e) {
+      LOG.debug("AckConfig file doesn't exist, probably it's the first time" +
+          "bootup.");
+    }
+    return null;
+  }
+
+  /**
    * Updates the last seen configuration.
    *
    * @param conf the updated configuration.
