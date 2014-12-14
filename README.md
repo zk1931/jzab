@@ -24,7 +24,7 @@ Requirements
 ------------
  - JDK 1.7 or later: `javac -version`
  - Maven 3 or later: `mvn -v`
- - Protocol Buffers compiler 2.4 or later: `protoc --version`
+ - Protocol Buffers compiler 2.6.*: `protoc --version`
 
 How to build
 ------------
