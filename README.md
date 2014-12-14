@@ -4,7 +4,7 @@ Jzab
 [![Build Status](https://travis-ci.org/zk1931/jzab.svg?branch=master)](https://travis-ci.org/zk1931/jzab)
 
 `jzab` is an implementation of 
-[ZooKeeper Atomic Broadcast](web.stanford.edu/class/cs347/reading/zab.pdf) (Zab)
+[ZooKeeper Atomic Broadcast](http://web.stanford.edu/class/cs347/reading/zab.pdf) (Zab)
 in Java. `jzab`'s features include:
 
 - **High throughput** - [benchmarked > 20k writes/sec](https://github.com/zk1931/jzab/wiki) on commodity hardware.
