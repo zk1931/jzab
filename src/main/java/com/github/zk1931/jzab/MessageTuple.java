@@ -23,7 +23,7 @@ import com.github.zk1931.jzab.proto.ZabMessage.Message;
 /**
  * Class that holds both message and source/destionation.
  */
-public class MessageTuple {
+class MessageTuple {
   private final String serverId;
   private final Message message;
   private Zxid zxid;

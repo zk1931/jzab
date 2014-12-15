@@ -20,8 +20,6 @@ package com.github.zk1931.jzab;
 
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
 import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
-import com.github.zk1931.jzab.transport.NettyTransport;
-import com.github.zk1931.jzab.transport.Transport;
 import com.github.zk1931.jzab.ZabException.NotBroadcastingPhase;
 import com.github.zk1931.jzab.ZabException.TooManyPendingRequests;
 import java.io.IOException;

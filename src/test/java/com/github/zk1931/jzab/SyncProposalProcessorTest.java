@@ -28,8 +28,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.concurrent.CountDownLatch;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
-import com.github.zk1931.jzab.transport.NettyTransport;
-import com.github.zk1931.jzab.transport.Transport;
 import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;

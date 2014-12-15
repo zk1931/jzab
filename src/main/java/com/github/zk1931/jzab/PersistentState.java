@@ -34,7 +34,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Persistent variable for Zab.
  */
-public class PersistentState {
+class PersistentState {
   /**
    * The transaction log.
    */

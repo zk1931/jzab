@@ -21,7 +21,7 @@ package com.github.zk1931.jzab;
 /**
  * Interface for the leader election implementation.
  */
-public interface Election {
+interface Election {
   /**
    * Starts one round leader election.
    *

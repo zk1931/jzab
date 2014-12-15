@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package com.github.zk1931.jzab.transport;
+package com.github.zk1931.jzab;
 
 import java.io.File;
 import java.util.Iterator;
@@ -32,7 +32,7 @@ import com.github.zk1931.jzab.proto.ZabMessage.Message;
  * needs to call clear() method. The purpose of the clear() method is for the
  * caller to explicitly acknowledge the onDisconnected event.
  */
-public abstract class Transport {
+abstract class Transport {
 
   protected Receiver receiver;
 

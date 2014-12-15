@@ -42,7 +42,7 @@ import org.slf4j.MDC;
 /**
  * Leader.
  */
-public class Leader extends Participant {
+class Leader extends Participant {
 
   private final Map<String, PeerHandler> quorumMap =
     new ConcurrentHashMap<String, PeerHandler>();

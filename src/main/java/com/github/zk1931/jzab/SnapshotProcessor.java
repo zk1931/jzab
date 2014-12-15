@@ -30,7 +30,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
 import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
-import com.github.zk1931.jzab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,8 +37,7 @@ import org.slf4j.LoggerFactory;
  * The processor which is responsible for taking the snapshot of application
  * when it's required.
  */
-public class SnapshotProcessor implements RequestProcessor,
-                                          Callable<Void> {
+class SnapshotProcessor implements RequestProcessor, Callable<Void> {
   private final BlockingQueue<MessageTuple> requestQueue =
       new LinkedBlockingQueue<MessageTuple>();
 

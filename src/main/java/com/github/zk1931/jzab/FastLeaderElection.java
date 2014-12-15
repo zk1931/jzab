@@ -20,7 +20,6 @@ package com.github.zk1931.jzab;
 import com.github.zk1931.jzab.proto.ZabMessage;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
 import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
-import com.github.zk1931.jzab.transport.Transport;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.HashMap;
@@ -32,7 +31,7 @@ import org.slf4j.LoggerFactory;
  * effort to elect the leader with the "best" history to minimize the
  * synchronization cost.
  */
-public class FastLeaderElection implements Election {
+class FastLeaderElection implements Election {
   static final Logger LOG = LoggerFactory.getLogger(FastLeaderElection.class);
   // Fast leader election needs transport to exchange vote information.
   final Transport transport;

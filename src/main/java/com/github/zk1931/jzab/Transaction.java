@@ -24,7 +24,7 @@ import static com.github.zk1931.jzab.proto.ZabMessage.Proposal.ProposalType;
 /**
  * Transaction.
  */
-public class Transaction {
+class Transaction {
   private final Zxid zxid;
   private final ByteBuffer body;
   private final int type;

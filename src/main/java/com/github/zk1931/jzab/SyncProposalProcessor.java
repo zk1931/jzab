@@ -29,7 +29,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
 import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
 import com.github.zk1931.jzab.proto.ZabMessage.Proposal.ProposalType;
-import com.github.zk1931.jzab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,8 +36,7 @@ import org.slf4j.LoggerFactory;
  * This class manages the logic synchronizing the transactions to disk. It can
  * batch several transactions and sync to disk once.
  */
-public class SyncProposalProcessor implements RequestProcessor,
-                                              Callable<Void> {
+class SyncProposalProcessor implements RequestProcessor, Callable<Void> {
 
   private final Log log;
 

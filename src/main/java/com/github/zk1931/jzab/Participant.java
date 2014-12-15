@@ -32,7 +32,6 @@ import com.github.zk1931.jzab.proto.ZabMessage;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
 import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
 import com.github.zk1931.jzab.PendingRequests.Tuple;
-import com.github.zk1931.jzab.transport.Transport;
 import com.github.zk1931.jzab.Zab.FailureCaseCallback;
 import com.github.zk1931.jzab.Zab.StateChangeCallback;
 import com.github.zk1931.jzab.ZabException.NotBroadcastingPhase;
@@ -44,7 +43,7 @@ import static com.github.zk1931.jzab.proto.ZabMessage.Proposal.ProposalType;
 /**
  * Participant is the base class for different roles of Jzab(Leader/Follower).
  */
-public abstract class Participant {
+abstract class Participant {
   /**
    * Transport is used for communication between different Zab instances.
    */

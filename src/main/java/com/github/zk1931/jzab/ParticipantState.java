@@ -22,7 +22,6 @@ import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.concurrent.BlockingQueue;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
-import com.github.zk1931.jzab.transport.Transport;
 import com.github.zk1931.jzab.Zab.StateChangeCallback;
 import com.github.zk1931.jzab.Zab.FailureCaseCallback;
 import org.slf4j.Logger;
@@ -32,7 +31,7 @@ import org.slf4j.LoggerFactory;
  * Participant state. It will be passed accross different instances of
  * Leader/Follower class during the lifetime of Zab.
  */
-public class ParticipantState {
+class ParticipantState {
   /**
    * Persistent variables for Zab.
    */

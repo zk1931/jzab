@@ -59,7 +59,7 @@ import org.slf4j.LoggerFactory;
  * payload      := byte array
  * </pre>
  */
-public class SimpleLog implements Log {
+class SimpleLog implements Log {
   private static final Logger LOG = LoggerFactory.getLogger(SimpleLog.class);
   private final File logFile;
   private final DataOutputStream logStream;
