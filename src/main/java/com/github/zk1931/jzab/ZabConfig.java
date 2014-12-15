@@ -18,8 +18,10 @@
 
 package com.github.zk1931.jzab;
 
+import java.io.File;
+
 /**
- * Configuration for Jzab.
+ * Configuration parameters for {@link Zab}.
  */
 public class ZabConfig {
   /**
@@ -125,5 +127,55 @@ public class ZabConfig {
    */
   public SslParameters getSslParameters() {
     return this.sslParam;
+  }
+
+  /**
+   * SSL-related parameters.
+   */
+  public static class SslParameters {
+    private final File keyStore;
+    private final String keyStorePassword;
+    private final File trustStore;
+    private final String trustStorePassword;
+
+    /**
+     * @param keyStore keystore file that contains the private key and
+     *                 corresponding certificate chain.
+     * @param keyStorePassword password for the keystore, or null if the
+     *                         password is not set.
+     * @param trustStore truststore file that contains trusted CA certificates.
+     * @param trustStorePassword password for the truststore, or null if the
+     *                           password is not set.
+     */
+    public SslParameters(File keyStore, String keyStorePassword,
+                         File trustStore, String trustStorePassword) {
+      this.keyStore = keyStore;
+      this.keyStorePassword = keyStorePassword;
+      this.trustStore = trustStore;
+      this.trustStorePassword = trustStorePassword;
+    }
+
+    public SslParameters() {
+      this.keyStore = null;
+      this.keyStorePassword = null;
+      this.trustStore = null;
+      this.trustStorePassword = null;
+    }
+
+    public File getKeyStore() {
+      return this.keyStore;
+    }
+
+    public File getTrustStore() {
+      return this.trustStore;
+    }
+
+    public String getKeyStorePassword() {
+      return this.keyStorePassword;
+    }
+
+    public String getTrustStorePassword() {
+      return this.trustStorePassword;
+    }
   }
 }
