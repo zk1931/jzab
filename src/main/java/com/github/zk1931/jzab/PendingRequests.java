@@ -25,8 +25,11 @@ import java.util.LinkedList;
  * Stores different kinds of pending requests.
  */
 public class PendingRequests {
+  PendingRequests() {}
+
   /**
    * The pending send requests.
+   *
    * The first element of the tuple is the request sent, the second element is
    * the corresponding context
    */
@@ -56,7 +59,7 @@ public class PendingRequests {
     public final Object param;
     public final Object ctx;
 
-    public Tuple(Object param, Object ctx) {
+    Tuple(Object param, Object ctx) {
       this.param = param;
       this.ctx = ctx;
     }

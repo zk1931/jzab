@@ -30,15 +30,15 @@ public abstract class ZabException extends Exception {
    * Sends request in non-broadcasting phase.
    */
   public static class NotBroadcastingPhase extends ZabException {
-    public NotBroadcastingPhase() {}
-    public NotBroadcastingPhase(String desc) { super(desc); }
+    NotBroadcastingPhase() {}
+    NotBroadcastingPhase(String desc) { super(desc); }
   }
 
   /**
    * Thrown when there are too many pending requests.
    */
   public static class TooManyPendingRequests extends ZabException {
-    public TooManyPendingRequests() {}
-    public TooManyPendingRequests(String desc) { super(desc); }
+    TooManyPendingRequests() {}
+    TooManyPendingRequests(String desc) { super(desc); }
   }
 }

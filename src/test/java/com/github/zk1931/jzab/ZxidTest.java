@@ -42,20 +42,6 @@ public class ZxidTest extends TestBase {
   }
 
   @Test
-  public void contiguousTest() {
-    Zxid z1 = new Zxid(10, 1);
-    Zxid z2 = new Zxid(10, 2);
-    Assert.assertTrue(Zxid.isContiguous(z1, z2));
-    Assert.assertFalse(Zxid.isContiguous(z2, z1));
-
-    z2 =  new Zxid(10, 3);
-    Assert.assertFalse(Zxid.isContiguous(z1, z2));
-
-    z2 = new Zxid(11, 2);
-    Assert.assertFalse(Zxid.isContiguous(z1, z2));
-  }
-
-  @Test
   public void serializeTest() throws IOException {
     Zxid z1 = new Zxid(1, 20);
     byte[] bytes = z1.toByteArray();
