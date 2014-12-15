@@ -76,11 +76,6 @@ public class Zxid implements Comparable<Zxid> {
     return bout.toByteArray();
   }
 
-  // Check whether z1 and z2 are contiguous and z1 precedes z2.
-  public static boolean isContiguous(Zxid z1, Zxid z2) {
-    return z1.epoch == z2.epoch && (z2.xid - z1.xid == 1);
-  }
-
   @Override
   public int compareTo(Zxid zxid) {
     long res = (this.epoch != zxid.epoch)? this.epoch - zxid.epoch :
