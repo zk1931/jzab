@@ -24,7 +24,7 @@ import java.util.concurrent.ExecutionException;
  * Interface for request processor. Different processors are chained together
  * to process request in order.
  */
-public interface RequestProcessor {
+interface RequestProcessor {
   /**
    * This function should be asynchronous normally, the request should be
    * processed in separate thread.

@@ -35,7 +35,6 @@ import com.github.zk1931.jzab.PendingRequests.Tuple;
 import com.github.zk1931.jzab.proto.ZabMessage;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
 import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
-import com.github.zk1931.jzab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import static com.github.zk1931.jzab.proto.ZabMessage.Proposal.ProposalType;
@@ -43,8 +42,7 @@ import static com.github.zk1931.jzab.proto.ZabMessage.Proposal.ProposalType;
 /**
  * This class is used to deliver committed transaction.
  */
-public class CommitProcessor implements RequestProcessor,
-                                        Callable<Void> {
+class CommitProcessor implements RequestProcessor, Callable<Void> {
 
   private final BlockingQueue<MessageTuple> commitQueue =
       new LinkedBlockingQueue<MessageTuple>();

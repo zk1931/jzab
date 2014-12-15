@@ -23,7 +23,7 @@ import java.util.concurrent.ThreadFactory;
 /**
  * The factory for creating daemon thread.
  */
-public final class DaemonThreadFactory implements ThreadFactory {
+final class DaemonThreadFactory implements ThreadFactory {
   public static final DaemonThreadFactory FACTORY = new DaemonThreadFactory();
 
   private DaemonThreadFactory() {

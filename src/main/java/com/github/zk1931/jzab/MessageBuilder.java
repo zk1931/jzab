@@ -44,7 +44,7 @@ import static com.github.zk1931.jzab.proto.ZabMessage.Proposal.ProposalType;
 /**
  * Helper class used for creating protobuf messages.
  */
-public final class MessageBuilder {
+final class MessageBuilder {
 
   private MessageBuilder() {
     // Can't be instantiated.

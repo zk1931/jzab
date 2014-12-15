@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package com.github.zk1931.jzab.transport;
+package com.github.zk1931.jzab;
 
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.netty.bootstrap.Bootstrap;
@@ -71,9 +71,7 @@ import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.TrustManagerFactory;
-import com.github.zk1931.jzab.MessageBuilder;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
-import com.github.zk1931.jzab.SslParameters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import static com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
@@ -81,7 +79,7 @@ import static com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
 /**
  * Netty-based transport.
  */
-public class NettyTransport extends Transport {
+class NettyTransport extends Transport {
   private static final Logger LOG = LoggerFactory
                                     .getLogger(NettyTransport.class);
   static final AttributeKey<String> SENDER = AttributeKey.valueOf("remote");

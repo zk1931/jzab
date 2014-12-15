@@ -34,7 +34,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Follower.
  */
-public class Follower extends Participant {
+class Follower extends Participant {
 
   private static final Logger LOG = LoggerFactory.getLogger(Follower.class);
 

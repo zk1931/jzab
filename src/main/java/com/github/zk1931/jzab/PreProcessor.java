@@ -37,8 +37,7 @@ import org.slf4j.LoggerFactory;
  * This processor is used to let clients to convert requests into transaction
  * and hands the transaction to BroadcastProcessor to broadcast to all peers.
  */
-public class PreProcessor implements RequestProcessor,
-                                     Callable<Void> {
+class PreProcessor implements RequestProcessor, Callable<Void> {
 
   private final BlockingQueue<MessageTuple> requestQueue =
       new LinkedBlockingQueue<MessageTuple>();

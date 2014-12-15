@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package com.github.zk1931.jzab.transport;
+package com.github.zk1931.jzab;
 
 import com.google.protobuf.TextFormat;
 import java.io.BufferedReader;
@@ -29,12 +29,8 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import com.github.zk1931.jzab.MessageBuilder;
-import com.github.zk1931.jzab.TestBase;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
 import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
-import com.github.zk1931.jzab.SslParameters;
-import com.github.zk1931.jzab.Zxid;
 import org.junit.Assert;
 import org.junit.Test;
 import org.slf4j.Logger;

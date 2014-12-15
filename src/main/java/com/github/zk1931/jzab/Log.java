@@ -23,7 +23,7 @@ import java.io.IOException;
 /**
  *  Interface of manipulating transaction log.
  */
-public interface Log extends AutoCloseable {
+interface Log extends AutoCloseable {
   /**
    * Appends a request to transaction log.
    *

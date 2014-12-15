@@ -33,7 +33,7 @@ import org.slf4j.LoggerFactory;
  * a list of log files, once the size of the log file reaches certain threshold,
  * we'll roll the log.
  */
-public class RollingLog implements Log {
+class RollingLog implements Log {
   private static final Logger LOG = LoggerFactory.getLogger(RollingLog.class);
 
   /**
@@ -317,7 +317,7 @@ public class RollingLog implements Log {
   /**
    * An implementation of LogIterator for RollingLog.
    */
-  public class RollingLogIterator implements Log.LogIterator {
+  class RollingLogIterator implements Log.LogIterator {
     int fileIdx;
     Log.LogIterator iter;
 

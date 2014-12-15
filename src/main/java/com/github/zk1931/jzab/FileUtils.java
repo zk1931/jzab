@@ -37,7 +37,7 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 /**
  * A static class that contains file-related utility methods.
  */
-public final class FileUtils {
+final class FileUtils {
   private static final Logger LOG = LoggerFactory.getLogger(FileUtils.class);
 
   /**

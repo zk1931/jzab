@@ -39,8 +39,7 @@ import org.slf4j.LoggerFactory;
  * Accepts acknowledgment from peers and broadcasts COMMIT message if there're
  * any committed transactions.
  */
-public class AckProcessor implements RequestProcessor,
-                                     Callable<Void> {
+class AckProcessor implements RequestProcessor, Callable<Void> {
 
   private final BlockingQueue<MessageTuple> ackQueue =
       new LinkedBlockingQueue<MessageTuple>();

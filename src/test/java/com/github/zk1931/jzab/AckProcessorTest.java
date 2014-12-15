@@ -25,8 +25,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
 import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
-import com.github.zk1931.jzab.transport.NettyTransport;
-import com.github.zk1931.jzab.transport.Transport;
 import org.junit.Assert;
 import org.junit.Test;
 import org.slf4j.LoggerFactory;

@@ -30,14 +30,13 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
 import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
-import com.github.zk1931.jzab.transport.Transport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Handles peer connection.
  */
-public class PeerHandler {
+class PeerHandler {
   /**
    * Last proposed epoch of the follower, it helps leader decides new proposed
    * epoch.
