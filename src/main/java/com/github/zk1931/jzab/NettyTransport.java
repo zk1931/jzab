@@ -106,7 +106,7 @@ class NettyTransport extends Transport {
   public NettyTransport(String hostPort, final Receiver receiver,
                         final File dir)
       throws InterruptedException, GeneralSecurityException, IOException {
-    this(hostPort, receiver, new SslParameters(), dir);
+    this(hostPort, receiver, new ZabConfig.SslParameters(), dir);
   }
 
   /**
@@ -119,7 +119,7 @@ class NettyTransport extends Transport {
    * @param dir the directory used to store the received file.
    */
   public NettyTransport(String hostPort, final Receiver receiver,
-                        SslParameters sslParam,
+                        ZabConfig.SslParameters sslParam,
                         final File dir)
       throws InterruptedException, GeneralSecurityException, IOException {
     super(receiver);

@@ -514,12 +514,12 @@ public class NettyTransportTest extends TestBase {
     File keyStoreB = new File(sslDir, "keystore_b.jks");
     File keyStoreC = new File(sslDir, "keystore_c.jks");
 
-    SslParameters sslParam1 =
-      new SslParameters(keyStoreA, password, trustStore, password);
-    SslParameters sslParam2 =
-      new SslParameters(keyStoreB, password, trustStore, password);
-    SslParameters sslParam3 =
-      new SslParameters(keyStoreC, password, trustStore, password);
+    ZabConfig.SslParameters sslParam1 =
+      new ZabConfig.SslParameters(keyStoreA, password, trustStore, password);
+    ZabConfig.SslParameters sslParam2 =
+      new ZabConfig.SslParameters(keyStoreB, password, trustStore, password);
+    ZabConfig.SslParameters sslParam3 =
+      new ZabConfig.SslParameters(keyStoreC, password, trustStore, password);
 
     NettyTransport transportA =
       new NettyTransport(peerA, receiverA, sslParam1, getDirectory());
@@ -629,10 +629,10 @@ public class NettyTransportTest extends TestBase {
       }
     };
 
-    SslParameters sslParam1 =
-      new SslParameters(keyStoreA, password, trustStore, password);
-    SslParameters sslParam2 =
-      new SslParameters(keyStoreB, password, trustStore, password);
+    ZabConfig.SslParameters sslParam1 =
+      new ZabConfig.SslParameters(keyStoreA, password, trustStore, password);
+    ZabConfig.SslParameters sslParam2 =
+      new ZabConfig.SslParameters(keyStoreB, password, trustStore, password);
 
     NettyTransport transportA = new NettyTransport(peerA, receiverA, sslParam1,
                                     getDirectory());
