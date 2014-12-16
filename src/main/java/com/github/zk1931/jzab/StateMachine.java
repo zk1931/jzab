@@ -24,13 +24,13 @@ import java.nio.ByteBuffer;
 import java.util.Set;
 
 /**
- * The state machine interface. It contains a list of callbacks which will be
- * called by Zab. It should be implemented by user.
+ * The state machine interface for interacting with {@link Zab}.
  */
 public interface StateMachine {
   /**
-   * This method is called only on the leader after the Zxid has been assigned
-   * but before proposing the message to followers.
+   * Converts a message to an idempotent transaction. This method is called only
+   * on the leader after the Zxid has been assigned but before proposing the
+   * message to followers.
    *
    * @param zxid zxid of the message.
    * @param message the original message
@@ -40,11 +40,10 @@ public interface StateMachine {
   ByteBuffer preprocess(Zxid zxid, ByteBuffer message);
 
   /**
-   * Callback to deliver a state update. This method is called from a single
+   * Callback for {@link Zab#send}. This method is called from a single
    * thread to ensure that the state updates are applied in the same order
-   * they arrived. Application MUST apply the transaction in the callback,
-   * after deliver returns, Zab assumes the transaction has been applied to
-   * state machine.
+   * as they arrived. {@link Zab} assumes that the transaction is successfully
+   * applied to the state machine when this method returns.
    *
    * @param zxid zxid of the message
    * @param stateUpdate the incremental state update
@@ -55,8 +54,8 @@ public interface StateMachine {
   void deliver(Zxid zxid, ByteBuffer stateUpdate, String clientId, Object ctx);
 
   /**
-   * Callback to deliver the flush request. This method is called from the same
-   * thread as the deliver callback.
+   * Callback for {@link Zab#flush}. This method is called from the same
+   * thread as the {@link StateMachine#deliver} callback.
    *
    * @param  flushRequest the flush request.
    * @param ctx the context object.
@@ -64,15 +63,7 @@ public interface StateMachine {
   void flushed(ByteBuffer flushRequest, Object ctx);
 
   /**
-   * Callback to serialize the application state using an OutputStream. Upon a
-   * call to save, the application writes its state to os.
-   *
-   * @param os the output stream
-   */
-  void save(OutputStream os);
-
-  /**
-   * Callback to notify that the snapshot is successfully stored on disk.
+   * Callback for {@link Zab#takeSnapshot}.
    *
    * @param filePath the path for the snapshot file.
    * @param ctx the context object.
@@ -80,7 +71,7 @@ public interface StateMachine {
   void snapshotDone(String filePath, Object ctx);
 
   /**
-   * Callback to notify that the remove call completed.
+   * Callback for {@link Zab#remove}.
    *
    * @param serverId the ID of the server whom gets removed.
    * @param ctx the context object.
@@ -88,33 +79,38 @@ public interface StateMachine {
   void removed(String serverId, Object ctx);
 
   /**
-   * Deserializes the state of the application from the InputStream. Once this
-   * callback is called. The app restores the state using the input stream.
+   * Serializes the application state to an {@link OutputStream}.
    *
-   * @param is the input stream
+   * @param os output stream to write the state to.
+   */
+  void save(OutputStream os);
+
+  /**
+   * Deserializes the application state from an {@link InputStream}.
+   *
+   * @param is input stream to read the state from.
    */
   void restore(InputStream is);
 
   /**
-   * Callback to notify the server it's in recovering phase. Servers in
-   * recovering phase shouldn't issue or process any requests. The callback will
-   * also notify user the pending requests which have been submitted to Zab but
-   * haven't been delivered back to user. For the pending sends and pending
-   * removes, it's possible they get committed but just haven't been delivered.
-   * For pendingSnapshots and pendingFlushes requests, they will be simply
-   * discarded.
+   * Notifies the state machine that {@link Zab} is in recovering phase. When
+   * {@link Zab} goes from leading/following phase to recovering phase, there
+   * might be requests that have been submitted to {@link Zab} but haven't been
+   * delivered back to the state machine. These requests, along with their
+   * associated contexts, are passed backed to the state machine. Note that
+   * these requests might or might not have been committed by {@link Zab}.
    *
    * @param pendingRequests the pending requests, see {@link PendingRequests}.
    */
   void recovering(PendingRequests pendingRequests);
 
   /**
-   * Callback to notify the application who is running on the leader role of ZAB
-   * instance the membership changes of Zab cluster. The membership changes
-   * include the detection of recovered members or disconnected members in
-   * current configuration or new configuration after some one joined or be
-   * removed from current configuration. This callback will be called from the
-   * same thread as deliver callback.
+   * Notifies the state machine that {@link Zab} is in leading phase with given
+   * sets of active followers and cluster members. This method gets called when
+   * {@link Zab} transitions from recovering phase to leading phase. It also
+   * gets called when there is a change in active followers or cluster
+   * membership while {@link Zab} is in leading phase. This method is called
+   * from the same thread as {@link StateMachine#deliver}.
    *
    * @param activeFollowers current alive followers.
    * @param clusterMembers the members of new configuration.
@@ -122,11 +118,13 @@ public interface StateMachine {
   void leading(Set<String> activeFollowers, Set<String> clusterMembers);
 
   /**
-   * Callback to notify the application who is running on the follower role of
-   * ZAB instance the membership changes of Zab cluster. The membership changes
-   * include the detection of the leader or the new cluster configuration after
-   * some servers are joined or removed. This callback will be called from the
-   * same thread as deliver callback.
+   * Notifies the state machine that {@link Zab} is in following phase with
+   * given leader and cluster members. This method gets called when {@link Zab}
+   * transitions from recovering phase to following phase. It also gets called
+   * when there is a change in cluster membership while {@link Zab} is in
+   * following phase. This method is called from the same thread as
+   * {@link StateMachine#deliver}.
+   *
    *
    * @param leader current leader.
    * @param clusterMembers the members of new configuration.
