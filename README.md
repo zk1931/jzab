@@ -13,12 +13,15 @@ in Java. `jzab`'s features include:
 - **Minimum runtime dependencies** - netty, protobuf, slf4j.
 - **Secure communication** - using ssl.
 
-The latest documentation from the master branch: http://zk1931.github.io/jzab/master/
-
 Applications using `jzab`
 -------------------------
 - [`zabkv`](https://github.com/zk1931/zabkv) - A simple reference server.
 - [`pulsed`](https://github.com/zk1931/pulsed) - An HTTP-based replicated filestore for distributed coordination.
+
+Documentation
+-------------
+- [Getting Started](http://zk1931.github.io/jzab/master/)
+- [Javadoc](http://zk1931.github.io/jzab/master/javadoc/)
 
 Requirements
 ------------
