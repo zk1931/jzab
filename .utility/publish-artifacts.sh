@@ -27,12 +27,12 @@ if [ "$TRAVIS_REPO_SLUG" == "zk1931/jzab" ] &&
   cd gh-pages
   git rm -rf --ignore-unmatch $VERSION
   mv $HOME/doc-latest $VERSION
+  cp -Rf $HOME/javadoc-latest $VERSION/javadoc
   # put the doc from the master branch to http://zk1931.github.io/jzab/master/
   if [ "$TRAVIS_BRANCH" == "master" ]; then
     git rm -rf --ignore-unmatch master
     cp -Rf $VERSION master
   fi
-  cp -Rf $HOME/javadoc-latest $VERSION/javadoc
   git add -f .
   git commit -m "Push documentation from travis build $TRAVIS_BUILD_NUMBER to gh-pages."
   git push -fq origin gh-pages > /dev/null
