@@ -255,7 +255,7 @@ class CommitProcessor implements RequestProcessor, Callable<Void> {
       }
       ctx = tp.ctx;
     }
-    stateMachine.deliver(txn.getZxid(), txn.getBody(), clientId, ctx);
+    stateMachine.deliver(txn.getBody(), clientId, ctx);
   }
 
   void deliverConfiguration(Transaction txn, String clientId)

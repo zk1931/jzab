@@ -101,8 +101,7 @@ class PreProcessor implements RequestProcessor, Callable<Void> {
           String clientId = request.getServerId();
           ByteBuffer bufReq = req.getRequest().asReadOnlyByteBuffer();
           // Invoke the callback to convert the request into transaction.
-          ByteBuffer update = this.stateMachine.preprocess(zxid,
-                                                           bufReq);
+          ByteBuffer update = this.stateMachine.preprocess(bufReq);
           Transaction txn = new Transaction(zxid, update);
           Message prop = MessageBuilder.buildProposal(txn, clientId);
           for (PeerHandler ph : quorumMap.values()) {

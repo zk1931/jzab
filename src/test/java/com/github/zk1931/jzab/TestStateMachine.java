@@ -54,17 +54,16 @@ class TestStateMachine implements StateMachine {
   }
 
   @Override
-  public ByteBuffer preprocess(Zxid zxid, ByteBuffer message) {
+  public ByteBuffer preprocess(ByteBuffer message) {
     // Just return the message without any processing.
     return message;
   }
 
   @Override
-  public void deliver(Zxid zxid, ByteBuffer stateUpdate, String clientId,
-                      Object ctx) {
+  public void deliver(ByteBuffer stateUpdate, String clientId, Object ctx) {
     // Add the delivered message to list.
-    LOG.debug("Delivers txn {}. Origin : {}", zxid, clientId);
-    this.deliveredTxns.add(new Transaction(zxid, stateUpdate));
+    LOG.debug("Delivers txn from {}", clientId);
+    this.deliveredTxns.add(new Transaction(Zxid.ZXID_NOT_EXIST, stateUpdate));
     if (txnsCount != null) {
       txnsCount.countDown();
     }

@@ -28,7 +28,7 @@ import java.io.IOException;
 /**
  * Simple implementation of Zxid.
  */
-public class Zxid implements Comparable<Zxid> {
+class Zxid implements Comparable<Zxid> {
   private final long epoch;
   private final long xid;
   private static final int ZXID_LENGTH = 16;

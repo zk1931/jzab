@@ -1974,12 +1974,11 @@ public class ZabTest extends TestBase  {
       }
 
       @Override
-      public void deliver(Zxid zxid, ByteBuffer stateUpdate, String clientId,
-                          Object ctx) {
+      public void deliver(ByteBuffer stateUpdate, String clientId, Object ctx) {
         if (ctx != null) {
           sendCtxs.add(ctx);
         }
-        super.deliver(zxid, stateUpdate, clientId, ctx);
+        super.deliver(stateUpdate, clientId, ctx);
       }
 
       @Override
