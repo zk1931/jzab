@@ -1505,7 +1505,7 @@ public class ZabTest extends TestBase  {
 
     try {
       zab1.send(ByteBuffer.wrap("req2".getBytes()), null);
-    } catch (ZabException.NotBroadcastingPhase ex) {
+    } catch (ZabException.InvalidPhase ex) {
       LOG.debug("No in broadcasting phase.");
     }
     // Waits the both txn1 and txn2 to be delivered or timeout on server1.
@@ -1940,8 +1940,8 @@ public class ZabTest extends TestBase  {
     zab3.shutdown();
   }
 
-  @Test(expected=ZabException.NotBroadcastingPhase.class)
-  public void testNotBroadcastingPhase() throws Exception {
+  @Test(expected=ZabException.InvalidPhase.class)
+  public void testInvalidPhase() throws Exception {
     // Send request in non-broadcasting phase should raise exception.
     QuorumTestCallback cb = new QuorumTestCallback();
     TestStateMachine st = new TestStateMachine();

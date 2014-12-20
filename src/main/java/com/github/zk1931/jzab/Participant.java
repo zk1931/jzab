@@ -34,7 +34,7 @@ import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
 import com.github.zk1931.jzab.PendingRequests.Tuple;
 import com.github.zk1931.jzab.Zab.FailureCaseCallback;
 import com.github.zk1931.jzab.Zab.StateChangeCallback;
-import com.github.zk1931.jzab.ZabException.NotBroadcastingPhase;
+import com.github.zk1931.jzab.ZabException.InvalidPhase;
 import com.github.zk1931.jzab.ZabException.TooManyPendingRequests;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -197,9 +197,9 @@ abstract class Participant {
   }
 
   synchronized void send(ByteBuffer request, Object ctx)
-      throws NotBroadcastingPhase, TooManyPendingRequests {
+      throws InvalidPhase, TooManyPendingRequests {
     if (this.currentPhase != Phase.BROADCASTING) {
-      throw new NotBroadcastingPhase("Not in Broadcasting phase!");
+      throw new InvalidPhase("Zab.send() called while recovering");
     }
     if (pendings.pendingSends.size() > ZabConfig.MAX_PENDING_REQS) {
       // If the size of pending requests exceeds the certain threshold, raise
@@ -212,9 +212,9 @@ abstract class Participant {
   }
 
   synchronized void remove(String peerId, Object ctx)
-      throws NotBroadcastingPhase, TooManyPendingRequests {
+      throws InvalidPhase, TooManyPendingRequests {
     if (this.currentPhase != Phase.BROADCASTING) {
-      throw new NotBroadcastingPhase("Not in Broadcasting phase!");
+      throw new InvalidPhase("Zab.remove() called while recovering");
     }
     if (pendings.pendingRemoves.size() > 0) {
       throw new TooManyPendingRequests("Snapshot already in progress");
@@ -225,9 +225,9 @@ abstract class Participant {
   }
 
   synchronized void flush(ByteBuffer request, Object ctx)
-      throws NotBroadcastingPhase, TooManyPendingRequests {
+      throws InvalidPhase, TooManyPendingRequests {
     if (this.currentPhase != Phase.BROADCASTING) {
-      throw new NotBroadcastingPhase("Not in Broadcasting phase!");
+      throw new InvalidPhase("Zab.flush() called while recovering");
     }
     if (pendings.pendingFlushes.size() > ZabConfig.MAX_PENDING_REQS) {
       // If the size of pending requests exceeds the certain threshold, raise
@@ -240,10 +240,9 @@ abstract class Participant {
   }
 
   synchronized void takeSnapshot(Object ctx)
-      throws NotBroadcastingPhase, TooManyPendingRequests {
+      throws InvalidPhase, TooManyPendingRequests {
     if (this.currentPhase != Phase.BROADCASTING) {
-      throw new NotBroadcastingPhase("You cannot take snapshots while"
-          + " Jzab is in Recovering phase");
+      throw new InvalidPhase("Zab.takeSnapshot() called while recovering");
     }
     if (!pendings.pendingSnapshots.isEmpty()) {
       throw new TooManyPendingRequests("A pending snapshot is in progress");
