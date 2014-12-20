@@ -19,11 +19,11 @@
 package com.github.zk1931.jzab;
 
 import java.io.File;
-import java.io.InputStream;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -74,10 +74,10 @@ class SnapshotStateMachine implements StateMachine {
   public void flushed(ByteBuffer flushReq, Object ctx) {}
 
   @Override
-  public void save(OutputStream os) {
+  public void save(FileOutputStream fos) {
     LOG.debug("SAVE is called.");
     try {
-      ObjectOutputStream out = new ObjectOutputStream(os);
+      ObjectOutputStream out = new ObjectOutputStream(fos);
       out.writeObject(state);
     } catch (IOException e) {
       LOG.error("Caught exception", e);
@@ -91,10 +91,10 @@ class SnapshotStateMachine implements StateMachine {
   }
 
   @Override
-  public void restore(InputStream is) {
+  public void restore(FileInputStream fis) {
     LOG.debug("RESTORE is called.");
     try {
-      ObjectInputStream oin = new ObjectInputStream(is);
+      ObjectInputStream oin = new ObjectInputStream(fis);
       ConcurrentHashMap<?, ?> map = (ConcurrentHashMap<?, ?>)oin.readObject();
       state = new ConcurrentHashMap<String, String>();
       Iterator it = map.entrySet().iterator();

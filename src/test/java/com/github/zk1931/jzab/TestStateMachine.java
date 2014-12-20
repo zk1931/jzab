@@ -21,8 +21,8 @@ package com.github.zk1931.jzab;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import org.slf4j.Logger;
@@ -84,7 +84,7 @@ class TestStateMachine implements StateMachine {
   }
 
   @Override
-  public void save(OutputStream os) {
+  public void save(FileOutputStream fos) {
     throw new UnsupportedOperationException("This implementation"
         + "doesn't support getState operation");
   }
@@ -94,7 +94,7 @@ class TestStateMachine implements StateMachine {
   }
 
   @Override
-  public void restore(InputStream is) {
+  public void restore(FileInputStream fis) {
     throw new UnsupportedOperationException("This implementation"
         + "doesn't support setState operation");
   }

@@ -18,8 +18,8 @@
 
 package com.github.zk1931.jzab;
 
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.nio.ByteBuffer;
 import java.util.Set;
 
@@ -79,18 +79,18 @@ public interface StateMachine {
   void removed(String serverId, Object ctx);
 
   /**
-   * Serializes the application state to an {@link OutputStream}.
+   * Serializes the application state to a {@link FileOutputStream}.
    *
-   * @param os output stream to write the state to.
+   * @param fos file to write the state to.
    */
-  void save(OutputStream os);
+  void save(FileOutputStream fos);
 
   /**
-   * Deserializes the application state from an {@link InputStream}.
+   * Deserializes the application state from a {@link FileInputStream}.
    *
-   * @param is input stream to read the state from.
+   * @param fis file to read the state from.
    */
-  void restore(InputStream is);
+  void restore(FileInputStream fis);
 
   /**
    * Notifies the state machine that {@link Zab} is in recovering phase. When
