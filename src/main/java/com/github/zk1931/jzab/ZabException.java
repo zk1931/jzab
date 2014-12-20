@@ -18,7 +18,7 @@
 package com.github.zk1931.jzab;
 
 /**
- * Exceptions for Jzab.
+ * Exceptions thrown by {@link Zab}.
  */
 public abstract class ZabException extends Exception {
 
@@ -27,11 +27,11 @@ public abstract class ZabException extends Exception {
   ZabException(String desc) { super(desc); }
 
   /**
-   * Sends request in non-broadcasting phase.
+   * {@link Zab} is in an invalid phase to perform a certain operation.
    */
-  public static class NotBroadcastingPhase extends ZabException {
-    NotBroadcastingPhase() {}
-    NotBroadcastingPhase(String desc) { super(desc); }
+  public static class InvalidPhase extends ZabException {
+    InvalidPhase() {}
+    InvalidPhase(String desc) { super(desc); }
   }
 
   /**
