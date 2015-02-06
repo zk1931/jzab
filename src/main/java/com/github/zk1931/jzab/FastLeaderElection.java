@@ -219,7 +219,10 @@ class FastLeaderElection implements Election {
     long round;
     boolean electing;
 
-    VoteInfo(String vote, long ackEpoch, Zxid zxid, long round,
+    VoteInfo(String vote,
+             long ackEpoch,
+             Zxid zxid,
+             long round,
              boolean electing) {
       this.vote = vote;
       this.ackEpoch = ackEpoch;

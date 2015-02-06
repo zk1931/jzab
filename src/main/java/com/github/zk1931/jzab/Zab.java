@@ -39,9 +39,9 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
 /**
- * Zab is a fault-tolerant, replicated protocl that guarantees all requests
+ * Zab is a fault-tolerant, replicated protocol that guarantees all requests
  * submitted to it will be delivered in same order to all servers in the
- * cluster. The Zab class exposes all the operation of Jzab library.
+ * cluster. The Zab class exposes all the operations of Jzab library.
  */
 public class Zab {
   private static final Logger LOG = LoggerFactory.getLogger(Zab.class);
@@ -117,6 +117,10 @@ public class Zab {
     this(stateMachine, config, serverId, peers, null, null, null);
   }
 
+  // This constructor is for internal testing purpose. "initState" allows us to
+  // setup initial state of Jzab before starting Jzab. "stateCallback" allows
+  // us catch the state transition happend in the runtime. "failureCallback"
+  // allows us to inject failures to different points of code path.
   Zab(StateMachine stateMachine,
       ZabConfig config,
       PersistentState initState,
@@ -126,6 +130,7 @@ public class Zab {
         failureCallback);
   }
 
+  // Same as the above, but for joining a peer.
   Zab(StateMachine stateMachine,
       ZabConfig config,
       String serverId,
@@ -137,6 +142,7 @@ public class Zab {
         stateCallback, failureCallback);
   }
 
+  // Starts with static configuration.
   Zab(StateMachine stateMachine,
       ZabConfig config,
       String serverId,
@@ -460,6 +466,8 @@ public class Zab {
       this.joinPeer = joinPeer;
       this.stateChangeCallback = stateChangeCallback;
       if (initState == null) {
+        // If there's no initial state, we'll constructs the PersistenState
+        // from the the log directory.
         persistence = new PersistentState(config.getLogDir());
       } else {
         persistence = initState;
@@ -522,7 +530,6 @@ public class Zab {
           LOG.debug("Waiting for electing a leader.");
           String leader = this.election.electLeader();
           LOG.debug("Select {} as leader.", leader);
-          // Clears the message queue before going to recovery.
           if (leader.equals(serverId)) {
             participant = new Leader(participantState, stateMachine, config);
             ((Leader)participant).lead();

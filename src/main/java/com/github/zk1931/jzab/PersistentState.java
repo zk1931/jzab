@@ -61,7 +61,7 @@ class PersistentState {
   private File dataDir;
 
   /**
-   * The boolean flag indicates whether the state is in state tranfering mode.
+   * The boolean flag indicates whether the state is in state tranferfing mode.
    */
   private boolean isTransferring = false;
 
@@ -370,8 +370,8 @@ class PersistentState {
   }
 
   /**
-   * Begins state transfering mode, all txns and snapshots persisted in state
-   * transfering mode will not show up after recovery if you do not call
+   * Begins state transferring mode, all txns and snapshots persisted in state
+   * transferring mode will not show up after recovery if you do not call
    * {@link endStateTransfer}.
    */
   void beginStateTransfer() throws IOException {
@@ -382,8 +382,8 @@ class PersistentState {
   }
 
   /**
-   * Ends state transfering mode, after calling this function, all the txns
-   * and snapshots persisted during the transfering mode will be visible from
+   * Ends state transferring mode, after calling this function, all the txns
+   * and snapshots persisted during the transferring mode will be visible from
    * now.
    */
   void endStateTransfer() throws IOException {
@@ -398,14 +398,14 @@ class PersistentState {
   }
 
   /**
-   * Whether the persistent state is in state transfering mode or not.
+   * Whether the persistent state is in state transferring mode or not.
    */
   boolean isInStateTransfer() {
     return this.isTransferring;
   }
 
   /**
-   * Clear all the data in state transfering mode and restores to previous
+   * Clear all the data in state transferring mode and restores to previous
    * state.
    */
   void undoStateTransfer() throws IOException {

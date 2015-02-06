@@ -38,8 +38,8 @@ import org.slf4j.LoggerFactory;
  */
 class PeerHandler {
   /**
-   * Last proposed epoch of the follower, it helps leader decides new proposed
-   * epoch.
+   * Last proposed epoch of the follower, leader needs to know the last proposed
+   * proposed of each follower in order to propose a new epoch.
    */
   protected long lastProposedEpoch = -1;
 
@@ -55,14 +55,15 @@ class PeerHandler {
   protected long lastHeartbeatTimeNs;
 
   /**
-   * Last transaction id in peer's log. It's used by leader to decide how to
-   * synchronize the follower in synchronizing phase.
+   * Last transaction id in peer's log or snapshot. It's used by leader to
+   * decide how to synchronize the follower in synchronizing phase.
    */
   protected Zxid lastZxid = null;
 
   /**
-   * The last acknowledged transaction id from this peer. It's used by
-   * CommitProcessor to find out the transaction which will be committed.
+   * The last acknowledged transaction id from this peer. The CommitProcessor
+   * will query the last acknowledged zxid of each peer and decide which
+   * transaction can be committed.
    */
   protected Zxid lastAckedZxid = null;
 
@@ -78,18 +79,18 @@ class PeerHandler {
       new LinkedBlockingQueue<Message>();
 
   /**
-   * The synchronizing task. For the handler of leader, it's null.
+   * The synchronizing task. It's used for synchronizing the followers.
    */
   protected Participant.SyncPeerTask syncTask = null;
 
   /**
-   * The epoch of the NEWLEADER message. It will be sent to follower after the
+   * The epoch in the NEWLEADER message. It will be sent to followers after the
    * synchronization is done.
    */
   protected long newleaderEpoch;
 
   /**
-   * Passed by Participant to send messages.
+   * The transport of the leader, used to send messages to peers.
    */
   protected final Transport transport;
 
@@ -104,7 +105,10 @@ class PeerHandler {
   private ExecutorService es = null;
 
   /**
-   * Whether the PeerHandler is allowed to send out message.
+   * Whether the PeerHandler is allowed to send out messages. Leader will
+   * disable the abilities of sending message once it catches the DISCONNECT
+   * message from the peer in broadcasting phase so that the messages enqueued
+   * by PreProcessor/CommitProcessor will not be sent via transport.
    */
   volatile boolean disableSending = false;
 
@@ -135,7 +139,8 @@ class PeerHandler {
   private int syncTimeoutMs = 0;
 
   /**
-   * The zxid of last COMMIT message sent to the peer.
+   * The zxid of last COMMIT message sent to the peer. The CommitProcessr uses
+   * this to avoid sending duplicate COMMIT messages to the same peer.
    */
   private Zxid lastCommittedZxid = Zxid.ZXID_NOT_EXIST;
 
