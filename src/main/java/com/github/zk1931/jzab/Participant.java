@@ -270,7 +270,8 @@ abstract class Participant {
   }
 
   /**
-   * Gets a message from the queue.
+   * Gets a message from the queue. It will throw TimeOutException if there's
+   * no message coming in configured timeout.
    *
    * @return a message tuple contains the message and its source.
    * @throws TimeoutException in case of timeout.
@@ -282,7 +283,8 @@ abstract class Participant {
   }
 
   /**
-   * Gets a message from the queue.
+   * Gets a message from the queue. It will throw TimeOutException if there's
+   * no message coming in a given timeout.
    *
    * @param timeoutMs how to wait before raising a TimeoutException.
    * @return a message tuple contains the message and its source.
@@ -294,7 +296,9 @@ abstract class Participant {
 
   /**
    * Gets the expected message. It will discard messages of unexpected type
-   * and source and returns only if the expected message is received.
+   * and source and returns if only if the expected message is received. It
+   * will throw TimeOutException if there's no expected message coming in a
+   * given timeout.
    *
    * @param type the expected message type.
    * @param source the expected source, null if it can from anyone.
@@ -330,6 +334,19 @@ abstract class Participant {
     }
   }
 
+  /**
+   * Gets the expected message. It will discard messages of unexpected type
+   * and source and returns if only if the expected message is received. It
+   * will throw TimeOutException if there's no expected message coming in a
+   * configured timeout.
+   *
+   * @param type the expected message type.
+   * @param source the expected source, null if it can from anyone.
+   * @param timeoutMs how long to wait before raising a TimeoutException.
+   * @return the message tuple contains the message and its source.
+   * @throws TimeoutException in case of timeout.
+   * @throws InterruptedException it's interrupted.
+   */
   protected MessageTuple getExpectedMessage(MessageType type, String source)
       throws TimeoutException, InterruptedException {
     return getExpectedMessage(type, source, this.config.getTimeoutMs());
@@ -681,20 +698,30 @@ abstract class Participant {
    * zxid of the snapshot file if the log is non-empty. The only exception is
    * that the log is empty.
    *
-   * 3. During the synchronization, we'll only truncate the transaction which
-   * hasn't been committed.
+   * 3. During the synchronization, we'll only truncate the transactions are
+   * not committed.
    *
-   * 4. The zxid of the snapshot file had always been committed in log, so if
-   * the zxid of peer is from its snapshot we'll never truncate this.
+   * 4. All the transactions in snapshot are guaranteed to be committed. So if
+   * the zxid of the peer comes from its snapshot then TRUNCATE message it's
+   * impossible to be sent.
    *
    * 5. The zxid returned from PersistentState.getLatestZxid() of leader is
    * guaranteed to be equal or greater than all the committed transactions.
    */
   protected class SyncPeerTask {
     private final String peerId;
+    // The latest seen zxid of the peer.
     private final Zxid peerLatestZxid;
+    // The last zxid for this synchronization.
     private final Zxid lastSyncZxid;
+    // The cluster configuration which will be sent during the end of
+    // synchronization, it must be <= lastSyncZxid.
     private final ClusterConfiguration clusterConfig;
+    // The SyncPeerTask is mostly running on separate threads of leader side,
+    // sometime when leader decides to going back/exiting it needs to stop
+    // all the pending synchronization first, thus we maintain this flag to
+    // stop the synchronization at the earliest convenience to avoid blocking
+    // the main thread.
     private boolean stop = false;
 
    /**
@@ -790,8 +817,8 @@ abstract class Participant {
                 peerLatestZxid, lastSyncZxid, snapZxid);
 
       if (peerLatestZxid.equals(lastSyncZxid)) {
-        // If the server has the same zxid with the peer's, just send an empty
-        // DIFF.
+        // If the "syncer" has the same zxid with the "syncee's", just send an
+        // empty DIFF.
         LOG.debug("Peer {} has same latest zxid zxid {}, send empty DIFF.",
                   peerId, lastSyncZxid);
         Message diff = MessageBuilder.buildDiff(lastSyncZxid);
@@ -799,25 +826,26 @@ abstract class Participant {
       } else if (peerLatestZxid.compareTo(lastSyncZxid) > 0) {
         LOG.debug("Peer {} has larger latest zxid zxid {}.",
                   peerId, peerLatestZxid);
-        // The peer's latest zxid on disk is larger than the server's, which
+        // The syncee's  latest zxid on disk is larger than the syncer's, which
         // means the peerLatestZxid must come from its log file instead of
         // snapshot file.
         if (peerLatestZxid.getEpoch() == lastSyncZxid.getEpoch()) {
-          // Means the last zxids the servers are same, which means the server's
-          // log history is a prefix of the peer's, just send truncate.
+          // Means the they are in the same epoch, which means the syncer's log
+          // history is a prefix of the syncee's, just send truncate.
           Message trunc =
             MessageBuilder.buildTruncate(lastSyncZxid, lastSyncZxid);
           sendMessage(peerId, trunc);
         } else {
-          // Not sure if the server's history is the prefix of the peer's, do
+          // Not sure if the syncer's history is the prefix of the syncee's, do
           // whole state transfer for simplicity.
           LOG.debug("The peer's zxid has different epoch, start state "
               + "tranfering.");
           stateTransfer(snapFile, snapZxid, log);
         }
       } else {
-        // The peer's lastest zxid < the server's.
         if (snapZxid != null && snapZxid.compareTo(peerLatestZxid) >= 0) {
+          // If the latest zxid of the syncee is smaller than the zxid of
+          // snapshot of the syncer, we'll do the whole state transfer.
           stateTransfer(snapFile, snapZxid, log);
         } else {
           syncFromLog(log);

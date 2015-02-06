@@ -102,18 +102,18 @@ public class PersistentStateTest extends TestBase {
     /*
      * Test case 1:
      *
-     * Appends 100 txns in state transfering mode then ends transfering mode
+     * Appends 100 txns in state transferring mode then ends transferring mode
      * and verify they show up in log.
      */
-    // Begins state transfering mode.
+    // Begins state transferring mode.
     persistence.beginStateTransfer();
-    // Make sure it's in state transfering mode.
+    // Make sure it's in state transferring mode.
     Assert.assertTrue(persistence.isInStateTransfer());
     // Appends 100 txns.
     appendTxns(persistence.getLog(), new Zxid(0, 0), 100);
     // Make sure the appended txns show up.
     Assert.assertEquals(new Zxid(0, 99), persistence.getLatestZxid());
-    // Ends state transfering.
+    // Ends state transferring.
     persistence.endStateTransfer();
     // Restores state.
     persistence = new PersistentState(getDirectory());
@@ -123,13 +123,13 @@ public class PersistentStateTest extends TestBase {
     /*
      * Test case 2:
      *
-     * Appends 10 txns in state transfering mode, but without calling
+     * Appends 10 txns in state transferring mode, but without calling
      * endStateTransfering we restore persistent state and verify the
      * 10 txns will not show up.
      */
-    // Begins state transfering mode again.
+    // Begins state transferring mode again.
     persistence.beginStateTransfer();
-    // Make sure it's in state transfering mode.
+    // Make sure it's in state transferring mode.
     Assert.assertTrue(persistence.isInStateTransfer());
     // Appends 10 txns.
     appendTxns(persistence.getLog(), new Zxid(0, 0), 10);
@@ -144,8 +144,8 @@ public class PersistentStateTest extends TestBase {
     /*
      * Test case 3:
      *
-     * Appends 10 txns in state transfering mode, but without calling
-     * endStateTransfering we undo the state transfering explicitly and verify
+     * Appends 10 txns in state transferring mode, but without calling
+     * endStateTransfering we undo the state transferring explicitly and verify
      * the 10 txns will not show up.
      */
     persistence.beginStateTransfer();
@@ -154,7 +154,7 @@ public class PersistentStateTest extends TestBase {
     // Make sure the appended txns show up.
     Assert.assertEquals(new Zxid(0, 9), persistence.getLatestZxid());
     Assert.assertTrue(persistence.isInStateTransfer());
-    // Undo state transfering manually.
+    // Undo state transferring manually.
     persistence.undoStateTransfer();
     // Still show old data.
     Assert.assertEquals(new Zxid(0, 99), persistence.getLatestZxid());

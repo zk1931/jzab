@@ -40,7 +40,7 @@ public class ZabConfig {
    * Gets the directory for storing transaction log.
    *
    * @return the directory for storing transaction log, if it's undefined,
-   * return the current user's working directory.
+   * return the current working directory.
    */
   public String getLogDir() {
     return this.logDir;

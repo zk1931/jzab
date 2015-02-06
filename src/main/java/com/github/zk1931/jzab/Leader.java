@@ -53,21 +53,6 @@ class Leader extends Participant {
     new HashMap<String, PeerHandler>();
 
   /**
-   * Last proposed Zxid of the leader.
-   */
-  private Zxid lastProposedZxid;
-
-  /**
-   * Last acknowledged zxid of the leader.
-   */
-  private Zxid lastAckedZxid;
-
-  /**
-   * Last committed zxid of the leader.
-   */
-  private Zxid lastCommittedZxid;
-
-  /**
    * The established epoch for this leader.
    */
   private long establishedEpoch = -1;
@@ -86,6 +71,20 @@ class Leader extends Participant {
    * Determines which transaction can be committed.
    */
   private AckProcessor ackProcessor = null;
+
+  /**
+   * The leader needs to maintain the last proposed zxid of itself, the last
+   * acknowledged zxid from itself, and the last committed zxid it received.
+   * The last two records are not necessarily most updated since the events
+   * happen in different threads and the events will be passed along the
+   * message pipeline, the leader only has the chance of catching the events in
+   * main thread. But we can guarantee that in main thread there's no zxid
+   * after lastProposedZxid has been proposed, and the last acknowledged and
+   * committed zxid are actually acknowledged/committed.
+   */
+  private Zxid lastProposedZxid;
+  private Zxid lastAckedZxid;
+  private Zxid lastCommittedZxid;
 
   private static final Logger LOG = LoggerFactory.getLogger(Leader.class);
 
@@ -635,110 +634,25 @@ class Leader extends Participant {
     broadcastingInit();
     try {
       while (this.quorumMap.size() >= clusterConfig.getQuorumSize()) {
-        MessageTuple tuple = getMessage();
+        MessageTuple tuple = getMessage(config.getTimeoutMs());
         Message msg = tuple.getMessage();
         String source = tuple.getServerId();
-        if (msg.getType() == MessageType.PROPOSED_EPOCH) {
-          LOG.debug("Got PROPOSED_EPOCH from {}.", source);
-          ClusterConfiguration cnf = persistence.getLastSeenConfig();
-          if (!cnf.contains(source)) {
-            // Only allows servers who are in the current config to join.
-            LOG.warn("Got PROPOSED_EPOCH from {} who is not in config, "
-                + "ignores it.", source);
-            continue;
-          }
-          int syncTimeoutMs = msg.getProposedEpoch().getSyncTimeout();
-          if (syncTimeoutMs > getSyncTimeoutMs()) {
-            // Updates leader's sync timeout if the peer's time out is larger.
-            setSyncTimeoutMs(syncTimeoutMs);
-          }
-          Message newEpoch =
-            MessageBuilder.buildNewEpochMessage(establishedEpoch,
-                                                getSyncTimeoutMs());
-          sendMessage(source, newEpoch);
-        } else if (msg.getType() == MessageType.ACK_EPOCH) {
-          LOG.debug("Got ACK_EPOCH from {}", source);
-          // We'll synchronize the follower up to last proposed zxid.
-          tuple.setZxid(lastProposedZxid);
-          onAckEpoch(tuple);
-        } else if (msg.getType() == MessageType.QUERY_LEADER) {
-          LOG.debug("Got QUERY_LEADER from {}", source);
-          Message reply = MessageBuilder.buildQueryReply(this.serverId);
-          sendMessage(source, reply);
-        } else if (msg.getType() == MessageType.SYNC_HISTORY) {
-          // The new joiner will issue SYNC_HISTORY message first to make its
-          // history synchronized.
-          onSyncHistory(tuple);
-        } else if (msg.getType() == MessageType.ELECTION_INFO) {
-          this.election.reply(tuple);
-        } else {
-          // In broadcasting phase, the only expected messages come outside
-          // the quorum set is PROPOSED_EPOCH, ACK_EPOCH, QUERY_LEADER and
-          // SYNC_HISTORY.
-          if (!this.quorumMap.containsKey(source)) {
-            if (LOG.isDebugEnabled()) {
-              LOG.debug("Got message {} from {} outside quorum.",
-                        TextFormat.shortDebugString(msg),
-                        source);
-            }
-            continue;
-          }
-          if (msg.getType() != MessageType.HEARTBEAT && LOG.isDebugEnabled()) {
-            LOG.debug("Got message {} from {}",
-                      TextFormat.shortDebugString(msg), source);
-          }
-          if (msg.getType() == MessageType.ACK) {
-            onAck(tuple);
-          } else if (msg.getType() == MessageType.REQUEST) {
-            Zxid proposedZxid = getNextProposedZxid();
-            // Updates last proposed zxid for this peer. The FLUSH
-            // message needs this zxid to determine when it's safe
-            // to deliver the FLUSH request back to user.
-            quorumMap.get(source).setLastProposedZxid(proposedZxid);
-            tuple.setZxid(proposedZxid);
-            preProcessor.processRequest(tuple);
-          } else if (msg.getType() == MessageType.FLUSH_REQ) {
-            onFlushReq(tuple);
-          } else if (msg.getType() == MessageType.FLUSH) {
-            onFlush(tuple);
-          } else if (msg.getType() == MessageType.HEARTBEAT) {
-            LOG.trace("Got HEARTBEAT replies from {}", source);
-          } else if (msg.getType() == MessageType.PROPOSAL) {
-            onProposal(tuple);
-          } else if (msg.getType() == MessageType.COMMIT) {
-            onCommit(tuple);
-          } else if (msg.getType() == MessageType.DISCONNECTED) {
+        // Checks if it's DISCONNECTED message.
+        if (msg.getType() == MessageType.DISCONNECTED) {
+          String peerId = msg.getDisconnected().getServerId();
+          if (quorumMap.containsKey(peerId)) {
             onDisconnected(tuple);
-          } else if (msg.getType() == MessageType.REMOVE) {
-            if (pendingCopZxid != null) {
-              LOG.warn("There's a pending reconfiguration still in progress.");
-              continue;
-            }
-            pendingCopZxid = getNextProposedZxid();
-            tuple.setZxid(pendingCopZxid);
-            onRemove(tuple);
-          } else if (msg.getType() == MessageType.DELIVERED) {
-            onDelivered(msg);
-          } else if (msg.getType() == MessageType.JOIN) {
-            LOG.debug("Got JOIN from {}", source);
-            if (pendingCopZxid != null) {
-              LOG.warn("There's a pending reconfiguration still in progress.");
-              continue;
-            }
-            pendingCopZxid = getNextProposedZxid();
-            tuple.setZxid(pendingCopZxid);
-            onJoin(tuple);
-          } else if (msg.getType() == MessageType.SNAPSHOT) {
-            snapProcessor.processRequest(tuple);
-          } else if (msg.getType() == MessageType.SNAPSHOT_DONE) {
-            commitProcessor.processRequest(tuple);
           } else {
-            if (LOG.isWarnEnabled()) {
-              LOG.warn("Unexpected messgae : {} from {}",
-                       TextFormat.shortDebugString(msg),
-                       source);
-            }
+            this.transport.clear(peerId);
           }
+          continue;
+        }
+        if (!quorumMap.containsKey(source)) {
+          // Received a message sent from a peer who is outside the quorum.
+          handleMessageOutsideQuorum(tuple);
+        } else {
+          // Received a message sent from the peer who is in quorum.
+          handleMessageFromQuorum(tuple);
           PeerHandler ph = quorumMap.get(source);
           if (ph != null) {
             ph.updateHeartbeatTime();
@@ -757,6 +671,116 @@ class Leader extends Participant {
       snapProcessor.shutdown();
       this.lastDeliveredZxid = commitProcessor.getLastDeliveredZxid();
       this.participantState.updateLastDeliveredZxid(this.lastDeliveredZxid);
+    }
+  }
+
+  void handleMessageOutsideQuorum(MessageTuple tuple) throws IOException {
+    Message msg = tuple.getMessage();
+    String source = tuple.getServerId();
+    if (msg.getType() == MessageType.PROPOSED_EPOCH) {
+      // Follower is in recovering while the leader is in broadcasting
+      // phase, the leader just sends its current epoch as NEW_EPOCH message
+      // to the follower directly. The synchronization to the recovered
+      // follower will begin after receiving its ACK_EPOCH message.
+      LOG.debug("Got PROPOSED_EPOCH from {}.", source);
+      ClusterConfiguration cnf = persistence.getLastSeenConfig();
+      if (!cnf.contains(source)) {
+        // Only allows servers who are in the current config to join.
+        LOG.warn("Got PROPOSED_EPOCH from {} who is not in config, "
+            + "ignores it.", source);
+        return;
+      }
+      int syncTimeoutMs = msg.getProposedEpoch().getSyncTimeout();
+      if (syncTimeoutMs > getSyncTimeoutMs()) {
+        // Updates leader's sync timeout if the peer's time out is larger.
+        setSyncTimeoutMs(syncTimeoutMs);
+      }
+      Message newEpoch =
+        MessageBuilder.buildNewEpochMessage(establishedEpoch,
+                                            getSyncTimeoutMs());
+      sendMessage(source, newEpoch);
+    } else if (msg.getType() == MessageType.ACK_EPOCH) {
+      LOG.debug("Got ACK_EPOCH from {}", source);
+      // Got the ACK_EPOCH message, the leader will starts synchronizing to
+      // the follower up to the last proposed zxid.
+      tuple.setZxid(lastProposedZxid);
+      onAckEpoch(tuple);
+    } else if (msg.getType() == MessageType.QUERY_LEADER) {
+      LOG.debug("Got QUERY_LEADER from {}", source);
+      Message reply = MessageBuilder.buildQueryReply(this.serverId);
+      sendMessage(source, reply);
+    } else if (msg.getType() == MessageType.SYNC_HISTORY) {
+      // The new joiner will issue SYNC_HISTORY message first to make its
+      // history synchronized.
+      onSyncHistory(tuple);
+    } else if (msg.getType() == MessageType.ELECTION_INFO) {
+      this.election.reply(tuple);
+    } else {
+      if (LOG.isWarnEnabled()) {
+        LOG.warn("Got unexpected message {} from {}.",
+                  TextFormat.shortDebugString(msg),
+                  source);
+      }
+    }
+  }
+
+  void handleMessageFromQuorum(MessageTuple tuple)
+      throws ExecutionException, InterruptedException, IOException {
+    Message msg = tuple.getMessage();
+    String source = tuple.getServerId();
+    if (msg.getType() != MessageType.HEARTBEAT && LOG.isDebugEnabled()) {
+      LOG.debug("Got message {} from {}",
+                TextFormat.shortDebugString(msg), source);
+    }
+    if (msg.getType() == MessageType.ACK) {
+      onAck(tuple);
+    } else if (msg.getType() == MessageType.REQUEST) {
+      Zxid proposedZxid = getNextProposedZxid();
+      // Updates last proposed zxid for this peer. The FLUSH
+      // message needs this zxid to determine when it's safe
+      // to deliver the FLUSH request back to user.
+      quorumMap.get(source).setLastProposedZxid(proposedZxid);
+      tuple.setZxid(proposedZxid);
+      preProcessor.processRequest(tuple);
+    } else if (msg.getType() == MessageType.FLUSH_REQ) {
+      onFlushReq(tuple);
+    } else if (msg.getType() == MessageType.FLUSH) {
+      onFlush(tuple);
+    } else if (msg.getType() == MessageType.HEARTBEAT) {
+      LOG.trace("Got HEARTBEAT replies from {}", source);
+    } else if (msg.getType() == MessageType.PROPOSAL) {
+      onProposal(tuple);
+    } else if (msg.getType() == MessageType.COMMIT) {
+      onCommit(tuple);
+    } else if (msg.getType() == MessageType.REMOVE) {
+      if (pendingCopZxid != null) {
+        LOG.warn("There's a pending reconfiguration still in progress.");
+        return;
+      }
+      pendingCopZxid = getNextProposedZxid();
+      tuple.setZxid(pendingCopZxid);
+      onRemove(tuple);
+    } else if (msg.getType() == MessageType.DELIVERED) {
+      onDelivered(msg);
+    } else if (msg.getType() == MessageType.JOIN) {
+      LOG.debug("Got JOIN from {}", source);
+      if (pendingCopZxid != null) {
+        LOG.warn("There's a pending reconfiguration still in progress.");
+        return;
+      }
+      pendingCopZxid = getNextProposedZxid();
+      tuple.setZxid(pendingCopZxid);
+      onJoin(tuple);
+    } else if (msg.getType() == MessageType.SNAPSHOT) {
+      snapProcessor.processRequest(tuple);
+    } else if (msg.getType() == MessageType.SNAPSHOT_DONE) {
+      commitProcessor.processRequest(tuple);
+    } else {
+      if (LOG.isWarnEnabled()) {
+        LOG.warn("Unexpected messgae : {} from {}",
+                 TextFormat.shortDebugString(msg),
+                 source);
+      }
     }
   }
 
@@ -868,11 +892,13 @@ class Leader extends Participant {
         Message commit = MessageBuilder.buildCommit(ackZxid);
         sendMessage(peer.getServerId(), commit);
         peer.setLastCommittedZxid(ackZxid);
+        // After sending out the first COMMIT message, we can start the
+        // broadcasting task.
         peer.startBroadcastingTask();
         pendingPeers.remove(source);
       }
     }
-    if  (source.equals(this.serverId)) {
+    if (source.equals(this.serverId)) {
       // If the ACK comes from the leader, we need to update the last
       // acknowledged zxid of the leader.
       this.lastAckedZxid = ackZxid;
@@ -903,18 +929,19 @@ class Leader extends Participant {
   void onAckEpoch(MessageTuple tuple) throws IOException {
     String source = tuple.getServerId();
     Message msg = tuple.getMessage();
-    // This is the last proposed zxid from leader, we'll synchronize the
-    // follower up to this zxid.
-    Zxid zxid = tuple.getZxid();
+    // This is the last proposed zxid from leader, we'll make it as the last
+    // transaction of the synchronization.
+    Zxid lastZxidOfSync = tuple.getZxid();
     ZabMessage.AckEpoch ackEpoch = msg.getAckEpoch();
+    // Last zxid of the peer/follower.
     Zxid lastPeerZxid = MessageBuilder
                         .fromProtoZxid(ackEpoch.getLastZxid());
     PeerHandler ph =
       new PeerHandler(source, transport, config.getTimeoutMs()/3);
     ph.setLastZxid(lastPeerZxid);
-    ph.setLastSyncedZxid(zxid);
+    ph.setLastSyncedZxid(lastZxidOfSync);
     // Add to the quorum set of main thread.
-    quorumMap.put(source, ph);
+    this.quorumMap.put(source, ph);
     // Add to the pending set also.
     this.pendingPeers.put(source, ph);
     // Add new recovered follower to PreProcessor.
@@ -923,9 +950,14 @@ class Leader extends Participant {
     ackProcessor.processRequest(tuple);
     // Also ask CommitProcessor to notify the clients of membership changes.
     commitProcessor.processRequest(tuple);
-    if (lastAckedZxid.compareTo(zxid) >= 0) {
-      // If current last proposed zxid is already in log, starts synchronization
-      // immediately.
+    // Before starting the synchronization, we need to guarantee the last
+    // proposed zxid appears in the leader's log. The way we guarantee this
+    // is that the leader must have already acknowledged this proposal.
+    // Otherwise we can only start synchronizing after receiving the
+    // acknowledgement of the proposal from leader.
+    if (lastAckedZxid.compareTo(lastZxidOfSync) >= 0) {
+      // Great, the leader has already synchronized the last proposed
+      // transaction to its log, we can start the synchronization right now.
       ClusterConfiguration cnf =
         persistence.getLastConfigWithin(ph.getLastSyncedZxid());
       ph.setSyncTask(new SyncPeerTask(ph.getServerId(),
