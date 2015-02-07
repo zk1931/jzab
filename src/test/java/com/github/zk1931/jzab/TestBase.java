@@ -30,6 +30,7 @@ import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 /**
  * A base class for all the test cases.
@@ -51,18 +52,21 @@ public class TestBase {
     protected void starting(Description description) {
       int numThreads = Thread.getAllStackTraces().keySet().size();
       LOG.info("STARTING: {}, # of threads: {}", description, numThreads);
+      MDC.put("test", description.toString());
     }
 
     @Override
     protected void failed(Throwable e, Description description) {
       int numThreads = Thread.getAllStackTraces().keySet().size();
       LOG.error("FAILED: {}, # of threads: {}", description, numThreads, e);
+      MDC.put("test", "");
     }
 
     @Override
     protected void succeeded(Description description) {
       int numThreads = Thread.getAllStackTraces().keySet().size();
       LOG.info("SUCCEEDED: {}, # of threads: {}", description, numThreads);
+      MDC.put("test", "");
     }
   };
 
