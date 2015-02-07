@@ -23,10 +23,10 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
-import java.util.ArrayList;
 import java.util.List;
 import com.github.zk1931.jzab.proto.ZabMessage;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
@@ -144,6 +144,8 @@ abstract class Participant {
    * Current cluster configuration.
    */
   protected ClusterConfiguration clusterConfig = null;
+
+  protected MessageQueueFilter filter;
 
   private static final Logger LOG = LoggerFactory.getLogger(Participant.class);
 
@@ -270,89 +272,6 @@ abstract class Participant {
   }
 
   /**
-   * Gets a message from the queue. It will throw TimeOutException if there's
-   * no message coming in configured timeout.
-   *
-   * @return a message tuple contains the message and its source.
-   * @throws TimeoutException in case of timeout.
-   * @throws InterruptedException it's interrupted.
-   */
-  protected MessageTuple getMessage()
-      throws TimeoutException, InterruptedException {
-    return getMessage(this.config.getTimeoutMs());
-  }
-
-  /**
-   * Gets a message from the queue. It will throw TimeOutException if there's
-   * no message coming in a given timeout.
-   *
-   * @param timeoutMs how to wait before raising a TimeoutException.
-   * @return a message tuple contains the message and its source.
-   * @throws TimeoutException in case of timeout.
-   * @throws InterruptedException it's interrupted.
-   */
-  protected abstract MessageTuple getMessage(int timeoutMs)
-      throws TimeoutException, InterruptedException;
-
-  /**
-   * Gets the expected message. It will discard messages of unexpected type
-   * and source and returns if only if the expected message is received. It
-   * will throw TimeOutException if there's no expected message coming in a
-   * given timeout.
-   *
-   * @param type the expected message type.
-   * @param source the expected source, null if it can from anyone.
-   * @param timeoutMs how long to wait before raising a TimeoutException.
-   * @return the message tuple contains the message and its source.
-   * @throws TimeoutException in case of timeout.
-   * @throws InterruptedException it's interrupted.
-   */
-  protected MessageTuple getExpectedMessage(MessageType type,
-                                            String source,
-                                            int timeoutMs)
-      throws TimeoutException, InterruptedException {
-    int startTime = (int) (System.nanoTime() / 1000000);
-    // Waits until the expected message is received.
-    while (true) {
-      MessageTuple tuple = getMessage(timeoutMs);
-      String from = tuple.getServerId();
-      if (tuple.getMessage().getType() == type &&
-          (source == null || source.equals(from))) {
-        // Return message only if it's expected type and expected source.
-        return tuple;
-      } else {
-        int curTime = (int) (System.nanoTime() / 1000000);
-        if (curTime - startTime >= timeoutMs) {
-          throw new TimeoutException("Timeout in getExpectedMessage.");
-        }
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Got an unexpected message from {}: {}",
-                    tuple.getServerId(),
-                    TextFormat.shortDebugString(tuple.getMessage()));
-        }
-      }
-    }
-  }
-
-  /**
-   * Gets the expected message. It will discard messages of unexpected type
-   * and source and returns if only if the expected message is received. It
-   * will throw TimeOutException if there's no expected message coming in a
-   * configured timeout.
-   *
-   * @param type the expected message type.
-   * @param source the expected source, null if it can from anyone.
-   * @param timeoutMs how long to wait before raising a TimeoutException.
-   * @return the message tuple contains the message and its source.
-   * @throws TimeoutException in case of timeout.
-   * @throws InterruptedException it's interrupted.
-   */
-  protected MessageTuple getExpectedMessage(MessageType type, String source)
-      throws TimeoutException, InterruptedException {
-    return getExpectedMessage(type, source, this.config.getTimeoutMs());
-  }
-
-  /**
    * Waits getting synchronizated from peer.
    *
    * @param peer the id of the expected peer that synchronization message will
@@ -373,7 +292,7 @@ abstract class Participant {
     // Expects getting message of DIFF or TRUNCATE or SNAPSHOT from peer or
     // PULL_TXN_REQ from leader.
     while (true) {
-      MessageTuple tuple = getMessage(getSyncTimeoutMs());
+      MessageTuple tuple = filter.getMessage(getSyncTimeoutMs());
       source = tuple.getServerId();
       msg = tuple.getMessage();
       if ((msg.getType() != MessageType.DIFF &&
@@ -403,8 +322,8 @@ abstract class Participant {
       syncTask.run();
       // After synchronization, leader should have same history as this
       // server, so next message should be an empty DIFF.
-      MessageTuple tuple =
-        getExpectedMessage(MessageType.DIFF, peer, getSyncTimeoutMs());
+      MessageTuple tuple = filter.getExpectedMessage(MessageType.DIFF, peer,
+                                                     getSyncTimeoutMs());
       msg = tuple.getMessage();
       ZabMessage.Diff diff = msg.getDiff();
       lastZxidPeer = MessageBuilder.fromProtoZxid(diff.getLastZxid());
@@ -462,7 +381,9 @@ abstract class Participant {
       lastZxidPeer = MessageBuilder.fromProtoZxid(snap.getLastZxid());
       Zxid snapZxid = MessageBuilder.fromProtoZxid(snap.getSnapZxid());
       // Waiting for snapshot file to be received.
-      msg = getExpectedMessage(MessageType.FILE_RECEIVED, peer).getMessage();
+      msg = filter.getExpectedMessage(MessageType.FILE_RECEIVED,
+                                      peer,
+                                      getSyncTimeoutMs()).getMessage();
       // Turns the temp file to snapshot file.
       File file = new File(msg.getFileReceived().getFullPath());
       // If the message is SNAPSHOT, it's state transferring.
@@ -480,8 +401,9 @@ abstract class Participant {
     log = persistence.getLog();
     // Get subsequent proposals.
     while (true) {
-      MessageTuple tuple = getExpectedMessage(MessageType.PROPOSAL, peer,
-                                              getSyncTimeoutMs());
+      MessageTuple tuple = filter.getExpectedMessage(MessageType.PROPOSAL,
+                                                     peer,
+                                                     getSyncTimeoutMs());
       msg = tuple.getMessage();
       source = tuple.getServerId();
       if (LOG.isDebugEnabled()) {
@@ -511,8 +433,9 @@ abstract class Participant {
    */
   void waitForSyncEnd(String peerId)
       throws TimeoutException, IOException, InterruptedException {
-    MessageTuple tuple = getExpectedMessage(MessageType.SYNC_END, peerId,
-                                            getSyncTimeoutMs());
+    MessageTuple tuple = filter.getExpectedMessage(MessageType.SYNC_END,
+                                                   peerId,
+                                                   getSyncTimeoutMs());
     ClusterConfiguration cnf
       = ClusterConfiguration.fromProto(tuple.getMessage().getConfig(),
                                        this.serverId);

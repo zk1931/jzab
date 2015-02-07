@@ -22,10 +22,10 @@ import com.google.protobuf.TextFormat;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.TimeUnit;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -93,75 +93,8 @@ class Leader extends Participant {
                 ZabConfig config) {
     super(participantState, stateMachine, config);
     this.electedLeader = participantState.getServerId();
+    filter = new LeaderFilter(messageQueue, election);
     MDC.put("state", "leading");
-  }
-
-  /**
-   * Gets a message from the queue.
-   *
-   * @param timeoutMs how to wait before raising a TimeoutException.
-   * @return a message tuple contains the message and its source.
-   * @throws TimeoutException in case of timeout.
-   * @throws InterruptedException it's interrupted.
-   */
-  @Override
-  protected MessageTuple getMessage(int timeoutMs)
-      throws TimeoutException, InterruptedException {
-    long startTime = System.nanoTime() / 1000000;
-    while (true) {
-      MessageTuple tuple = messageQueue.poll(timeoutMs,
-                                             TimeUnit.MILLISECONDS);
-      if (tuple == null) {
-        // Timeout.
-        throw new TimeoutException("Timeout while waiting for the message.");
-      } else if (tuple == MessageTuple.GO_BACK) {
-        // Goes back to leader election.
-        throw new BackToElectionException();
-      } else if (tuple.getMessage().getType() == MessageType.DISCONNECTED) {
-        // Got DISCONNECTED message enqueued by onDisconnected callback.
-        Message msg = tuple.getMessage();
-        String peerId = msg.getDisconnected().getServerId();
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Got message {}.",
-                    TextFormat.shortDebugString(msg));
-        }
-        if (this.quorumMap.containsKey(peerId)) {
-          if (this.currentPhase != Phase.BROADCASTING) {
-            // If you lost someone in your quorumMap before broadcasting
-            // phase, you are for sure not have a quorum of followers, just go
-            // back to leader election. The clearance of the transport happens
-            // in the exception handlers of lead/join function.
-            LOG.debug("Lost follower {} in the quorumMap in recovering.",
-                      peerId);
-            throw new BackToElectionException();
-          } else {
-            // Lost someone who is in the quorumMap in broadcasting phase,
-            // return this message to caller and let it handles the
-            // disconnection.
-            LOG.debug("Lost follower {} in the quorumMap in broadcasting.",
-                      peerId);
-            return tuple;
-          }
-        } else {
-          // Just lost someone you don't care, clear the transport so it can
-          // join in in later time.
-          LOG.debug("Lost follower {} outside quorumMap.", peerId);
-          this.transport.clear(peerId);
-        }
-      } else if (tuple.getMessage().getType() == MessageType.ELECTION_INFO) {
-        // If it's election message, replies it directly.
-        this.election.reply(tuple);
-      } else if (tuple.getMessage().getType() == MessageType.SHUT_DOWN) {
-        LOG.debug("Got SHUT_DOWN, going to shut down Zab.");
-        throw new LeftCluster("Shutdown Zab");
-      } else {
-        return tuple;
-      }
-      long curTime = System.nanoTime() / 1000000;
-      if (curTime - startTime >= (long)timeoutMs) {
-        throw new TimeoutException();
-      }
-    }
   }
 
   @Override
@@ -352,7 +285,9 @@ class Leader extends Participant {
     long acknowledgedEpoch = persistence.getAckEpoch();
     // Waits PROPOED_EPOCH from a quorum of peers in current configuraion.
     while (this.quorumMap.size() < getQuorumSize() - 1) {
-      MessageTuple tuple = getExpectedMessage(MessageType.PROPOSED_EPOCH, null);
+      MessageTuple tuple = filter.getExpectedMessage(MessageType.PROPOSED_EPOCH,
+                                                     null,
+                                                     config.getTimeoutMs());
       Message msg = tuple.getMessage();
       String source = tuple.getServerId();
       ZabMessage.ProposedEpoch epoch = msg.getProposedEpoch();
@@ -452,7 +387,9 @@ class Leader extends Participant {
     int ackCount = 0;
     // Waits the Ack from all other peers in the quorum set.
     while (ackCount < this.quorumMap.size()) {
-      MessageTuple tuple = getExpectedMessage(MessageType.ACK_EPOCH, null);
+      MessageTuple tuple = filter.getExpectedMessage(MessageType.ACK_EPOCH,
+                                                     null,
+                                                     config.getTimeoutMs());
       Message msg = tuple.getMessage();
       String source = tuple.getServerId();
       if (!this.quorumMap.containsKey(source)) {
@@ -538,8 +475,8 @@ class Leader extends Participant {
     Zxid lastZxid = persistence.getLatestZxid();
     while (completeCount < this.quorumMap.size()) {
       // Here we should use sync_timeout.
-      MessageTuple tuple =
-        getExpectedMessage(MessageType.ACK, null, getSyncTimeoutMs());
+      MessageTuple tuple = filter.getExpectedMessage(MessageType.ACK, null,
+                                                     getSyncTimeoutMs());
       ZabMessage.Ack ack = tuple.getMessage().getAck();
       String source =tuple.getServerId();
       Zxid zxid = MessageBuilder.fromProtoZxid(ack.getZxid());
@@ -634,7 +571,7 @@ class Leader extends Participant {
     broadcastingInit();
     try {
       while (this.quorumMap.size() >= clusterConfig.getQuorumSize()) {
-        MessageTuple tuple = getMessage(config.getTimeoutMs());
+        MessageTuple tuple = filter.getMessage(config.getTimeoutMs());
         Message msg = tuple.getMessage();
         String source = tuple.getServerId();
         // Checks if it's DISCONNECTED message.
@@ -1073,5 +1010,59 @@ class Leader extends Participant {
     lastProposedZxid = new Zxid(establishedEpoch,
                                 lastProposedZxid.getXid() + 1);
     return lastProposedZxid;
+  }
+
+  /**
+   * A filter class for leader acts as a successor of ElectionMessageFilter
+   * class. It filters and handles DISCONNECTED message.
+   */
+  class LeaderFilter extends ElectionMessageFilter {
+    LeaderFilter(BlockingQueue<MessageTuple> msgQueue, Election election) {
+      super(msgQueue, election);
+    }
+
+    @Override
+    protected MessageTuple getMessage(int timeoutMs)
+        throws InterruptedException, TimeoutException {
+      int startMs = (int)(System.nanoTime() / 1000000);
+      while (true) {
+        int nowMs = (int)(System.nanoTime() / 1000000);
+        int remainMs = timeoutMs - (nowMs - startMs);
+        if (remainMs < 0) {
+          remainMs = 0;
+        }
+        MessageTuple tuple = super.getMessage(remainMs);
+        if (tuple.getMessage().getType() == MessageType.DISCONNECTED) {
+          // Got DISCONNECTED message enqueued by onDisconnected callback.
+          Message msg = tuple.getMessage();
+          String peerId = msg.getDisconnected().getServerId();
+          if (quorumMap.containsKey(peerId)) {
+            if (currentPhase != Phase.BROADCASTING) {
+              // If you lost someone in your quorumMap before broadcasting
+              // phase, you are for sure not have a quorum of followers, just go
+              // back to leader election. The clearance of the transport happens
+              // in the exception handlers of lead/join function.
+              LOG.debug("Lost follower {} in the quorumMap in recovering.",
+                        peerId);
+              throw new BackToElectionException();
+            } else {
+              // Lost someone who is in the quorumMap in broadcasting phase,
+              // return this message to caller and let it handles the
+              // disconnection.
+              LOG.debug("Lost follower {} in the quorumMap in broadcasting.",
+                        peerId);
+              return tuple;
+            }
+          } else {
+            // Just lost someone you don't care, clear the transport so it can
+            // join in in later time.
+            LOG.debug("Lost follower {} outside quorumMap.", peerId);
+            transport.clear(peerId);
+          }
+        } else {
+          return tuple;
+        }
+      }
+    }
   }
 }

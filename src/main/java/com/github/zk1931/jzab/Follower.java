@@ -20,9 +20,9 @@ package com.github.zk1931.jzab;
 
 import com.google.protobuf.TextFormat;
 import java.io.IOException;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.TimeUnit;
 import java.util.HashSet;
 import com.github.zk1931.jzab.proto.ZabMessage;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
@@ -42,69 +42,8 @@ class Follower extends Participant {
                   StateMachine stateMachine,
                   ZabConfig config) {
     super(participantState, stateMachine, config);
+    filter = new FollowerFilter(messageQueue, election);
     MDC.put("state", "following");
-  }
-
-  /**
-   * Gets a message from the queue.
-   *
-   * @param timeoutMs how to wait before raising a TimeoutException.
-   * @return a message tuple contains the message and its source.
-   * @throws TimeoutException in case of timeout.
-   * @throws InterruptedException it's interrupted.
-   */
-  @Override
-  protected MessageTuple getMessage(int timeoutMs)
-      throws TimeoutException, InterruptedException {
-    long startTime = System.nanoTime() / 1000000;
-    while (true) {
-      MessageTuple tuple = messageQueue.poll(timeoutMs,
-                                             TimeUnit.MILLISECONDS);
-      if (tuple == null) {
-        // Timeout.
-        throw new TimeoutException("Timeout while waiting for the message.");
-      } else if (tuple == MessageTuple.GO_BACK) {
-        // Goes back to leader election.
-        throw new BackToElectionException();
-      } else if (tuple.getMessage().getType() == MessageType.PROPOSED_EPOCH) {
-        // Explicitly close the connection when gets PROPOSED_EPOCH message in
-        // FOLLOWING state to help the peer selecting the right leader faster.
-        LOG.debug("Got PROPOSED_EPOCH in FOLLOWING state. Close connection.");
-        this.transport.clear(tuple.getServerId());
-      } else if (tuple.getMessage().getType() == MessageType.DISCONNECTED) {
-        // Got DISCONNECTED message enqueued by onDisconnected callback.
-        Message msg = tuple.getMessage();
-        String peerId = msg.getDisconnected().getServerId();
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Got message {}.",
-                    TextFormat.shortDebugString(msg));
-        }
-        // FOLLOWING state.
-        if (this.electedLeader != null && peerId.equals(this.electedLeader)) {
-          // Disconnection from elected leader, going back to leader election,
-          // the clearance of transport will happen in exception handlers of
-          // follow/join function.
-          LOG.debug("Lost elected leader {}.", this.electedLeader);
-          throw new BackToElectionException();
-        } else {
-          // Lost connection to someone you don't care, clear transport.
-          LOG.debug("Lost peer {}.", peerId);
-          this.transport.clear(peerId);
-        }
-      } else if (tuple.getMessage().getType() == MessageType.ELECTION_INFO) {
-        // If it's election message, replies it directly.
-        this.election.reply(tuple);
-      } else if (tuple.getMessage().getType() == MessageType.SHUT_DOWN) {
-        LOG.debug("Got SHUT_DOWN, going to shut down Zab.");
-        throw new LeftCluster("Shutdown Zab");
-      } else {
-        return tuple;
-      }
-      long curTime = System.nanoTime() / 1000000;
-      if (curTime - startTime >= (long)timeoutMs) {
-        throw new TimeoutException();
-      }
-    }
   }
 
   @Override
@@ -172,7 +111,8 @@ class Follower extends Participant {
         // joining the cluster until joining the cluster successfully.
         try {
           sendMessage(peer, query);
-          tuple = getExpectedMessage(MessageType.QUERY_LEADER_REPLY, peer);
+          tuple = filter.getExpectedMessage(MessageType.QUERY_LEADER_REPLY,
+                                            peer, config.getTimeoutMs());
           break;
         } catch (TimeoutException ex) {
           long retryInterval = 1;
@@ -317,8 +257,9 @@ class Follower extends Participant {
    */
   void waitForNewEpoch()
       throws InterruptedException, TimeoutException, IOException {
-    MessageTuple tuple = getExpectedMessage(MessageType.NEW_EPOCH,
-                                            this.electedLeader);
+    MessageTuple tuple = filter.getExpectedMessage(MessageType.NEW_EPOCH,
+                                                   this.electedLeader,
+                                                   config.getTimeoutMs());
     Message msg = tuple.getMessage();
     String source = tuple.getServerId();
     ZabMessage.NewEpoch epoch = msg.getNewEpoch();
@@ -354,8 +295,9 @@ class Follower extends Participant {
   void waitForNewLeaderMessage()
       throws TimeoutException, InterruptedException, IOException {
     LOG.debug("Waiting for New Leader message from {}.", this.electedLeader);
-    MessageTuple tuple = getExpectedMessage(MessageType.NEW_LEADER,
-                                            this.electedLeader);
+    MessageTuple tuple = filter.getExpectedMessage(MessageType.NEW_LEADER,
+                                                   this.electedLeader,
+                                                   config.getTimeoutMs());
     Message msg = tuple.getMessage();
     String source = tuple.getServerId();
     if (LOG.isDebugEnabled()) {
@@ -383,8 +325,9 @@ class Follower extends Participant {
   void waitForCommitMessage()
       throws TimeoutException, InterruptedException, IOException {
     LOG.debug("Waiting for commit message from {}", this.electedLeader);
-    MessageTuple tuple = getExpectedMessage(MessageType.COMMIT,
-                                            this.electedLeader);
+    MessageTuple tuple = filter.getExpectedMessage(MessageType.COMMIT,
+                                                   this.electedLeader,
+                                                   config.getTimeoutMs());
     Zxid zxid = MessageBuilder.fromProtoZxid(tuple.getMessage()
                                                   .getCommit()
                                                   .getZxid());
@@ -432,7 +375,7 @@ class Follower extends Participant {
     long ackEpoch = persistence.getAckEpoch();
     try {
       while (true) {
-        MessageTuple tuple = getMessage();
+        MessageTuple tuple = filter.getMessage(config.getTimeoutMs());
         Message msg = tuple.getMessage();
         String source = tuple.getServerId();
         // The follower only expect receiving message from leader and
@@ -520,7 +463,8 @@ class Follower extends Participant {
     Message sync = MessageBuilder.buildSyncHistory(persistence.getLatestZxid());
     sendMessage(this.electedLeader, sync);
     MessageTuple tuple =
-      getExpectedMessage(MessageType.SYNC_HISTORY_REPLY, electedLeader);
+      filter.getExpectedMessage(MessageType.SYNC_HISTORY_REPLY, electedLeader,
+                                config.getTimeoutMs());
     Message msg = tuple.getMessage();
     // Updates the sync timeout based on leader's suggestion.
     setSyncTimeoutMs(msg.getSyncHistoryReply().getSyncTimeout());
@@ -540,5 +484,52 @@ class Follower extends Participant {
     waitForNewLeaderMessage();
     waitForCommitMessage();
     persistence.setProposedEpoch(persistence.getAckEpoch());
+  }
+
+  /**
+   * A filter class for follower acts as a successor of ElectionMessageFilter
+   * class. It filters and handles DISCONNECTED and PROPOSED_EPOCH messages.
+   */
+  class FollowerFilter extends ElectionMessageFilter {
+    FollowerFilter(BlockingQueue<MessageTuple> msgQueue, Election election) {
+      super(msgQueue, election);
+    }
+
+    @Override
+    protected MessageTuple getMessage(int timeoutMs)
+        throws InterruptedException, TimeoutException {
+      int startMs = (int)(System.nanoTime() / 1000000);
+      while (true) {
+        int nowMs = (int)(System.nanoTime() / 1000000);
+        int remainMs = timeoutMs - (nowMs - startMs);
+        if (remainMs < 0) {
+          remainMs = 0;
+        }
+        MessageTuple tuple = super.getMessage(remainMs);
+        if (tuple.getMessage().getType() == MessageType.DISCONNECTED) {
+          // Got DISCONNECTED message enqueued by onDisconnected callback.
+          Message msg = tuple.getMessage();
+          String peerId = msg.getDisconnected().getServerId();
+          if (electedLeader != null && peerId.equals(electedLeader)) {
+            // Disconnection from elected leader, going back to leader election,
+            // the clearance of transport will happen in exception handlers of
+            // follow/join function.
+            LOG.debug("Lost elected leader {}.", electedLeader);
+            throw new BackToElectionException();
+          } else {
+            // Lost connection to someone you don't care, clear transport.
+            LOG.debug("Lost peer {}.", peerId);
+            transport.clear(peerId);
+          }
+        } else if (tuple.getMessage().getType() == MessageType.PROPOSED_EPOCH) {
+          // Explicitly close the connection when gets PROPOSED_EPOCH message in
+          // FOLLOWING state to help the peer selecting the right leader faster.
+          LOG.debug("Got PROPOSED_EPOCH in FOLLOWING state. Close connection.");
+          transport.clear(tuple.getServerId());
+        } else {
+          return tuple;
+        }
+      }
+    }
   }
 }

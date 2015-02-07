@@ -30,7 +30,6 @@ class MessageTuple {
 
   public static final MessageTuple REQUEST_OF_DEATH =
       new MessageTuple(null, null);
-  public static final MessageTuple GO_BACK = new MessageTuple(null, null);
 
   public MessageTuple(String serverId, Message message) {
     this(serverId, message, null);
