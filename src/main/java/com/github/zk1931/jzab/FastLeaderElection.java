@@ -21,7 +21,7 @@ import com.github.zk1931.jzab.proto.ZabMessage;
 import com.github.zk1931.jzab.proto.ZabMessage.Message;
 import com.github.zk1931.jzab.proto.ZabMessage.Message.MessageType;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.HashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,12 +43,15 @@ class FastLeaderElection implements Election {
   private long round = 0;
   // Persistent state.
   private PersistentState persistence;
+  // Message queue filter for fast leader election.
+  private final ElectioneerFilter filter;
 
   FastLeaderElection(PersistentState persistence, Transport transport,
                      BlockingQueue<MessageTuple> messageQueue) {
     this.transport = transport;
     this.messageQueue = messageQueue;
     this.persistence = persistence;
+    filter = new ElectioneerFilter(messageQueue);
   }
 
   @Override
@@ -67,11 +70,15 @@ class FastLeaderElection implements Election {
     int maxTimeoutMs = 1600;
     // Broadcasts its own vote first.
     broadcast(clusterConfig);
+
     while (true) {
-      VoteTuple tuple = getVote(timeoutMs);
-      if (tuple == null) {
+      MessageTuple msgTuple;
+      try {
+        msgTuple = filter.getMessage(timeoutMs);
+      } catch (TimeoutException ex) {
+        // Timeout without any incoming vote message.
         if (receivedVotes.size() >= clusterConfig.getQuorumSize()) {
-          // If we've received the votes from a quorum of servers who are in
+          // If we've already received votes from a quorum of servers who are in
           // the same round, then we assume probably we find the server who has
           // the "best" history.
           this.voteInfo.electing = false;
@@ -82,11 +89,11 @@ class FastLeaderElection implements Election {
           broadcast(clusterConfig);
           timeoutMs =
             (timeoutMs * 2 > maxTimeoutMs)? maxTimeoutMs : 2 * timeoutMs;
-          continue;
         }
+        continue;
       }
-      VoteInfo vote = tuple.voteInfo;
-      String source = tuple.source;
+      VoteInfo vote = VoteInfo.fromMessage(msgTuple.getMessage());
+      String source = msgTuple.getServerId();
       if (!clusterConfig.contains(source)) {
         // If the vote comes from a server who is not in your curernt
         // configuration, ignores it.
@@ -156,51 +163,6 @@ class FastLeaderElection implements Election {
     this.voteInfo = new VoteInfo(leader, -1, Zxid.ZXID_NOT_EXIST, -1, false);
   }
 
-  /**
-   * Gets the vote from the message queue with a certain timeout.
-   *
-   * @param the timeout in milliseconds.
-   * @return the VoteTuple, or null if it's timeout.
-   */
-  VoteTuple getVote(int timeoutMs) throws Exception {
-    long startTime = System.nanoTime();
-    while (true) {
-      MessageTuple tuple =
-        messageQueue.poll(timeoutMs, TimeUnit.MILLISECONDS);
-      if (tuple == null) {
-        return null;
-      }
-      String source = tuple.getServerId();
-      Message msg = tuple.getMessage();
-      if (msg.getType() == MessageType.SHUT_DOWN) {
-        // If it's SHUT_DOWN message.
-        throw new Participant.LeftCluster("Left cluster");
-      } else if (msg.getType() == MessageType.DISCONNECTED) {
-        LOG.debug("DISCONNECT FROM {}", msg.getDisconnected().getServerId());
-        this.transport.clear(msg.getDisconnected().getServerId());
-        continue;
-      } else if (msg.getType() == MessageType.PROPOSED_EPOCH) {
-        ClusterConfiguration clusterConfig = persistence.getLastSeenConfig();
-        Zxid lastZxid = persistence.getLog().getLatestZxid();
-        String serverId = clusterConfig.getServerId();
-        long ackEpoch = persistence.getAckEpoch();
-        VoteInfo info =
-          new VoteInfo(serverId, ackEpoch, lastZxid, round, false);
-        messageQueue.add(tuple);
-        return new VoteTuple(info, source);
-      } else if (msg.getType() != MessageType.ELECTION_INFO) {
-        // If it's not the expected message, we nened to check if it has been
-        // timeout.
-        if (System.nanoTime() - startTime >= timeoutMs * 1000000) {
-          return null;
-        }
-        continue;
-      }
-      VoteInfo vote = VoteInfo.fromMessage(msg);
-      return new VoteTuple(vote, source);
-    }
-  }
-
   // Broadcasts its vote to all the peers in current configuration.
   void broadcast(ClusterConfiguration config) {
     Message vote = voteInfo.toMessage();
@@ -249,6 +211,19 @@ class FastLeaderElection implements Election {
       return this.vote.compareTo(vi.vote);
     }
 
+    @Override
+    public boolean equals(Object o) {
+      if (o == null || !(o instanceof VoteInfo)) {
+        return false;
+      }
+      return compareTo((VoteInfo)o) == 0;
+    }
+
+    @Override
+    public int hashCode() {
+      return 0;
+    }
+
     static VoteInfo fromMessage(Message msg) {
       ZabMessage.ElectionInfo info = msg.getElectionInfo();
       return new VoteInfo(info.getVote(),
@@ -260,15 +235,32 @@ class FastLeaderElection implements Election {
   }
 
   /**
-   * The tuple holds both the vote and the sender.
+   * This filter filters any message except the ELECTION_INFO message.
    */
-  static class VoteTuple {
-    final VoteInfo voteInfo;
-    final String source;
+  class ElectioneerFilter extends MessageQueueFilter {
+    ElectioneerFilter(BlockingQueue<MessageTuple> msgQueue) {
+      super(msgQueue);
+    }
 
-    VoteTuple(VoteInfo voteInfo, String source) {
-      this.voteInfo = voteInfo;
-      this.source = source;
+    @Override
+    protected MessageTuple getMessage(int timeoutMs)
+        throws InterruptedException, TimeoutException {
+      int startMs = (int)(System.nanoTime() / 1000000);
+      while (true) {
+        int nowMs = (int)(System.nanoTime() / 1000000);
+        int remainMs = timeoutMs - (nowMs - startMs);
+        if (remainMs < 0) {
+          remainMs = 0;
+        }
+        MessageTuple tuple = super.getMessage(remainMs);
+        Message msg = tuple.getMessage();
+        if (msg.getType() == MessageType.ELECTION_INFO) {
+          // Got what we want, return it to caller.
+          return tuple;
+        } else if (msg.getType() == MessageType.DISCONNECTED) {
+          transport.clear(msg.getDisconnected().getServerId());
+        }
+      }
     }
   }
 }
