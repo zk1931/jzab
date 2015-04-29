@@ -23,7 +23,10 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.util.Stack;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.Before;
 import org.junit.Rule;
 import org.junit.rules.TestName;
 import org.junit.rules.TestWatcher;
@@ -31,6 +34,8 @@ import org.junit.runner.Description;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+
+import static org.junit.Assert.assertTrue;
 
 /**
  * A base class for all the test cases.
@@ -69,6 +74,29 @@ public class TestBase {
       MDC.put("test", "");
     }
   };
+
+  @Before
+  public void createDirectory() {
+    Stack<File> stack = new Stack<>();
+    File directory = getDirectory();
+    if (directory.exists()) {
+      stack.push(directory);
+    }
+    while (!stack.empty()) {
+      File dir = stack.pop();
+      File[] files = dir.listFiles();
+      if (files == null) {
+        continue;
+      }
+      for (File file : files) {
+        if (file.isDirectory()) {
+          stack.push(file);
+        } else {
+          assertTrue("Unable to delete file " + file, file.delete());
+        }
+      }
+    }
+  }
 
   /**
    * Creates a data directory for the calling test method.
