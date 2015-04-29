@@ -71,7 +71,7 @@ class SnapshotStateMachine implements StateMachine {
   }
 
   @Override
-  public void flushed(ByteBuffer flushReq, Object ctx) {}
+  public void flushed(Zxid zxid, ByteBuffer flushReq, Object ctx) {}
 
   @Override
   public void save(FileOutputStream fos) {
