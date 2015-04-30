@@ -60,7 +60,7 @@ public interface StateMachine {
    * @param  flushRequest the flush request.
    * @param ctx the context object.
    */
-  void flushed(ByteBuffer flushRequest, Object ctx);
+  void flushed(Zxid zxid, ByteBuffer flushRequest, Object ctx);
 
   /**
    * Callback for {@link Zab#takeSnapshot}.

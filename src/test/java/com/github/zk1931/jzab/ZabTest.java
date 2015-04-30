@@ -1983,9 +1983,9 @@ public class ZabTest extends TestBase  {
       }
 
       @Override
-      public void flushed(ByteBuffer flushReq, Object ctx) {
+      public void flushed(Zxid zxid, ByteBuffer flushReq, Object ctx) {
         flushCtxs.add(ctx);
-        super.flushed(flushReq, ctx);
+        super.flushed(zxid, flushReq, ctx);
       }
 
       @Override

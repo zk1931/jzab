@@ -293,7 +293,7 @@ class CommitProcessor implements RequestProcessor, Callable<Void> {
                 + "pendingFlushes.");
           }
           Object ctx = tp.ctx;
-          stateMachine.flushed(flush.getBody(), ctx);
+          stateMachine.flushed(flush.getWaitZxid(), flush.getBody(), ctx);
           flushQueue.remove();
         } else {
           break;

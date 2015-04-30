@@ -71,9 +71,9 @@ class TestStateMachine implements StateMachine {
   }
 
   @Override
-  public void flushed(ByteBuffer flushReq, Object ctx) {
+  public void flushed(Zxid zxid, ByteBuffer flushReq, Object ctx) {
     LOG.debug("Deliver syncReq {}.");
-    this.deliveredTxns.add(new Transaction(Zxid.ZXID_NOT_EXIST, flushReq));
+    this.deliveredTxns.add(new Transaction(zxid, flushReq));
     if (txnsCount != null) {
       txnsCount.countDown();
     }
