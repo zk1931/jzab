@@ -501,7 +501,7 @@ abstract class Participant {
         Transaction txn = iter.next();
         if (txn.getType() == ProposalType.USER_REQUEST_VALUE) {
           // Only delivers REQUEST proposal, ignores COP.
-          stateMachine.deliver(txn.getZxid(), txn.getBody(), null, null);
+          stateMachine.deliver(txn.getBody(), null, null);
         }
         lastDeliveredZxid = txn.getZxid();
       }

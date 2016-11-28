@@ -32,12 +32,11 @@ public interface StateMachine {
    * on the leader after the Zxid has been assigned but before proposing the
    * message to followers.
    *
-   * @param zxid zxid of the message.
    * @param message the original message
    * @return an idempotent state update based on the original message. This is
    * what gets proposed to followers.
    */
-  ByteBuffer preprocess(Zxid zxid, ByteBuffer message);
+  ByteBuffer preprocess(ByteBuffer message);
 
   /**
    * Callback for {@link Zab#send}. This method is called from a single
@@ -45,13 +44,12 @@ public interface StateMachine {
    * as they arrived. {@link Zab} assumes that the transaction is successfully
    * applied to the state machine when this method returns.
    *
-   * @param zxid zxid of the message
    * @param stateUpdate the incremental state update
    * @param clientId the id of the client who sends the request. The request
    * delivered in RECOVERING phase has clientId sets to null.
    * @param ctx the context object.
    */
-  void deliver(Zxid zxid, ByteBuffer stateUpdate, String clientId, Object ctx);
+  void deliver(ByteBuffer stateUpdate, String clientId, Object ctx);
 
   /**
    * Callback for {@link Zab#flush}. This method is called from the same

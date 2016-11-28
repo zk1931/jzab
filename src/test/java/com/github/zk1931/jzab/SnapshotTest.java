@@ -55,13 +55,12 @@ class SnapshotStateMachine implements StateMachine {
   }
 
   @Override
-  public ByteBuffer preprocess(Zxid zxid, ByteBuffer message) {
+  public ByteBuffer preprocess(ByteBuffer message) {
     return message;
   }
 
   @Override
-  public void deliver(Zxid zxid, ByteBuffer stateUpdate, String clientId,
-                      Object ctx) {
+  public void deliver(ByteBuffer stateUpdate, String clientId, Object ctx) {
     byte[] buffer = new byte[stateUpdate.remaining()];
     stateUpdate.get(buffer);
     String key = new String(buffer);
