@@ -118,6 +118,7 @@
         <configuration>
           <argLine>-Xmx2g</argLine>
           <redirectTestOutputToFile>true</redirectTestOutputToFile>
+        	<forkCount>1.5C</forkCount>
         </configuration>
       </plugin>
 
